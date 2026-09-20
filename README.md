@@ -83,10 +83,23 @@ python -m ruff check app scripts --select F,E9
 |---|---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 백엔드 | 데이터 모델과 설계 결정의 이유 |
 | [docs/FRONTEND_BRIEF.md](docs/FRONTEND_BRIEF.md) | 프론트엔드 외주 | API 계약, 화면별 호출 순서, 주의사항 |
-| [docs/POSTGRES.md](docs/POSTGRES.md) | 운영 | PostgreSQL 전환 및 배포 |
+| [deploy/README.md](deploy/README.md) | 운영 | **우분투 미니PC 서버 설치 (설치 스크립트)** |
+| [docs/POSTGRES.md](docs/POSTGRES.md) | 운영 | PostgreSQL 전환 및 수동 배포 |
 | [docs/openapi.json](docs/openapi.json) | 프론트엔드 외주 | 70 paths / 101 operations |
 
 스펙 변경 시: `python scripts/export_openapi.py`
+
+---
+
+## 서버 설치 (우분투 미니PC)
+
+```bash
+sudo ./deploy/install.sh
+```
+
+의존성 · PostgreSQL · `.env` · 마이그레이션 · systemd 서비스 · 방화벽을 한 번에 처리하고
+접속 주소와 관리자 비밀번호를 출력합니다. 자세한 내용은
+[deploy/README.md](deploy/README.md).
 
 ---
 
@@ -103,6 +116,8 @@ backend/
   alembic/       마이그레이션
   scripts/       smoke_test / seed_demo / export_openapi
   storage/       첨부파일 (DB에는 경로만 저장)
+app/             Flutter 클라이언트 (Windows / Linux / Android)
+deploy/          우분투 서버 설치 · 갱신 · 백업 · 제거 스크립트
 docs/
 ```
 

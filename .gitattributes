@@ -1,0 +1,19 @@
+# 기본은 git 자동 판별
+* text=auto
+
+# 셸 스크립트는 반드시 LF. CRLF면 리눅스에서 "bad interpreter: No such file" 로 죽는다.
+*.sh            text eol=lf
+deploy/*        text eol=lf
+
+# systemd/설정 파일도 LF
+*.service       text eol=lf
+.env.example    text eol=lf
+
+# 바이너리
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.ttf           binary
+*.apk           binary
+*.exe           binary
+*.dll           binary
