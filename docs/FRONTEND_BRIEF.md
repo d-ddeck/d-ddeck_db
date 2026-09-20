@@ -1,0 +1,454 @@
+# 프론트엔드 작업 브리프 — d-ddeck DB Server
+
+백엔드 API는 완성되어 동작 중입니다. 이 문서 하나로 클라이언트 작업을 시작할 수 있도록
+인증 방식, 화면별 호출 순서, 실수하기 쉬운 지점을 정리했습니다.
+
+- **기계용 스펙**: `docs/openapi.json` (70 paths / 101 operations / 119 schemas)
+- **대화형 문서**: 서버 실행 후 `http://<서버>:8000/docs`
+- **베이스 URL**: `http://<서버>:8000/api/v1`
+
+---
+
+## 0. 먼저 합의가 필요한 사항 — 데스크톱 빌드
+
+**FlutterFlow가 직접 빌드할 수 있는 타겟은 Web / iOS / Android 뿐입니다.**
+요구된 Windows · Linux(Ubuntu) 데스크톱 앱은 FlutterFlow 빌더에서 나오지 않습니다.
+
+가능한 경로는 하나입니다.
+
+1. FlutterFlow에서 UI를 구성하고 **Flutter 코드로 익스포트** (유료 플랜 필요)
+2. 익스포트한 프로젝트에 `flutter create --platforms=windows,linux .` 로 데스크톱 러너 추가
+3. 각 OS에서 `flutter build windows` / `flutter build linux` 로 빌드
+
+따라서 실제 산출물은 "FlutterFlow 프로젝트"가 아니라 **익스포트된 Flutter 코드베이스**가
+됩니다. 아래 사항을 착수 전에 확정해 주세요.
+
+- FlutterFlow 유료 플랜(코드 익스포트) 사용 가능 여부
+- 데스크톱 빌드 담당 주체 (외주 / 사내)
+- FlutterFlow 위젯 중 데스크톱 미지원 요소 사용 금지 목록
+- Linux 빌드는 Ubuntu 실기/컨테이너가 필요 (크로스 컴파일 불가)
+
+백엔드는 세 플랫폼이 동일한 REST API를 쓰므로 이 결정에 영향을 받지 않습니다.
+
+---
+
+## 1. 인증
+
+### 토큰
+
+```
+Authorization: Bearer <access_token>
+```
+
+| 토큰 | 수명 | 저장 위치 |
+|---|---|---|
+| `access_token` | 60분 | 메모리 (앱 재시작 시 폐기) |
+| `refresh_token` | 14일 | 보안 저장소 (`flutter_secure_storage` 권장) |
+
+`access_token`은 갱신 전용이 아닌 모든 요청에 붙입니다.
+`401` + `{"error":{"code":"TOKEN_EXPIRED"}}` 를 받으면 `POST /auth/refresh`로 재발급한 뒤
+**원래 요청을 1회만 재시도**하세요. 재시도도 실패하면 로그인 화면으로 보냅니다.
+
+> `refresh` 요청에는 `Authorization` 헤더를 붙이지 않습니다. 바디에 리프레시 토큰만 보냅니다.
+
+### 진입 흐름
+
+```
+[가입 화면]  POST /auth/signup
+                 ↓ 201 "관리자 승인 후 로그인할 수 있습니다"
+             (관리자가 승인할 때까지 로그인 불가)
+[로그인]     POST /auth/login
+                 ├─ 200 → access/refresh/user 수신 → 홈
+                 ├─ 403 ACCOUNT_NOT_ACTIVE → error.message 를 그대로 표시
+                 ├─ 401 INVALID_CREDENTIALS → "이메일 또는 비밀번호가 올바르지 않습니다"
+                 └─ 423 ACCOUNT_LOCKED → error.message 에 남은 분 수 포함
+```
+
+로그인 응답의 `user.must_change_password == true` 이면 **다른 화면으로 넘기기 전에**
+비밀번호 변경 화면을 띄우세요. 최초 관리자 계정과 비밀번호 초기화 계정이 여기 해당합니다.
+변경 후에는 모든 세션이 끊기므로 **다시 로그인**시켜야 합니다.
+
+### 회원가입 입력 규칙
+
+| 필드 | 필수 | 규칙 |
+|---|---|---|
+| `email` | O | 형식 검증만 (`.local` 등 사내 도메인 허용), 소문자 자동 변환 |
+| `password` | O | 8자 이상, **영문 + 숫자 각 1자 이상** |
+| `full_name` | O | 100자 이내 |
+| `employee_no`, `phone`, `position`, `department_id`, `signup_note` | X | |
+
+`department_id`는 `GET /admin/departments`로 채웁니다(로그인 없이는 조회 불가이므로,
+가입 화면에서는 자유 입력 또는 생략하고 승인 시 관리자가 지정하게 두는 편이 낫습니다).
+
+### 권한
+
+`MEMBER(1) < MANAGER(2) < ADMIN(3) < SUPERADMIN(4)`
+
+`user.role`로 메뉴를 숨기되, **권한 판단을 클라이언트에만 의존하지 마세요.**
+서버가 모든 경로에서 다시 검사하고 `403 FORBIDDEN`을 반환합니다.
+
+---
+
+## 2. 공통 규약
+
+### 오류 (모든 실패 응답이 동일한 모양)
+
+```json
+{ "error": { "code": "RESULT_NOTE_REQUIRED",
+             "message": "완료 처리하려면 처리 내용이 필요합니다.",
+             "details": null } }
+```
+
+- `message`는 **한국어로 작성되어 있으니 그대로 노출**하면 됩니다.
+- `code`로 분기하세요. 주요 코드:
+  `NOT_AUTHENTICATED` `TOKEN_EXPIRED` `INVALID_TOKEN` `ACCOUNT_NOT_ACTIVE`
+  `ACCOUNT_LOCKED` `INVALID_CREDENTIALS` `FORBIDDEN` `NOT_FOUND`
+  `VALIDATION_ERROR` `EMAIL_TAKEN` `CODE_TAKEN`
+- `VALIDATION_ERROR`(422)의 `details`는 필드별 배열입니다. `loc[1]`이 필드명입니다.
+
+### 목록 응답 (페이지네이션)
+
+```json
+{ "items": [...], "total": 137, "page": 1, "size": 20, "pages": 7 }
+```
+
+요청 파라미터는 `?page=1&size=20` (size 최대 200). **파서를 제네릭 하나로 만드세요.**
+
+> 예외: `GET /calendar/events`, `GET /inventory/locations`, `GET /admin/codes`,
+> `GET /admin/audit-logs`, `GET /board/boards`, `GET /calendar/calendars`는
+> 페이지 래퍼 없이 **배열을 직접** 반환합니다.
+
+### 날짜/시간
+
+- 모든 시각은 **UTC ISO-8601**(`2026-09-20T07:30:00+00:00`)입니다.
+- 표시할 때 기기 타임존으로 변환하고, 보낼 때 UTC로 되돌리세요.
+- **쿼리 파라미터에 넣을 때 반드시 URL 인코딩하세요.** `+00:00`의 `+`가 공백으로
+  해석되어 422가 납니다. Dart의 `Uri(queryParameters: {...})`를 쓰면 자동 처리됩니다.
+
+### ID
+
+모두 UUID 문자열입니다. 정수로 파싱하지 마세요.
+
+### 금액/수량
+
+`Decimal`이 **문자열**로 직렬화됩니다(`"150000.00"`). `double.parse()` 하세요.
+
+---
+
+## 3. 화면별 호출 순서
+
+### 3-1. 앱 시작
+
+```
+1. 저장된 refresh_token 있음?  →  POST /auth/refresh
+                               →  성공: GET /auth/me 로 프로필 갱신 후 홈
+                               →  실패: 로그인 화면
+2. (로그인 후) POST /auth/devices        푸시 토큰 등록
+3. (로그인 후) GET  /admin/settings/SYSTEM   회사명·점검모드 등 공개 설정
+```
+
+### 3-2. 홈 / 대시보드
+
+| 위젯 | 호출 |
+|---|---|
+| 미읽음 뱃지 | `GET /calendar/notifications/count` |
+| 내 AS 진행중 | `GET /service/tickets?only_open=true&assignee_id={me}` |
+| 오늘 일정 | `GET /calendar/events?date_from=…&date_to=…` |
+| AS 요약 카드 | `GET /service/stats/summary?date_from=…` |
+| 승인 대기 (ADMIN) | `GET /users/pending` |
+
+### 3-3. 서비스(AS)
+
+```
+목록      GET  /service/tickets
+          ?q= &status= &priority= &assignee_id= &customer_id= &category_id=
+          &only_open= &date_from= &date_to= &sort=received_desc &page= &size=
+상세      GET  /service/tickets/{id}      (customer/assignee/parts/logs 포함)
+접수      POST /service/tickets
+수정      PATCH /service/tickets/{id}     (보낸 필드만 반영)
+상태변경  POST /service/tickets/{id}/status   ← 상태는 반드시 이 경로로
+작업기록  POST /service/tickets/{id}/logs
+부품추가  POST /service/tickets/{id}/parts
+```
+
+접수 폼의 드롭다운 4개는 **분류 코드에서 가져옵니다**:
+
+```
+GET /admin/codes/SERVICE_CATEGORY   → items[]  분류
+GET /admin/codes/SERVICE_SYMPTOM    → items[]  증상
+GET /admin/codes/SERVICE_CAUSE      → items[]  원인
+GET /admin/codes/SERVICE_ACTION     → items[]  조치
+```
+
+각 `item`은 `{id, code, name, color, sort_order, is_active}`입니다.
+**`sort_order`로 정렬하고, `is_active=false`는 신규 선택지에서 제외**하되
+기존 데이터 표시용으로는 남겨두세요. 하드코딩 금지 — 관리자가 설정창에서 바꿉니다.
+
+상태 전이:
+
+```
+RECEIVED → ASSIGNED → IN_PROGRESS → COMPLETED
+                   ↘ PENDING_PARTS ↗
+           (어느 단계에서든) → CANCELED
+```
+
+`COMPLETED`로 보낼 때 `result_note`가 비어 있으면 `400 RESULT_NOTE_REQUIRED`가
+납니다(관리 설정 `require_result_note`로 끌 수 있음). 완료 처리 UI에 처리내용
+입력란을 필수로 두세요.
+
+### 3-4. AS 통계 화면
+
+```
+GET /service/stats/summary            ?date_from= &date_to= &assignee_id= …
+GET /service/stats/grouped?group_by=  category|symptom|cause|action|
+                                      assignee|status|priority|channel|department
+GET /service/stats/trend?interval=    day|week|month
+```
+
+세 엔드포인트 **모두 같은 필터 파라미터**를 받습니다. 화면 상단 필터를 그대로
+세 호출에 넘기면 숫자가 일관됩니다.
+
+`grouped` / `by_status` / `by_priority`의 각 버킷:
+
+```json
+{ "key": "COMPLETED", "label": "완료", "color": "#10B981",
+  "count": 48, "ratio": 0.8, "avg_resolution_minutes": 1243.5,
+  "total_cost": "14276500.00" }
+```
+
+- **`label`과 `color`를 그대로 쓰세요.** 한글 라벨과 차트 색상을 클라이언트가
+  따로 관리할 필요가 없고, 분류 코드의 색을 바꾸면 차트에도 즉시 반영됩니다.
+- `ratio`는 0.0~1.0 → 파이차트 비율에 바로 사용.
+- `avg_resolution_minutes`는 **분** 단위. 시간 표시하려면 60으로 나누세요.
+- `trend`는 **데이터가 없는 기간을 생략**합니다. 연속 축이 필요하면
+  클라이언트에서 빈 구간을 채우세요.
+
+### 3-5. 재고관리
+
+```
+위치 트리   GET  /inventory/locations/tree     children[] 중첩 + asset_count
+위치 목록   GET  /inventory/locations          평면 배열(드롭다운용, path 포함)
+자산 목록   GET  /inventory/assets?q=&status=&category_id=&location_id=
+                &include_sublocations=true&below_min_only=&page=&size=
+자산 상세   GET  /inventory/assets/{id}        location/holder/category 포함
+자산 등록   POST /inventory/assets             asset_no 생략 시 자동 채번
+자산 수정   PATCH /inventory/assets/{id}
+위치·보관자 POST /inventory/assets/{id}/move   ← 반드시 이 경로
+이동 이력   GET  /inventory/assets/{id}/movements
+요약        GET  /inventory/summary
+```
+
+> **`PATCH`로는 위치·보관자·상태가 바뀌지 않습니다.** 이력이 남지 않기 때문에
+> 의도적으로 막아뒀습니다. 반드시 `/move`를 쓰세요.
+
+`/move`의 `movement_type`이 상태를 자동으로 결정합니다:
+
+| movement_type | 자동 상태 | 용도 |
+|---|---|---|
+| `MOVE` | 변화 없음 | 위치만 이동 |
+| `ASSIGN` | `IN_USE` | 사용자에게 불출 |
+| `RETURN` | `IN_STOCK` | 반납 (보관자 해제) |
+| `REPAIR` | `REPAIR` | 수리 반출 |
+| `DISPOSE` | `DISPOSED` | 폐기 |
+| `STOCKTAKE` | 변화 없음 | 실사 (quantity 보내면 수량 보정) |
+
+바코드 스캔은 `GET /inventory/assets?q=<스캔값>`로 조회합니다
+(`asset_no` / `serial_no` / `barcode` / 품명 / 모델 전체 검색).
+
+### 3-6. 게시판
+
+```
+게시판 목록  GET  /board/boards                  ← 내 권한으로 읽을 수 있는 것만 내려옴
+글 목록      GET  /board/boards/{id}/posts?q=&page=&size=
+글 상세      GET  /board/posts/{id}              ← 조회수 증가(본인 글 제외)
+글 작성      POST /board/boards/{id}/posts
+댓글         POST /board/posts/{id}/comments
+```
+
+`GET /board/boards`의 각 항목이 **그 게시판의 설정**입니다. UI를 여기 맞춰 그리세요.
+
+| 필드 | 화면 반영 |
+|---|---|
+| `write_role` | 내 role 미만이면 글쓰기 버튼 숨김 |
+| `allow_comment` | false면 댓글 입력창 숨김 |
+| `allow_attachment` | false면 첨부 버튼 숨김 |
+| `allow_secret` | false면 비밀글 체크박스 숨김 |
+| `page_size` | 목록 기본 size |
+| `sort_order` | 탭 순서 |
+
+상단 고정(`is_pinned`)은 MANAGER 이상만 설정할 수 있습니다.
+
+### 3-7. 캘린더
+
+```
+캘린더 목록  GET  /calendar/calendars           내가 볼 수 있는 것만
+일정 조회    GET  /calendar/events?date_from=&date_to=&calendar_id=&mine_only=
+일정 등록    POST /calendar/events
+일정 수정    PATCH /calendar/events/{id}
+참석 응답    POST /calendar/events/{id}/respond  {"response":"ACCEPTED"}
+```
+
+`GET /events`는 **기간과 겹치는 모든 일정**을 반환합니다(그 기간에 시작하는 것만이
+아님). 여러 날에 걸친 일정이 각 날짜에 정상 표시됩니다. 최대 조회 폭은 400일입니다.
+
+일정 등록 시:
+
+- `participant_ids`에 주최자를 넣지 않아도 **자동으로 참석자에 추가**됩니다.
+- `reminders`를 **생략하면 캘린더 기본값(기본 30분 전)이 적용**됩니다.
+  알림 UI를 아직 만들지 않았다면 그냥 빼고 보내면 됩니다.
+- 참석자에게 즉시 초대 알림이, 예약 시각에 리마인더 알림이 갑니다.
+
+`is_private=true` 일정은 관계없는 사람에게 제목이 `"비공개 일정"`으로,
+설명·장소가 `null`로 마스킹되어 내려옵니다. 별도 처리 없이 그대로 표시하세요.
+
+캘린더 종류: `COMPANY`(전사) / `DEPARTMENT`(부서) / `PERSONAL`(개인).
+개인 캘린더는 **본인만** 수정·삭제할 수 있습니다(관리자도 불가).
+`color` 필드를 일정 색으로 쓰세요(일정별 `color`가 있으면 그것이 우선).
+
+### 3-8. 알림
+
+```
+목록      GET  /calendar/notifications?unread_only=true&page=&size=
+뱃지      GET  /calendar/notifications/count
+읽음      POST /calendar/notifications/{id}/read
+전체읽음  POST /calendar/notifications/read-all
+```
+
+각 알림의 `payload`가 딥링크 대상입니다:
+
+```json
+{ "route": "/calendar/event", "event_id": "…" }
+{ "route": "/service/ticket",  "ticket_id": "…" }
+{ "route": "/board/post",      "post_id": "…" }
+{ "route": "/admin/users/pending", "user_id": "…" }
+```
+
+`route` 값으로 분기해 해당 화면으로 이동시키세요.
+
+> **푸시는 아직 실제로 나가지 않습니다.** 서버의 FCM 연동은 어댑터 스텁 상태라
+> 현재는 인앱 알림만 생성됩니다. 클라이언트는 **폴링 또는 화면 진입 시 조회**로
+> 구현해 두세요. Firebase 프로젝트가 준비되면 서버 쪽 함수 하나만 교체되고,
+> 등록해 둔 기기 토큰(`POST /auth/devices`)으로 푸시가 나가기 시작합니다.
+
+### 3-9. 관리 화면
+
+```
+승인 대기  GET  /users/pending
+승인       POST /users/{id}/approve   {"role":"MEMBER","department_id":"…"}
+반려       POST /users/{id}/reject    {"reason":"…"}
+계정 목록  GET  /users?status=&role=&department_id=&q=
+계정 수정  PATCH /users/{id}
+비번 초기화 POST /users/{id}/reset-password   ← 응답 message에 임시 비밀번호 1회 노출
+부서       GET|POST /admin/departments
+감사로그   GET  /admin/audit-logs?action=&module=&actor_id=&q=
+서버 상태  GET  /admin/health
+시스템통계 GET  /admin/stats
+```
+
+**권한 부여 제약**: 자신과 같거나 높은 권한은 부여할 수 없습니다(SUPERADMIN 제외).
+승인 다이얼로그의 role 드롭다운에서 해당 항목을 비활성화하세요.
+
+### 3-10. 설정창 (5개 모듈 공통 화면 1개)
+
+요구사항의 "각 기능별 설정창"은 **화면 하나로 전부 처리**하도록 설계했습니다.
+
+```
+GET /admin/settings/{module}    module: SYSTEM|AUTH|SERVICE|INVENTORY|BOARD|CALENDAR
+PUT /admin/settings/{module}    { "settings": [ … 폼 전체 … ] }
+```
+
+응답:
+
+```json
+{ "module": "SERVICE",
+  "settings": [
+    { "key": "ticket_prefix", "value": "AS", "value_type": "string",
+      "label": "접수번호 접두어", "description": null, "is_public": true }
+  ],
+  "code_groups": [
+    { "code": "SERVICE_CATEGORY", "name": "서비스 분류",
+      "items": [ { "id":"…", "code":"REPAIR", "name":"수리", "color":"#EF4444",
+                   "sort_order":2, "is_active":true } ] }
+  ] }
+```
+
+**`value_type`으로 위젯을 고르세요**:
+
+| value_type | 위젯 |
+|---|---|
+| `string` | TextField |
+| `int` / `float` | 숫자 TextField |
+| `bool` | Switch |
+| `list` | 칩 입력 (문자열 배열) |
+| `json` | 고급 편집 (또는 숨김) |
+
+`label`을 라벨로, `description`을 도움말로 씁니다. **설정 항목을 하드코딩하지 마세요.**
+서버에 행을 추가하면 화면에 자동으로 나타나야 합니다.
+
+`code_groups`는 같은 화면 아래쪽의 분류 관리 섹션입니다:
+
+```
+POST   /admin/codes/{group_id}/items      항목 추가
+PATCH  /admin/codes/items/{item_id}       항목 수정
+DELETE /admin/codes/items/{item_id}       비활성화(기존 데이터 분류는 유지)
+POST   /admin/codes/{group_id}/reorder    {"item_ids":[…새 순서…]}  드래그 정렬
+```
+
+게시판 설정만 별도입니다 — 게시판마다 값이 다르므로
+`PATCH /board/boards/{id}`로 저장합니다.
+
+---
+
+## 4. 첨부파일
+
+```
+업로드   POST /files          multipart: entity_type, entity_id, file
+목록     GET  /files/by-entity/{entity_type}/{entity_id}
+다운로드 GET  /files/{attachment_id}      ← 인증 헤더 필요
+삭제     DELETE /files/{attachment_id}
+```
+
+`entity_type`: `service_ticket` | `asset` | `post` | `event` | `user`
+최대 크기 기본 25MB (`/admin/settings/BOARD`의 `attachment_max_mb`로 조회).
+
+**첨부는 대상이 먼저 생성된 뒤에 올립니다** (`entity_id`가 필요하므로).
+글쓰기 화면이라면 저장 → 반환된 `id`로 업로드 순서입니다.
+
+---
+
+## 5. 실수하기 쉬운 지점 정리
+
+1. 쿼리의 날짜를 **URL 인코딩하지 않으면 422**가 납니다.
+2. `Decimal` 필드는 **문자열**입니다. `double.parse()` 필요.
+3. AS 상태 변경은 `PATCH`가 아니라 **`POST /status`** 입니다.
+4. 자산 위치 변경은 `PATCH`가 아니라 **`POST /move`** 입니다.
+5. 분류 드롭다운을 **하드코딩하지 마세요.** `/admin/codes/…`에서 받아야 합니다.
+6. 통계의 `label` / `color`를 **재정의하지 마세요.** 서버 값을 그대로 쓰면
+   설정 변경이 자동 반영됩니다.
+7. `403 ACCOUNT_NOT_ACTIVE`는 로그인 시점뿐 아니라 **이용 중에도** 발생합니다
+   (관리자가 계정을 정지하면 기존 토큰이 즉시 무효화됩니다).
+   전역 인터셉터에서 로그인 화면으로 보내세요.
+8. `must_change_password`를 무시하고 진행하지 마세요.
+9. 목록 응답이 `{items,total,…}`인 엔드포인트와 **배열 직접 반환**인 엔드포인트가
+   섞여 있습니다(2절 참고). OpenAPI 스펙에서 확인하세요.
+
+---
+
+## 6. 로컬 개발 서버
+
+```bash
+cd backend
+python -m venv .venv && .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+python scripts/seed_demo.py
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+데모 계정: `seojun.kim@ddeck.local` / `demo1234` (ADMIN),
+`admin@ddeck.local` / `admin1234` (SUPERADMIN).
+최근 90일 AS 60건, 자산 24건, 게시글 9건, 일정 8건이 들어 있어
+통계·목록 화면이 비어 보이지 않습니다.
+
+에뮬레이터에서 호스트 PC에 접속할 때: Android 에뮬레이터는 `10.0.2.2:8000`,
+실기기는 PC의 LAN IP를 사용하세요.
