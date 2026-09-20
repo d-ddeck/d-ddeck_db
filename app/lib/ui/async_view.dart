@@ -1,0 +1,120 @@
+import 'package:flutter/material.dart';
+
+import '../core/api_exception.dart';
+import 'theme.dart';
+
+/// Load-once-with-retry wrapper.
+///
+/// Every module screen has the same three states (spinner / error+retry /
+/// content); this keeps that from being re-implemented five times, and makes
+/// sure an ApiException is shown with its Korean message instead of a
+/// framework error box.
+class AsyncView<T> extends StatefulWidget {
+  const AsyncView({
+    super.key,
+    required this.load,
+    required this.builder,
+    this.emptyCheck,
+    this.emptyMessage,
+    this.emptyIcon = Icons.inbox_outlined,
+  });
+
+  final Future<T> Function() load;
+  final Widget Function(BuildContext context, T data, VoidCallback reload)
+      builder;
+
+  /// Return true when [T] carries no rows, to show the empty placeholder.
+  final bool Function(T data)? emptyCheck;
+  final String? emptyMessage;
+  final IconData emptyIcon;
+
+  @override
+  State<AsyncView<T>> createState() => AsyncViewState<T>();
+}
+
+class AsyncViewState<T> extends State<AsyncView<T>> {
+  late Future<T> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.load();
+  }
+
+  void reload() => setState(() => _future = widget.load());
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<T>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          final error = snapshot.error;
+          return StatePlaceholder(
+            icon: Icons.cloud_off,
+            message: error is ApiException
+                ? error.message
+                : '데이터를 불러오지 못했습니다.',
+            detail: error is ApiException ? null : error.toString(),
+            onRetry: reload,
+          );
+        }
+        final data = snapshot.data as T;
+        if (widget.emptyCheck?.call(data) == true) {
+          return RefreshIndicator(
+            onRefresh: () async => reload(),
+            child: ListView(
+              children: [
+                SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.5,
+                  child: StatePlaceholder(
+                    icon: widget.emptyIcon,
+                    message: widget.emptyMessage ?? '표시할 내용이 없습니다.',
+                    onRetry: reload,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async => reload(),
+          child: widget.builder(context, data, reload),
+        );
+      },
+    );
+  }
+}
+
+/// Shows an ApiException's message in a snackbar. Returns true when the call
+/// succeeded, so callers can branch without a try/catch at every tap handler.
+Future<bool> runGuarded(
+  BuildContext context,
+  Future<void> Function() action, {
+  String? successMessage,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  // Captured up front: after the await this BuildContext may be gone.
+  final errorColor = Theme.of(context).colorScheme.error;
+  try {
+    await action();
+    if (successMessage != null) {
+      messenger.showSnackBar(SnackBar(content: Text(successMessage)));
+    }
+    return true;
+  } on ApiException catch (e) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(e.message),
+        backgroundColor: errorColor,
+      ),
+    );
+    return false;
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('오류가 발생했습니다: $e')));
+    return false;
+  }
+}

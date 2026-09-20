@@ -1,0 +1,370 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/api_exception.dart';
+import '../../core/config.dart';
+import '../../state/auth_state.dart';
+import '../theme.dart';
+import 'signup_page.dart';
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _server = TextEditingController();
+
+  bool _busy = false;
+  bool _obscure = true;
+  bool _showServerField = false;
+  String? _error;
+  String? _serverProbe;
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = context.read<AuthState>();
+    _server.text = auth.serverUrl;
+    auth.tokenStore.readLastEmail().then((value) {
+      if (value != null && mounted) _email.text = value;
+    });
+    // A notice set during a forced logout (session expired, password changed)
+    // is shown once here rather than being lost with the previous screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notice = auth.notice;
+      if (notice != null && mounted) {
+        setState(() => _error = notice);
+        auth.clearNotice();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    _server.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final auth = context.read<AuthState>();
+    try {
+      if (_showServerField) await auth.setServerUrl(_server.text);
+      await auth.login(_email.text, _password.text);
+      // On success the root widget swaps this page out; nothing to do here.
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        // A connection failure is almost always a wrong address, so surface
+        // the server field instead of making the user hunt for it.
+        if (e.code == 'NETWORK_ERROR') _showServerField = true;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _ping() async {
+    setState(() {
+      _busy = true;
+      _serverProbe = null;
+    });
+    final auth = context.read<AuthState>();
+    await auth.setServerUrl(_server.text);
+    final ok = await auth.pingServer();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _server.text = auth.serverUrl;
+      _serverProbe = ok ? '서버 연결 정상 (${auth.serverUrl})' : '서버에 연결할 수 없습니다.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(Icons.storage_rounded, size: 52, color: scheme.primary),
+                  const SizedBox(height: 14),
+                  Text(
+                    AppConfig.appName,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context)
+                        .textTheme
+                        .headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '사내 통합 DB 서버',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: scheme.outline),
+                  ),
+                  const SizedBox(height: 28),
+
+                  TextFormField(
+                    controller: _email,
+                    decoration: const InputDecoration(
+                      labelText: '이메일',
+                      prefixIcon: Icon(Icons.mail_outline),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.username],
+                    textInputAction: TextInputAction.next,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? '이메일을 입력해 주세요.' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _password,
+                    decoration: InputDecoration(
+                      labelText: '비밀번호',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscure
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                      ),
+                    ),
+                    obscureText: _obscure,
+                    autofillHints: const [AutofillHints.password],
+                    onFieldSubmitted: (_) => _busy ? null : _submit(),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? '비밀번호를 입력해 주세요.' : null,
+                  ),
+
+                  if (_showServerField) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _server,
+                      decoration: InputDecoration(
+                        labelText: '서버 주소',
+                        helperText: '예: http://192.168.0.10:8000',
+                        prefixIcon: const Icon(Icons.dns_outlined),
+                        suffixIcon: IconButton(
+                          tooltip: '연결 확인',
+                          icon: const Icon(Icons.wifi_tethering),
+                          onPressed: _busy ? null : _ping,
+                        ),
+                      ),
+                    ),
+                    if (_serverProbe != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _serverProbe!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _serverProbe!.contains('정상')
+                              ? Colors.green.shade700
+                              : scheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+
+                  if (_error != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline,
+                              size: 18, color: scheme.onErrorContainer),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: scheme.onErrorContainer,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: _busy ? null : _submit,
+                    child: _busy
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('로그인'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const SignupPage()),
+                            ),
+                    child: const Text('회원가입 신청'),
+                  ),
+                  const SizedBox(height: 14),
+                  TextButton.icon(
+                    onPressed: () =>
+                        setState(() => _showServerField = !_showServerField),
+                    icon: Icon(
+                      _showServerField
+                          ? Icons.expand_less
+                          : Icons.settings_ethernet,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _showServerField ? '서버 설정 닫기' : '서버 주소 설정',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '가입 후 관리자 승인이 완료되어야 로그인할 수 있습니다.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: scheme.outline),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown after a successful signup: the account exists but cannot sign in yet.
+class SignupSubmittedPage extends StatelessWidget {
+  const SignupSubmittedPage({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('가입 신청 완료')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.mark_email_read_outlined,
+                    size: 56, color: Colors.green),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '관리자가 승인하면 알림을 받게 되며, 그 후 로그인할 수 있습니다.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () => Navigator.of(context)
+                      .popUntil((route) => route.isFirst),
+                  child: const Text('로그인 화면으로'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Startup splash while the saved session is being restored.
+class AuthLoadingPage extends StatelessWidget {
+  const AuthLoadingPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('세션 확인 중...'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Reusable inline error box.
+class ErrorBanner extends StatelessWidget {
+  const ErrorBanner({super.key, required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(color: scheme.onErrorContainer, fontSize: 13),
+      ),
+    );
+  }
+}
+
+/// Exported so other auth screens can reuse the placeholder styling.
+typedef AuthPlaceholder = StatePlaceholder;

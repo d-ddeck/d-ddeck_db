@@ -1,0 +1,87 @@
+import '../core/api_client.dart';
+import '../models/admin.dart';
+import '../models/common.dart';
+
+class AdminRepository {
+  AdminRepository(this._api);
+  final ApiClient _api;
+
+  /// Everything one settings screen needs: the key/value rows plus the
+  /// classification lists that belong to the same module.
+  Future<ModuleSettings> settings(SettingsModule module) async =>
+      ModuleSettings.fromJson(
+          asMap(await _api.get('/admin/settings/${module.value}')));
+
+  /// Saves the whole form at once. The server upserts by key.
+  Future<ModuleSettings> saveSettings(
+    SettingsModule module,
+    List<ModuleSetting> settings,
+  ) async {
+    final res = await _api.put('/admin/settings/${module.value}',
+        body: {'settings': settings.map((s) => s.toJson()).toList()});
+    return ModuleSettings.fromJson(asMap(res));
+  }
+
+  /// Classification master. Used by every form with a category dropdown, so
+  /// the client never hardcodes the choices.
+  Future<CodeGroup> codeGroup(String groupCode) async =>
+      CodeGroup.fromJson(asMap(await _api.get('/admin/codes/$groupCode')));
+
+  Future<List<CodeGroup>> codeGroups({String? module}) async {
+    final res = await _api.get('/admin/codes', query: {'module': module});
+    return (res as List? ?? []).map((e) => CodeGroup.fromJson(asMap(e))).toList();
+  }
+
+  Future<CodeItem> addCodeItem(
+    String groupId, {
+    required String code,
+    required String name,
+    String? color,
+    int sortOrder = 0,
+  }) async {
+    final res = await _api.post('/admin/codes/$groupId/items', body: {
+      'code': code,
+      'name': name,
+      if (color != null) 'color': color,
+      'sort_order': sortOrder,
+    });
+    return CodeItem.fromJson(asMap(res));
+  }
+
+  Future<CodeItem> updateCodeItem(
+      String itemId, Map<String, dynamic> changes) async {
+    final res = await _api.patch('/admin/codes/items/$itemId', body: changes);
+    return CodeItem.fromJson(asMap(res));
+  }
+
+  /// Deactivates rather than removes: existing tickets still point at this
+  /// code and their statistics must keep resolving its name.
+  Future<void> deleteCodeItem(String itemId) =>
+      _api.delete('/admin/codes/items/$itemId');
+
+  Future<void> reorderCodeItems(String groupId, List<String> itemIds) =>
+      _api.post('/admin/codes/$groupId/reorder', body: {'item_ids': itemIds});
+
+  Future<ServerHealth> health() async =>
+      ServerHealth.fromJson(asMap(await _api.get('/admin/health')));
+
+  Future<SystemStats> stats() async =>
+      SystemStats.fromJson(asMap(await _api.get('/admin/stats')));
+
+  Future<List<AuditLog>> auditLogs({
+    int page = 1,
+    int size = 50,
+    String? action,
+    String? module,
+    String? query,
+  }) async {
+    final res = await _api.get('/admin/audit-logs', query: {
+      'page': page,
+      'size': size,
+      'action': action,
+      'module': module,
+      'q': query,
+    });
+    return (res as List? ?? []).map((e) => AuditLog.fromJson(asMap(e))).toList();
+  }
+}
