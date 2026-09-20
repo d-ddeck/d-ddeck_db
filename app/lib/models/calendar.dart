@@ -204,6 +204,80 @@ class CalendarEvent {
   }
 }
 
+/// One alarm the device should schedule locally.
+///
+/// Comes from GET /calendar/reminders/upcoming. Everything needed to build the
+/// notification is here, so the device can ring with no network at all.
+class UpcomingReminder {
+  const UpcomingReminder({
+    required this.reminderId,
+    required this.eventId,
+    required this.title,
+    required this.startsAt,
+    required this.endsAt,
+    required this.scheduledAt,
+    required this.offsetMinutes,
+    this.location,
+    this.allDay = false,
+    this.color,
+    this.calendarName,
+  });
+
+  final String reminderId;
+  final String eventId;
+  final String title;
+  final DateTime startsAt;
+  final DateTime endsAt;
+
+  /// When the alarm should fire, already converted to local time.
+  final DateTime scheduledAt;
+  final int offsetMinutes;
+  final String? location;
+  final bool allDay;
+  final String? color;
+  final String? calendarName;
+
+  /// Stable 32-bit id for the OS scheduler.
+  ///
+  /// Android notification ids must fit in an int, but reminder ids are UUIDs.
+  /// Hashing keeps the mapping stable across app restarts so re-syncing
+  /// replaces an existing alarm instead of creating a duplicate.
+  int get alarmId => reminderId.hashCode & 0x7FFFFFFF;
+
+  String get body {
+    final when = allDay
+        ? '오늘'
+        : '${startsAt.hour.toString().padLeft(2, '0')}:'
+            '${startsAt.minute.toString().padLeft(2, '0')}';
+    final lead = offsetMinutes == 0
+        ? '지금 시작'
+        : offsetMinutes >= 1440
+            ? '${offsetMinutes ~/ 1440}일 뒤'
+            : offsetMinutes >= 60
+                ? '${offsetMinutes ~/ 60}시간 뒤'
+                : '$offsetMinutes분 뒤';
+    final place = location?.isNotEmpty == true ? ' · $location' : '';
+    return '$when 시작 ($lead)$place';
+  }
+
+  factory UpcomingReminder.fromJson(Map<String, dynamic> j) {
+    final start = asDate(j['starts_at']) ?? DateTime.now();
+    return UpcomingReminder(
+      reminderId: asString(j['reminder_id']),
+      eventId: asString(j['event_id']),
+      title: asString(j['title']),
+      startsAt: start,
+      endsAt: asDate(j['ends_at']) ?? start,
+      scheduledAt: asDate(j['scheduled_at']) ?? start,
+      offsetMinutes: asInt(j['offset_minutes']),
+      location: j['location'] as String?,
+      allDay: asBool(j['all_day']),
+      color: j['color'] as String?,
+      calendarName: j['calendar_name'] as String?,
+    );
+  }
+}
+
 /// Parses "#RRGGBB" / "#AARRGGBB"; falls back to blue on anything unexpected
 /// so a bad value in the code master cannot crash a screen.
 Color parseHexColor(String hex, [Color fallback = const Color(0xFF3B82F6)]) {

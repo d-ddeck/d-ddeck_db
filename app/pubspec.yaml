@@ -53,6 +53,14 @@ dependencies:
   # Charts for the AS statistics screen.
   fl_chart: ^0.69.2
 
+  # 지정 시각에 기기 자체가 알람을 울린다. 서버·네트워크·VPN 이 끊겨 있어도
+  # 울려야 하므로 푸시가 아니라 OS 알람 스케줄러를 쓴다.
+  flutter_local_notifications: ^18.0.1
+
+  # 알람 예약은 로컬 타임존 기준이어야 한다. 서버가 주는 UTC 를 변환한다.
+  timezone: ^0.9.4
+  flutter_timezone: ^3.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

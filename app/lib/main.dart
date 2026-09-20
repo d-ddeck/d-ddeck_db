@@ -10,6 +10,7 @@ import 'data/board_repository.dart';
 import 'data/calendar_repository.dart';
 import 'data/inventory_repository.dart';
 import 'data/service_repository.dart';
+import 'services/alarm_service.dart';
 import 'state/auth_state.dart';
 import 'ui/auth/login_page.dart';
 import 'ui/auth/signup_page.dart';
@@ -31,6 +32,11 @@ Future<void> main() async {
   final authRepo = AuthRepository(api);
   final calendarRepo = CalendarRepository(api);
 
+  // 일정 알람은 기기가 직접 울린다. 서버·VPN 이 끊겨도 동작해야 하므로
+  // 앱 시작 시 준비해 둔다.
+  final alarms = AlarmService();
+  await alarms.init();
+
   runApp(
     MultiProvider(
       providers: [
@@ -41,12 +47,14 @@ Future<void> main() async {
         Provider<BoardRepository>(create: (_) => BoardRepository(api)),
         Provider<CalendarRepository>.value(value: calendarRepo),
         Provider<AdminRepository>(create: (_) => AdminRepository(api)),
+        Provider<AlarmService>.value(value: alarms),
         ChangeNotifierProvider<AuthState>(
           create: (_) => AuthState(
             api: api,
             tokenStore: tokenStore,
             authRepo: authRepo,
             calendarRepo: calendarRepo,
+            alarms: alarms,
           )..bootstrap(),
         ),
       ],

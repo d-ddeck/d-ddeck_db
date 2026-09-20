@@ -17,6 +17,7 @@ class TokenStore {
   static const _kRefresh = 'refresh_token';
   static const _kServerUrl = 'server_url';
   static const _kLastEmail = 'last_email';
+  static const _kRememberMe = 'remember_me';
   // The site default that was in effect last time we started. Keeping it lets
   // us tell "the user chose this address" apart from "this was just the
   // default", so IT can move the server and have clients follow.
@@ -26,29 +27,58 @@ class TokenStore {
   /// disk. A restart rebuilds it from the refresh token.
   String? accessToken;
 
-  Future<String?> readRefreshToken() => _read(_kRefresh);
+  /// The current session's refresh token.
+  ///
+  /// Always held here so a session survives an access-token expiry even when
+  /// the user declined "stay signed in"; only written to disk when they did
+  /// accept, so declining really does end the session at app close.
+  String? _refreshInMemory;
+
+  /// Memory first: right after login it is the freshest value, and when the
+  /// user declined to be remembered it is the only copy.
+  Future<String?> readRefreshToken() async =>
+      _refreshInMemory ?? await _read(_kRefresh);
+
   Future<String?> readServerUrl() => _read(_kServerUrl);
   Future<String?> readLastEmail() => _read(_kLastEmail);
   Future<String?> readAppliedDefault() => _read(_kAppliedDefault);
+
+  /// Whether the user asked to stay signed in. Defaults to true: the common
+  /// case is a personal work device, and the login screen lets them opt out.
+  Future<bool> readRememberMe() async =>
+      (await _read(_kRememberMe)) != 'false';
+
+  Future<void> saveRememberMe(bool value) =>
+      _write(_kRememberMe, value ? 'true' : 'false');
 
   Future<void> saveAppliedDefault(String url) => _write(_kAppliedDefault, url);
 
   Future<void> saveSession({
     required String accessToken,
     required String refreshToken,
+    required bool remember,
     String? email,
   }) async {
     this.accessToken = accessToken;
-    await _write(_kRefresh, refreshToken);
+    _refreshInMemory = refreshToken;
+    await saveRememberMe(remember);
+    if (remember) {
+      await _write(_kRefresh, refreshToken);
+    } else {
+      // A stale token from a previous "remember me" session must not survive
+      // a login where the user opted out.
+      await _delete(_kRefresh);
+    }
     if (email != null) await _write(_kLastEmail, email);
   }
 
   Future<void> saveServerUrl(String url) => _write(_kServerUrl, url);
 
-  /// Clears credentials but keeps the server address and last email, so the
-  /// next login screen is pre-filled instead of blank.
+  /// Clears credentials but keeps the server address, last email and the
+  /// remember-me choice, so the next login screen is pre-filled.
   Future<void> clearSession() async {
     accessToken = null;
+    _refreshInMemory = null;
     await _delete(_kRefresh);
   }
 

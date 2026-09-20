@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 from sqlalchemy import and_, func, or_, select
@@ -44,6 +45,7 @@ from app.schemas.calendar import (
     ParticipantOut,
     ParticipantResponseIn,
     ReminderIn,
+    UpcomingReminder,
 )
 from app.schemas.common import Message, Page, UserBrief
 from app.services import audit, notifications, settings_store
@@ -433,6 +435,71 @@ def broadcast(payload: BroadcastRequest, db: DbSession, admin: AdminUser) -> Mes
         )
     db.commit()
     return Message(message=f"{len(rows)}명에게 발송했습니다.")
+
+
+@router.get("/reminders/upcoming", response_model=list[UpcomingReminder])
+def upcoming_reminders(
+    db: DbSession,
+    user: CurrentUser,
+    days: Annotated[int, Query(ge=1, le=60, description="look-ahead window")] = 7,
+) -> list[UpcomingReminder]:
+    """Alarms this user's device should schedule locally.
+
+    The client hands these to the OS alarm scheduler, so a reminder fires even
+    with no network and no VPN - the situation someone on the road is actually
+    in. Server-side push stays as the mechanism for *changes*; this is the
+    mechanism for *ringing*.
+
+    Only reminders the user is a participant of (or organiser of) are returned,
+    and only ones that have not already been sent.
+    """
+    now = now_utc()
+    horizon = now + timedelta(days=days)
+
+    rows = db.execute(
+        select(EventReminder, Event, Calendar)
+        .join(Event, Event.id == EventReminder.event_id)
+        .join(Calendar, Calendar.id == Event.calendar_id)
+        .outerjoin(
+            EventParticipant,
+            and_(
+                EventParticipant.event_id == Event.id,
+                EventParticipant.user_id == user.id,
+            ),
+        )
+        .where(
+            EventReminder.sent_at.is_(None),
+            EventReminder.scheduled_at >= now,
+            EventReminder.scheduled_at < horizon,
+            Event.status == EventStatus.SCHEDULED,
+            Event.deleted_at.is_(None),
+            Calendar.deleted_at.is_(None),
+            # The organiser may not be in the participant table on older rows,
+            # so accept either link rather than silently dropping their alarms.
+            or_(
+                EventParticipant.id.isnot(None),
+                Event.created_by_id == user.id,
+            ),
+        )
+        .order_by(EventReminder.scheduled_at)
+    ).all()
+
+    return [
+        UpcomingReminder(
+            reminder_id=reminder.id,
+            event_id=event.id,
+            title=event.title,
+            location=event.location,
+            starts_at=event.starts_at,
+            ends_at=event.ends_at,
+            all_day=event.all_day,
+            scheduled_at=reminder.scheduled_at,
+            offset_minutes=reminder.offset_minutes,
+            color=event.color or calendar.color,
+            calendar_name=calendar.name,
+        )
+        for reminder, event, calendar in rows
+    ]
 
 
 @router.post("/reminders/run", response_model=Message)

@@ -23,6 +23,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _busy = false;
   bool _obscure = true;
   bool _showServerField = false;
+  bool _rememberMe = true;
   String? _error;
   String? _serverProbe;
 
@@ -33,6 +34,9 @@ class _LoginPageState extends State<LoginPage> {
     _server.text = auth.serverUrl;
     auth.tokenStore.readLastEmail().then((value) {
       if (value != null && mounted) _email.text = value;
+    });
+    auth.readRememberMe().then((value) {
+      if (mounted) setState(() => _rememberMe = value);
     });
     // A notice set during a forced logout (session expired, password changed)
     // is shown once here rather than being lost with the previous screen.
@@ -62,7 +66,7 @@ class _LoginPageState extends State<LoginPage> {
     final auth = context.read<AuthState>();
     try {
       if (_showServerField) await auth.setServerUrl(_server.text);
-      await auth.login(_email.text, _password.text);
+      await auth.login(_email.text, _password.text, rememberMe: _rememberMe);
       // On success the root widget swaps this page out; nothing to do here.
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -159,6 +163,25 @@ class _LoginPageState extends State<LoginPage> {
                     onFieldSubmitted: (_) => _busy ? null : _submit(),
                     validator: (v) =>
                         (v == null || v.isEmpty) ? '비밀번호를 입력해 주세요.' : null,
+                  ),
+
+                  // 끄면 리프레시 토큰을 디스크에 남기지 않는다. 공용 PC 에서
+                  // 다음 사람이 그대로 들어가는 것을 막기 위한 선택지.
+                  CheckboxListTile(
+                    value: _rememberMe,
+                    onChanged: _busy
+                        ? null
+                        : (v) => setState(() => _rememberMe = v ?? true),
+                    title: const Text('자동 로그인', style: TextStyle(fontSize: 14)),
+                    subtitle: Text(
+                      _rememberMe
+                          ? '다음부터 바로 시작합니다 (최대 14일)'
+                          : '앱을 닫으면 다시 로그인해야 합니다',
+                      style: TextStyle(fontSize: 11, color: scheme.outline),
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
                   ),
 
                   if (_showServerField) ...[

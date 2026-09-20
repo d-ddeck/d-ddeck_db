@@ -70,7 +70,7 @@ Future<void> setField(
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('진입 흐름: 로그인 → 대시보드 → 로그아웃 → 오류 메시지',
+  testWidgets('진입 흐름: 로그인 → 대시보드 → 로그아웃 → 자동로그인 선택 → 오류 메시지',
       (tester) async {
     // A previous run may have left a refresh token in the OS keystore, which
     // would auto-restore the session and skip the login screen entirely.
@@ -148,7 +148,14 @@ void main() {
         reason: '로그아웃하면 로그인 화면으로 돌아가야 한다');
     expect(find.byType(HomeShell), findsNothing);
 
-    // ------------------------------------------------- 7. 잘못된 비밀번호 거절
+    // ------------------------------------------- 7. 자동 로그인 선택지 노출
+    expect(
+      find.widgetWithText(CheckboxListTile, '자동 로그인'),
+      findsOneWidget,
+      reason: '공용 PC 를 위해 끌 수 있어야 한다',
+    );
+
+    // ------------------------------------------------- 8. 잘못된 비밀번호 거절
     await setField(tester, find.widgetWithText(TextFormField, '이메일'),
         demoEmail);
     await setField(tester, find.widgetWithText(TextFormField, '비밀번호'),

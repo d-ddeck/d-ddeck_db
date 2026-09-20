@@ -187,6 +187,28 @@ class NotificationCount(BaseModel):
     unread: int
 
 
+class UpcomingReminder(BaseModel):
+    """One alarm the device should schedule locally.
+
+    The client registers these with the OS alarm scheduler so a reminder still
+    fires when the phone is offline or outside the company VPN - which is
+    exactly when someone on the road needs it. Everything needed to build the
+    notification is here, so no follow-up request is required.
+    """
+
+    reminder_id: uuid.UUID
+    event_id: uuid.UUID
+    title: str
+    location: str | None = None
+    starts_at: datetime
+    ends_at: datetime
+    all_day: bool
+    scheduled_at: datetime = Field(description="when the alarm should fire, UTC")
+    offset_minutes: int
+    color: str | None = Field(None, description="event colour, else the calendar's")
+    calendar_name: str | None = None
+
+
 class BroadcastRequest(BaseModel):
     """Admin push. Empty user_ids means everyone with an APPROVED account."""
 

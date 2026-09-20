@@ -453,6 +453,25 @@ with TestClient(app) as c:
     check("기본 알림 자동 생성", len(event["reminders"]) == 1, event["reminders"])
     check("알림 시각 = 시작 30분 전", event["reminders"][0]["offset_minutes"] == 30, event["reminders"])
 
+    # ---- 기기 로컬 알람 예약 목록 (오프라인에서도 울려야 하므로 필요) ----
+    r = c.get("/api/v1/calendar/reminders/upcoming?days=7", headers=bearer(user_token))
+    check("예정 알람 목록 조회", r.status_code == 200, r.text)
+    alarms = r.json()
+    check("내가 만든 일정의 알람이 포함", len(alarms) >= 1, alarms)
+    alarm = next(x for x in alarms if x["event_id"] == event_id)
+    check("알람에 울릴 시각 포함", alarm["scheduled_at"] is not None, alarm)
+    check("알람에 일정 제목 포함", alarm["title"] == "주간 업무 회의", alarm["title"])
+    check("알람에 장소 포함", alarm["location"] == "대회의실", alarm.get("location"))
+    check("알람에 색상 포함 (일정 또는 캘린더)", alarm["color"] is not None, alarm.get("color"))
+    check("알람 리드타임 30분", alarm["offset_minutes"] == 30, alarm["offset_minutes"])
+
+    r = c.get("/api/v1/calendar/reminders/upcoming?days=7", headers=bearer(admin_token))
+    check(
+        "참석자에게도 같은 알람이 내려감",
+        any(x["event_id"] == event_id for x in r.json()),
+        r.json(),
+    )
+
     r = c.get("/api/v1/calendar/notifications?unread_only=true", headers=bearer(admin_token))
     titles = [n["title"] for n in r.json()["items"]]
     check("참석자에게 초대 알림", "[일정 초대] 주간 업무 회의" in titles, titles)
@@ -491,6 +510,14 @@ with TestClient(app) as c:
     r = c.get("/api/v1/calendar/notifications?unread_only=true", headers=bearer(admin_token))
     titles = [n["title"] for n in r.json()["items"]]
     check("일정 알림 도착", "[일정 알림] 주간 업무 회의" in titles, titles)
+
+    r = c.get("/api/v1/calendar/reminders/upcoming?days=7", headers=bearer(user_token))
+    remaining = [x["reminder_id"] for x in r.json()]
+    check(
+        "이미 발송된 알람은 예약 목록에서 빠짐",
+        alarm["reminder_id"] not in remaining,
+        f"기기에서 중복으로 울리면 안 된다 (남은 것: {remaining})",
+    )
 
     r = c.get("/api/v1/calendar/notifications/count", headers=bearer(admin_token))
     unread = r.json()["unread"]

@@ -1,8 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Flutter 템플릿은 이 권한을 debug/profile 매니페스트에만 넣는다.
+         여기에 없으면 릴리스 APK 는 네트워크를 전혀 쓰지 못한다.
+         브라우저로는 서버가 열리는데 앱만 "연결할 수 없습니다" 가 뜨는 원인. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 일정 알람 (시계 앱처럼 지정 시각에 울리기 위한 권한들) -->
+    <!-- Android 13+ 는 알림 표시에 런타임 권한이 필요하다. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 절전 모드에서도 정확한 시각에 울리게 한다. 이것이 없으면 OS 가
+         알람을 수분에서 수십분까지 미뤄 회의 알림으로 쓸모가 없어진다. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- 재부팅하면 예약된 알람이 모두 사라진다. 아래 리시버가 다시 건다. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
     <application
-        android:label="ddeck_app"
+        android:label="d-ddeck"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -25,6 +42,25 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 예약된 알람이 실제로 울릴 때 동작하는 리시버.
+             flutter_local_notifications 가 제공한다. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false"/>
+
+        <!-- 재부팅·앱 업데이트 후 예약을 복원한다. 이것이 없으면 폰을 껐다 켠
+             직원은 그날 알림을 하나도 못 받는다. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

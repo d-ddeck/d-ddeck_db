@@ -96,6 +96,18 @@ class CalendarRepository {
       _api.post('/calendar/events/$eventId/respond',
           body: {'response': response.value});
 
+  /// 기기에 걸어둘 알람 목록. 한 번의 요청으로 알림 구성에 필요한 정보를
+  /// 모두 받아, 이후에는 네트워크 없이도 울릴 수 있게 한다.
+  Future<List<UpcomingReminder>> upcomingReminders({int days = 7}) async {
+    final res = await _api.get(
+      '/calendar/reminders/upcoming',
+      query: {'days': days},
+    );
+    return (res as List? ?? [])
+        .map((e) => UpcomingReminder.fromJson(asMap(e)))
+        .toList();
+  }
+
   // ------------------------------------------------------- notifications
   Future<PagedList<AppNotification>> notifications({
     int page = 1,

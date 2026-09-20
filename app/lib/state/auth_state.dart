@@ -9,6 +9,7 @@ import '../core/token_store.dart';
 import '../data/auth_repository.dart';
 import '../data/calendar_repository.dart';
 import '../models/user.dart';
+import '../services/alarm_service.dart';
 
 /// Where the app is in the entry flow. The root widget switches on this.
 enum AuthPhase {
@@ -31,6 +32,7 @@ class AuthState extends ChangeNotifier {
     required this.tokenStore,
     required this.authRepo,
     required this.calendarRepo,
+    required this.alarms,
   }) {
     // Fires when a refresh fails or an admin suspends the account mid-session.
     api.onSessionExpired = () => _forceLogout('세션이 만료되었습니다. 다시 로그인해 주세요.');
@@ -40,6 +42,7 @@ class AuthState extends ChangeNotifier {
   final TokenStore tokenStore;
   final AuthRepository authRepo;
   final CalendarRepository calendarRepo;
+  final AlarmService alarms;
 
   AuthPhase _phase = AuthPhase.loading;
   UserProfile? _user;
@@ -90,11 +93,20 @@ class AuthState extends ChangeNotifier {
 
   Future<bool> pingServer() => api.ping();
 
-  Future<void> login(String email, String password) async {
+  /// Whether the last login asked to stay signed in. Used to pre-check the
+  /// login screen's box.
+  Future<bool> readRememberMe() => tokenStore.readRememberMe();
+
+  Future<void> login(
+    String email,
+    String password, {
+    bool rememberMe = true,
+  }) async {
     final session = await authRepo.login(email.trim(), password);
     await tokenStore.saveSession(
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
+      remember: rememberMe,
       email: email.trim(),
     );
     _adopt(session.user);
@@ -165,9 +177,37 @@ class AuthState extends ChangeNotifier {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(
       AppConfig.notificationPollInterval,
-      (_) => refreshUnread(),
+      (_) {
+        refreshUnread();
+        syncAlarms();
+      },
     );
     refreshUnread();
+    syncAlarms();
+  }
+
+  int _scheduledAlarms = 0;
+
+  /// 예약된 일정 알람 건수. 설정 화면에서 보여준다.
+  int get scheduledAlarms => _scheduledAlarms;
+
+  /// 서버의 예약 목록을 받아 기기 알람을 다시 맞춘다.
+  ///
+  /// 폴링마다 도는 이유는 다른 사람이 내 일정을 바꿨을 수 있기 때문이다.
+  /// 통째로 다시 거는 방식이라 삭제된 일정의 알람이 남지 않는다.
+  Future<void> syncAlarms() async {
+    if (_phase != AuthPhase.ready || !AlarmService.isSupported) return;
+    try {
+      final reminders = await calendarRepo.upcomingReminders(days: 7);
+      final count = await alarms.sync(reminders);
+      if (count != _scheduledAlarms) {
+        _scheduledAlarms = count;
+        notifyListeners();
+      }
+    } on ApiException {
+      // 네트워크가 끊겨도 이미 걸어둔 알람은 그대로 울린다. 다음 폴링에서
+      // 다시 시도하면 되므로 사용자에게 알리지 않는다.
+    }
   }
 
   void _adopt(UserProfile profile) {
@@ -178,12 +218,20 @@ class AuthState extends ChangeNotifier {
       return;
     }
     _set(AuthPhase.ready);
+    // 알림 권한은 로그인 직후에 묻는다. 앱 첫 실행에 바로 물으면 무엇에
+    // 쓰는지 모른 채 거부하기 쉽다.
+    if (AlarmService.isSupported) {
+      alarms.requestPermissions();
+    }
     _startPolling();
   }
 
   Future<void> _forceLogout(String? message) async {
     _pollTimer?.cancel();
     _pollTimer = null;
+    _scheduledAlarms = 0;
+    // 계정이 바뀌었는데 이전 사용자의 일정 알람이 울리면 안 된다.
+    await alarms.cancelAll();
     await tokenStore.clearSession();
     _user = null;
     _unread = 0;

@@ -97,8 +97,11 @@ python -m ruff check app scripts --select F,E9
 ## 서버 설치
 
 **우분투** (권장 — 상시 가동에 안정적)
+```powershell
+python installer/build_server_package.py    # 설치 파일 1개 생성
+```
 ```bash
-sudo ./deploy/install.sh
+sudo ./ddeck-server-1.0.0.run               # 미니PC 에서 실행
 ```
 
 **Windows** (관리자 PowerShell)
@@ -137,7 +140,7 @@ backend/
   storage/       첨부파일 (DB에는 경로만 저장)
 app/             Flutter 클라이언트 (Windows / Linux / Android)
 deploy/          서버 설치 스크립트 (우분투 .sh / Windows .ps1)
-installer/       Windows 설치 파일(setup.exe) 제작
+installer/       설치 파일 제작 (Windows setup.exe / 우분투 .run)
 dist/            생성된 설치 파일 (git 제외)
 docs/
 ```

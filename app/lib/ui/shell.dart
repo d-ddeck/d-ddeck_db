@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/user.dart';
 import '../state/auth_state.dart';
 import 'admin/admin_page.dart';
+import 'alarm_settings_page.dart';
 import 'auth/signup_page.dart';
 import 'board/board_page.dart';
 import 'calendar/calendar_page.dart';
@@ -214,6 +215,7 @@ class _AccountMenu extends StatelessWidget {
           ),
         ),
         const PopupMenuDivider(),
+        const PopupMenuItem(value: 'alarms', child: Text('일정 알림')),
         const PopupMenuItem(value: 'password', child: Text('비밀번호 변경')),
         const PopupMenuItem(value: 'server', child: Text('서버 정보')),
         const PopupMenuDivider(),
@@ -221,6 +223,10 @@ class _AccountMenu extends StatelessWidget {
       ],
       onSelected: (value) async {
         switch (value) {
+          case 'alarms':
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AlarmSettingsPage()),
+            );
           case 'password':
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const ChangePasswordPage()),

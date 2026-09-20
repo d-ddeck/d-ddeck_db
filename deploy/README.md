@@ -13,7 +13,44 @@ Windows PC와 휴대폰은 이 서버에 접속하는 클라이언트로만 씁�
 
 ---
 
-## 1. 파일 옮기기
+## 가장 간단한 방법: 설치 파일 하나
+
+Windows PC 에서 서버용 설치 파일을 만듭니다.
+
+```powershell
+python installer/build_server_package.py
+```
+
+`dist/ddeck-server-1.0.0.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
+
+```powershell
+scp dist/ddeck-server-1.0.0.run 사용자명@미니PC주소:~/
+```
+
+미니PC 에서:
+
+```bash
+chmod +x ddeck-server-1.0.0.run
+sudo ./ddeck-server-1.0.0.run
+```
+
+끝입니다. 아래 "파일 옮기기" 와 "설치" 를 한 번에 처리합니다.
+옵션도 그대로 전달됩니다:
+
+```bash
+sudo ./ddeck-server-1.0.0.run --port 8080 --admin it@mycompany.co.kr
+```
+
+> 프로젝트 폴더 전체가 아니라 `backend/` 와 `deploy/` 만 담기며,
+> `.env` 와 데이터베이스 파일은 들어가지 않습니다.
+
+---
+
+## 직접 폴더를 옮기는 방법
+
+소스를 자주 고치며 작업할 때는 이쪽이 편합니다.
+
+### 1. 파일 옮기기
 
 미니PC에 이 프로젝트 폴더를 통째로 복사합니다. 셋 중 편한 방법으로:
 
@@ -32,7 +69,7 @@ git clone <저장소주소> ~/d-ddeck_db
 > `app/build`, `backend/.venv`, `.env` 는 옮기지 않아도 됩니다.
 > 서버에는 `backend/` 와 `deploy/` 만 있으면 됩니다.
 
-## 2. 설치
+### 2. 설치
 
 미니PC에서 **한 줄**입니다.
 
@@ -80,7 +117,7 @@ sudo ./deploy/install.sh --sqlite                         # PostgreSQL 없이 (�
 | 첨부파일 | `/opt/ddeck/storage` |
 | 이름 | avahi(mDNS)로 `호스트이름.local` 접속 가능 |
 
-## 3. 백업 등록 (꼭 하세요)
+## 백업 등록 (꼭 하세요)
 
 ```bash
 sudo ./deploy/backup.sh --install-cron
@@ -96,7 +133,7 @@ sudo ./deploy/backup.sh                              # 지금 한 번
 sudo ./deploy/backup.sh --restore /경로/ddeck_*.tar.gz   # 복구
 ```
 
-## 4. 클라이언트 연결
+## 클라이언트 연결
 
 Windows 앱과 안드로이드 앱의 **로그인 화면 → "서버 주소 설정"** 에 위에서 나온 주소를 입력합니다.
 한 번 입력하면 저장되어 다음부터는 그냥 로그인만 하면 됩니다.
