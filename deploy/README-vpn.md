@@ -55,41 +55,66 @@ PersistentKeepalive = 25
 
 ---
 
-## 설치 순서
+## 직원 PC 등록 (기기마다 반복)
 
-### 1. 서버 쪽 (공유기)
+### 1단계 — 공유기에서 피어 발급 (관리자)
 
-공유기의 WireGuard 기능에서 **기기마다 피어를 따로** 만듭니다.
-한 설정을 여러 명이 돌려쓰면 분실 시 전부 재발급해야 합니다.
+`http://192.168.0.1` → 관리도구 → 고급 설정 → 특수기능 → VPN 설정 → WireGuard
 
-### 2. 직원 PC
+**기기마다 피어를 따로** 만듭니다. 한 설정을 여러 명이 돌려쓰면 한 대를 분실했을 때
+전원 재발급해야 합니다.
 
-1. [wireguard.com/install](https://www.wireguard.com/install/) 에서 설치
-2. `.conf` 파일을 "터널 가져오기" 로 추가 (또는 QR 스캔)
-3. 터널 우클릭 → **"활성화 시 자동 시작"** 체크
-4. 활성화
+- 이름: "홍길동 노트북" 처럼 누구 것인지 알아보게
+- 발급하면 `.conf` 파일과 **QR 코드**가 나옵니다
 
-### 3. 확인
+### 2단계 — 설정 파일 손보기 (관리자, PC 에서)
+
+공유기가 만든 `.conf` 는 보통 `AllowedIPs = 0.0.0.0/0` 이라 직원 인터넷까지
+회사 회선을 타게 됩니다. 발급받은 파일들을 한 폴더에 모아두고:
 
 ```powershell
-ping 192.168.0.20                                  # 서버 응답
-curl http://192.168.0.20:8000/healthz              # {"status":"ok"}
+.\deploy\fix-wireguard-conf.ps1 -Path .\peers -Endpoint ddeck.iptime.org
 ```
 
+분할 터널 적용, DNS 주석 처리, `PersistentKeepalive` 추가, Endpoint 를 DDNS 로
+교체까지 한 번에 합니다. 원본은 `.conf.bak` 으로 백업되고 비밀키는 손대지 않습니다.
+
+`-Endpoint` 는 DDNS 를 설정했을 때만 쓰세요. 공인 IP 를 그대로 두면 IP 가 바뀔 때
+전원 재배포해야 합니다.
+
+### 3단계 — 직원 PC 에 설치
+
+1. [wireguard.com/install](https://www.wireguard.com/install/) 에서 WireGuard 설치
+   (관리자 권한 필요. 설치는 한 번만)
+2. WireGuard 실행 → **"터널 추가" → "파일에서 터널 추가"** → 해당 `.conf` 선택
+3. **활성화** 버튼 클릭
+4. 재부팅 후에도 자동 연결되는지 확인 — 안 되면 터널 목록에서 해당 터널의
+   자동 시작 옵션을 켭니다
+
+> 휴대폰(안드로이드)은 Play 스토어에서 WireGuard 앱 설치 후 **QR 코드 스캔**이
+> 가장 빠릅니다. 다만 QR 은 공유기가 만든 원본(전체 터널)이라, 분할 터널을
+> 원하면 앱에서 AllowedIPs 를 직접 수정해야 합니다.
+
+### 4단계 — 확인
+
+직원 PC 에서 (VPN 활성화 상태로):
+
+```powershell
+ping 192.168.0.20
+curl http://192.168.0.20:8000/healthz     # {"status":"ok"} 가 나와야 정상
+```
+
+그다음 d-ddeck 앱을 실행해 로그인되면 끝입니다.
 앱의 서버 주소는 **사내망과 동일하게 `http://192.168.0.20:8000`** 입니다.
-VPN 연결 시 사내망에 있는 것과 같아지므로 설치 파일을 따로 만들 필요가 없습니다.
 
-### 4. 서버 쪽 방화벽에 VPN 대역 허용
+### 5단계 — 서버 쪽 방화벽 (최초 1 회만)
 
-DB 서버 PC 에서 (관리자 PowerShell):
+DB 서버 PC 에서 관리자 PowerShell:
 
 ```powershell
 Set-NetFirewallRule -DisplayName "d-ddeck DB Server" `
   -Profile Any -RemoteAddress LocalSubnet,10.109.203.0/24
 ```
-
-`-Profile Any` 가 중요합니다. 네트워크가 "공용" 으로 분류돼 있으면
-Private/Domain 전용 규칙은 **작동하지 않습니다.**
 
 ---
 
