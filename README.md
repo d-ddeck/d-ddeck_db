@@ -83,7 +83,8 @@ python -m ruff check app scripts --select F,E9
 |---|---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 백엔드 | 데이터 모델과 설계 결정의 이유 |
 | [docs/FRONTEND_BRIEF.md](docs/FRONTEND_BRIEF.md) | 프론트엔드 외주 | API 계약, 화면별 호출 순서, 주의사항 |
-| [deploy/README.md](deploy/README.md) | 운영 | **우분투 미니PC 서버 설치 (설치 스크립트)** |
+| [deploy/README.md](deploy/README.md) | 운영 | **우분투 서버 설치** (권장) |
+| [deploy/README-windows.md](deploy/README-windows.md) | 운영 | **Windows PC 서버 설치** |
 | [installer/README.md](installer/README.md) | 배포 | **Windows 설치 파일 만들기 / 배포** |
 | [docs/POSTGRES.md](docs/POSTGRES.md) | 운영 | PostgreSQL 전환 및 수동 배포 |
 | [docs/openapi.json](docs/openapi.json) | 프론트엔드 외주 | 70 paths / 101 operations |
@@ -92,10 +93,16 @@ python -m ruff check app scripts --select F,E9
 
 ---
 
-## 서버 설치 (우분투 미니PC)
+## 서버 설치
 
+**우분투** (권장 — 상시 가동에 안정적)
 ```bash
 sudo ./deploy/install.sh
+```
+
+**Windows** (관리자 PowerShell)
+```powershell
+.\deploy\install-windows.ps1
 ```
 
 의존성 · PostgreSQL · `.env` · 마이그레이션 · systemd 서비스 · 방화벽을 한 번에 처리하고
@@ -128,7 +135,7 @@ backend/
   scripts/       smoke_test / seed_demo / export_openapi
   storage/       첨부파일 (DB에는 경로만 저장)
 app/             Flutter 클라이언트 (Windows / Linux / Android)
-deploy/          우분투 서버 설치 · 갱신 · 백업 · 제거 스크립트
+deploy/          서버 설치 스크립트 (우분투 .sh / Windows .ps1)
 installer/       Windows 설치 파일(setup.exe) 제작
 dist/            생성된 설치 파일 (git 제외)
 docs/
