@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ddeck_app/core/config.dart';
 import 'package:ddeck_app/models/common.dart';
 import 'package:ddeck_app/models/service.dart';
@@ -149,6 +151,54 @@ void main() {
       });
       expect(t.customerLabel, '거래처 미지정');
       expect(t.isOverdue, isFalse);
+    });
+  });
+
+  group('설치 프로그램이 쓴 서버 설정 (ddeck.config.json)', () {
+    late Directory dir;
+
+    setUp(() async {
+      AppConfig.resetSiteConfig();
+      dir = await Directory.systemTemp.createTemp('ddeck_cfg');
+    });
+    tearDown(() async {
+      AppConfig.resetSiteConfig();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    File cfg() => File('${dir.path}${Platform.pathSeparator}'
+        '${AppConfig.siteConfigFileName}');
+
+    test('설치 시 기록된 주소를 기본값으로 채택한다', () async {
+      await cfg().writeAsString('{"server_url": "http://192.168.0.99:9000"}');
+      await AppConfig.loadSiteConfig(directory: dir.path);
+      expect(AppConfig.siteServerUrl, 'http://192.168.0.99:9000');
+      expect(AppConfig.defaultServerUrl, 'http://192.168.0.99:9000');
+    });
+
+    test('스킴 없이 적어도 정규화된다', () async {
+      await cfg().writeAsString('{"server_url": "miniserver.local:8000/"}');
+      await AppConfig.loadSiteConfig(directory: dir.path);
+      expect(AppConfig.siteServerUrl, 'http://miniserver.local:8000');
+    });
+
+    test('파일이 없으면 플랫폼 기본값으로 떨어진다', () async {
+      await AppConfig.loadSiteConfig(directory: dir.path);
+      expect(AppConfig.siteServerUrl, isNull);
+      expect(AppConfig.defaultServerUrl, isNotEmpty);
+    });
+
+    test('깨진 파일이어도 앱이 죽지 않는다', () async {
+      // IT 가 손으로 고치다 JSON 을 깨뜨리는 일은 실제로 일어난다.
+      await cfg().writeAsString('{ 이건 JSON 이 아님');
+      await AppConfig.loadSiteConfig(directory: dir.path);
+      expect(AppConfig.siteServerUrl, isNull);
+    });
+
+    test('server_url 이 비어 있으면 무시한다', () async {
+      await cfg().writeAsString('{"server_url": "   "}');
+      await AppConfig.loadSiteConfig(directory: dir.path);
+      expect(AppConfig.siteServerUrl, isNull);
     });
   });
 }

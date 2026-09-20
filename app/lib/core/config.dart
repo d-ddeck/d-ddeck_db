@@ -1,4 +1,5 @@
-import 'dart:io' show Platform;
+import 'dart:convert';
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/foundation.dart';
 
@@ -16,7 +17,49 @@ class AppConfig {
   /// Compile-time override: `flutter build windows --dart-define=SERVER_URL=...`
   static const String _compileTimeUrl = String.fromEnvironment('SERVER_URL');
 
+  /// Site default written next to the executable by the installer.
+  /// Loaded once at startup by [loadSiteConfig].
+  static String? _siteUrl;
+
+  /// The address IT configured for this machine, if any.
+  static String? get siteServerUrl => _siteUrl;
+
+  /// Reads `ddeck.config.json` from the executable's folder.
+  ///
+  /// This is what lets one build serve a company whose server address is not
+  /// known at compile time: the installer asks once and writes the file, and
+  /// moving the server later means editing that file rather than rebuilding.
+  ///
+  /// Never throws - a missing or malformed file just means "no site default".
+  ///
+  /// [directory] exists so tests can point at a temp folder; in the app it is
+  /// always the folder holding the executable.
+  static Future<void> loadSiteConfig({String? directory}) async {
+    if (kIsWeb) return;
+    try {
+      final dirPath =
+          directory ?? File(Platform.resolvedExecutable).parent.path;
+      final file = File('$dirPath${Platform.pathSeparator}$siteConfigFileName');
+      if (!await file.exists()) return;
+      final data = jsonDecode(await file.readAsString());
+      if (data is! Map) return;
+      final url = data['server_url'];
+      if (url is String && url.trim().isNotEmpty) {
+        _siteUrl = normalizeServerUrl(url);
+        debugPrint('site config: server_url=$_siteUrl');
+      }
+    } catch (e) {
+      debugPrint('site config not loaded: $e');
+    }
+  }
+
+  static const String siteConfigFileName = 'ddeck.config.json';
+
+  @visibleForTesting
+  static void resetSiteConfig() => _siteUrl = null;
+
   static String get defaultServerUrl {
+    if (_siteUrl != null) return _siteUrl!;
     if (_compileTimeUrl.isNotEmpty) return _compileTimeUrl;
     if (kIsWeb) return 'http://127.0.0.1:8000';
     if (Platform.isAndroid) {

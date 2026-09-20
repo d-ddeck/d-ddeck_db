@@ -52,8 +52,24 @@ class ApiClient {
     if (persist) await tokenStore.saveServerUrl(_serverUrl);
   }
 
+  /// Decides which server address this launch uses.
+  ///
+  /// Precedence: the user's own choice wins, except when IT has changed the
+  /// site default since we last started - then the new default is adopted.
+  /// Without that exception, moving the server would strand every client that
+  /// had ever opened the login screen's server field.
   Future<void> restoreServerUrl() async {
+    final siteDefault = AppConfig.defaultServerUrl;
+    final appliedDefault = await tokenStore.readAppliedDefault();
     final saved = await tokenStore.readServerUrl();
+
+    if (appliedDefault != siteDefault) {
+      // First run, or the installer/config file now points somewhere else.
+      _serverUrl = siteDefault;
+      await tokenStore.saveAppliedDefault(siteDefault);
+      await tokenStore.saveServerUrl(siteDefault);
+      return;
+    }
     if (saved != null && saved.isNotEmpty) {
       _serverUrl = AppConfig.normalizeServerUrl(saved);
     }

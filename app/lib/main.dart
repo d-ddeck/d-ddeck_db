@@ -16,8 +16,12 @@ import 'ui/auth/signup_page.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Read the site default the installer wrote next to the executable, before
+  // anything asks AppConfig for a server address.
+  await AppConfig.loadSiteConfig();
 
   // Composition root. Everything is plain constructor injection so a screen's
   // dependencies are visible in one place rather than behind a service locator.

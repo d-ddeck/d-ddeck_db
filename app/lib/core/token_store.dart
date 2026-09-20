@@ -17,6 +17,10 @@ class TokenStore {
   static const _kRefresh = 'refresh_token';
   static const _kServerUrl = 'server_url';
   static const _kLastEmail = 'last_email';
+  // The site default that was in effect last time we started. Keeping it lets
+  // us tell "the user chose this address" apart from "this was just the
+  // default", so IT can move the server and have clients follow.
+  static const _kAppliedDefault = 'applied_default_url';
 
   /// Short-lived (60 min) and deliberately memory-only, so it never reaches
   /// disk. A restart rebuilds it from the refresh token.
@@ -25,6 +29,9 @@ class TokenStore {
   Future<String?> readRefreshToken() => _read(_kRefresh);
   Future<String?> readServerUrl() => _read(_kServerUrl);
   Future<String?> readLastEmail() => _read(_kLastEmail);
+  Future<String?> readAppliedDefault() => _read(_kAppliedDefault);
+
+  Future<void> saveAppliedDefault(String url) => _write(_kAppliedDefault, url);
 
   Future<void> saveSession({
     required String accessToken,
