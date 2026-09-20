@@ -306,11 +306,23 @@ Ok "마이그레이션 완료"
 Step "자동 시작 등록"
 # Windows 에는 systemd 가 없다. 작업 스케줄러에 "시스템 시작 시 SYSTEM 으로 실행"
 # 을 걸면 로그인 없이도 떠 있고 로그아웃해도 유지된다.
+#
+# 기존 작업을 먼저 지우고 다시 만드는데, 지운 뒤 등록에 실패하면 자동 시작이
+# 사라진 채로 남는다(재부팅하면 서버가 안 뜬다). 그래서 등록까지 끝내고
+# 확인한 뒤에야 성공으로 친다.
+$uvicorn = Join-Path $BackendDir '.venv\Scripts\uvicorn.exe'
+if (-not (Test-Path $uvicorn)) { Die "uvicorn.exe 를 찾을 수 없습니다: $uvicorn" }
+
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  # 작업이 띄운 프로세스는 작업을 지워도 살아남아 포트를 계속 쥔다.
+  Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='uvicorn.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($BackendDir, 'OrdinalIgnoreCase') } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Seconds 2
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+  Warn "기존 자동 시작 작업을 제거했습니다. 아래에서 다시 등록합니다."
 }
-$uvicorn = Join-Path $BackendDir '.venv\Scripts\uvicorn.exe'
 # 워커는 1개여야 한다. 일정 알림 스케줄러가 프로세스 안에서 돌기 때문에
 # 여러 개로 늘리면 같은 알림이 중복 발송된다.
 $action  = New-ScheduledTaskAction -Execute $uvicorn `
@@ -320,8 +332,25 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccou
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
   -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit ([TimeSpan]::Zero)
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-  -Principal $principal -Settings $settings -Description 'd-ddeck 사내 통합 DB 서버' | Out-Null
+try {
+  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+    -Principal $principal -Settings $settings -Description 'd-ddeck 사내 통합 DB 서버' | Out-Null
+} catch {
+  Write-Host ""
+  Write-Host "작업 스케줄러 등록에 실패했습니다: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host ""
+  Write-Host "  서버는 수동으로 띄울 수 있지만, 재부팅하면 자동으로 뜨지 않습니다."
+  Write-Host "  수동 실행:"
+  Write-Host "    cd `"$BackendDir`""
+  Write-Host "    .\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port $Port"
+  Write-Host ""
+  Die "자동 시작 등록 실패. 위 오류를 알려주시면 원인을 찾을 수 있습니다."
+}
+# 등록이 실제로 남았는지 확인한다. 위에서 지우고 다시 만드는 구조라
+# 조용히 실패하면 자동 시작이 사라진 채로 설치가 끝나 버린다.
+if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+  Die "자동 시작 작업이 등록되지 않았습니다. 관리자 권한으로 다시 실행해 주세요."
+}
 Start-ScheduledTask -TaskName $TaskName
 Ok "작업 스케줄러 등록 및 시작 (부팅 시 자동 실행)"
 

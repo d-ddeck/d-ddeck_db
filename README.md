@@ -85,6 +85,7 @@ python -m ruff check app scripts --select F,E9
 | [docs/FRONTEND_BRIEF.md](docs/FRONTEND_BRIEF.md) | 프론트엔드 외주 | API 계약, 화면별 호출 순서, 주의사항 |
 | [deploy/README.md](deploy/README.md) | 운영 | **우분투 서버 설치** (권장) |
 | [deploy/README-windows.md](deploy/README-windows.md) | 운영 | **Windows PC 서버 설치** |
+| [deploy/README-vpn.md](deploy/README-vpn.md) | 운영 | **사외 접속 (WireGuard VPN)** |
 | [installer/README.md](installer/README.md) | 배포 | **Windows 설치 파일 만들기 / 배포** |
 | [docs/POSTGRES.md](docs/POSTGRES.md) | 운영 | PostgreSQL 전환 및 수동 배포 |
 | [docs/openapi.json](docs/openapi.json) | 프론트엔드 외주 | 70 paths / 101 operations |
