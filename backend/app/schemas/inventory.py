@@ -71,6 +71,12 @@ class AssetCreate(BaseModel):
     status: AssetStatus = AssetStatus.IN_STOCK
     location_id: uuid.UUID | None = None
     holder_id: uuid.UUID | None = None
+    # 매장에 나가 있는 장비. location_id 와 둘 중 하나는 있어야 한다.
+    store_id: uuid.UUID | None = None
+    set_no: int = Field(0, ge=0, description="매장 납품 세트 번호, 0 = 미지정")
+    status_item_id: uuid.UUID | None = Field(
+        None, description="세부 상태 코드(설치 / 렌탈 중 / AS 대기 ...)"
+    )
 
     quantity: Decimal = Decimal(1)
     unit: str = Field("EA", max_length=20)
@@ -101,6 +107,7 @@ class AssetUpdate(BaseModel):
     supplier: str | None = Field(None, max_length=150)
     warranty_until: date | None = None
     note: str | None = None
+    status_item_id: uuid.UUID | None = None
 
 
 class AssetOut(ORMModel):
@@ -117,6 +124,9 @@ class AssetOut(ORMModel):
     status: AssetStatus
     location_id: uuid.UUID | None = None
     holder_id: uuid.UUID | None = None
+    store_id: uuid.UUID | None = None
+    set_no: int = 0
+    status_item_id: uuid.UUID | None = None
 
     quantity: Decimal
     unit: str
@@ -136,7 +146,18 @@ class AssetDetail(AssetOut):
     location: LocationOut | None = None
     holder: UserBrief | None = None
     category: CodeItemBrief | None = None
+    store: "StoreBrief | None" = None
+    status_item: CodeItemBrief | None = None
     is_below_min: bool = False
+
+
+class StoreBrief(ORMModel):
+    """자산 화면에서 "어느 매장에 있나"를 보여 줄 만큼만."""
+
+    id: uuid.UUID
+    name: str
+    brand_id: uuid.UUID | None = None
+    is_closed: bool = False
 
 
 # ---------------------------------------------------------------- movements
@@ -147,6 +168,16 @@ class AssetMoveRequest(BaseModel):
     to_location_id: uuid.UUID | None = None
     to_holder_id: uuid.UUID | None = None
     to_status: AssetStatus | None = None
+    # 매장으로 내보내거나 매장에서 거두어들일 때. 위치와 배타적이라,
+    # 둘 중 하나를 채우면 반대쪽은 서버가 비운다.
+    to_store_id: uuid.UUID | None = None
+    to_set_no: int | None = Field(None, ge=0, description="매장 납품 세트 번호")
+    to_status_item_id: uuid.UUID | None = Field(
+        None, description="세부 상태 코드(설치 / 렌탈 중 / AS 대기 ...)"
+    )
+    clear_store: bool = Field(
+        False, description="매장에서 거두어들일 때 true - 매장 연결을 끊는다"
+    )
     quantity: Decimal | None = None
     moved_at: datetime | None = Field(None, description="defaults to now in UTC")
     reason: str | None = None
@@ -158,6 +189,10 @@ class AssetMovementOut(ORMModel):
     id: uuid.UUID
     asset_id: uuid.UUID
     movement_type: MovementType
+    from_store_id: uuid.UUID | None = None
+    to_store_id: uuid.UUID | None = None
+    from_status_item_id: uuid.UUID | None = None
+    to_status_item_id: uuid.UUID | None = None
     from_location_id: uuid.UUID | None = None
     to_location_id: uuid.UUID | None = None
     from_holder_id: uuid.UUID | None = None

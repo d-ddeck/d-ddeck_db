@@ -15,6 +15,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
+    <!-- WireGuard 설정 QR 촬영. 스캔 화면에 들어갈 때만 요청하고,
+         카메라가 없는 기기에서도 앱이 설치되도록 required=false 로 둔다. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
     <application
         android:label="d-ddeck"
         android:name="${applicationName}"

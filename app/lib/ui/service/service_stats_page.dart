@@ -134,19 +134,38 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                   _refresh();
                 }),
               ),
-              child: data.grouped.buckets.isEmpty
-                  ? const _NoData()
-                  : Column(
-                      children: [
-                        SizedBox(
-                          height: 180,
-                          child: _PieChart(buckets: data.grouped.buckets),
-                        ),
-                        const SizedBox(height: 12),
-                        for (final b in data.grouped.buckets)
-                          _BucketRow(bucket: b),
-                      ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_axis.isMultiValue) ...[
+                    Text(
+                      '원인 ${data.grouped.totalCauses ?? '-'}개 / '
+                      '대응 ${data.grouped.total}건',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '한 대응에 여러 원인이 포함될 수 있으며, 차트와 비율은 전체 원인 수 기준입니다.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (data.grouped.buckets.isEmpty)
+                    const _NoData()
+                  else ...[
+                    SizedBox(
+                      height: 180,
+                      child: _PieChart(buckets: data.grouped.buckets),
+                    ),
+                    const SizedBox(height: 12),
+                    for (final b in data.grouped.buckets)
+                      _BucketRow(bucket: b, isMultiValue: _axis.isMultiValue),
+                  ],
+                ],
+              ),
             ),
             const SizedBox(height: 14),
 
@@ -476,8 +495,9 @@ class _TrendChart extends StatelessWidget {
 }
 
 class _BucketRow extends StatelessWidget {
-  const _BucketRow({required this.bucket});
+  const _BucketRow({required this.bucket, this.isMultiValue = false});
   final StatBucket bucket;
+  final bool isMultiValue;
 
   @override
   Widget build(BuildContext context) {
@@ -485,59 +505,77 @@ class _BucketRow extends StatelessWidget {
     final color = _bucketColor(bucket, bucket.label.hashCode.abs(), scheme);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: Text(
-              bucket.label,
-              style: const TextStyle(fontSize: 13),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Expanded(
-            flex: 4,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: bucket.ratio.clamp(0.0, 1.0),
-                minHeight: 6,
-                backgroundColor: color.withValues(alpha: 0.12),
-                valueColor: AlwaysStoppedAnimation(color),
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  bucket.label,
+                  style: const TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 4,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: bucket.ratio.clamp(0.0, 1.0),
+                    minHeight: 6,
+                    backgroundColor: color.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation(color),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (!isMultiValue)
+                SizedBox(
+                  width: 46,
+                  child: Text(
+                    '${bucket.count}건',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  Fmt.percent(bucket.ratio, digits: 0),
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                ),
+              ),
+              SizedBox(
+                width: 62,
+                child: Text(
+                  Fmt.duration(bucket.avgResolutionMinutes),
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 46,
-            child: Text(
-              '${bucket.count}건',
+          if (isMultiValue) ...[
+            const SizedBox(height: 4),
+            Text(
+              '원인 ${bucket.count}개'
+              '${bucket.ticketCount == null ? '' : ' · 대응 ${bucket.ticketCount}건'}',
               textAlign: TextAlign.right,
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              Fmt.percent(bucket.ratio, digits: 0),
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 11, color: scheme.outline),
-            ),
-          ),
-          SizedBox(
-            width: 62,
-            child: Text(
-              Fmt.duration(bucket.avgResolutionMinutes),
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 11, color: scheme.outline),
-            ),
-          ),
+          ],
         ],
       ),
     );

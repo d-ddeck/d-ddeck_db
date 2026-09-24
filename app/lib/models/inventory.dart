@@ -145,6 +145,10 @@ class Asset {
     this.warrantyUntil,
     this.note,
     this.isBelowMin = false,
+    this.storeId,
+    this.storeName,
+    this.setNo = 0,
+    this.statusItem,
   });
 
   final String id;
@@ -172,6 +176,25 @@ class Asset {
   final String? note;
   final bool isBelowMin;
 
+  /// 매장에 나가 있는 장비. location 과 둘 중 하나만 찬다 - 구 서버도 창고와
+  /// 매장을 별개 칸으로 나눠 두었고, 그 구분이 재고 화면의 기본 축이다.
+  final String? storeId;
+  final String? storeName;
+
+  /// 매장 납품 세트 번호. 0 이면 세트 미지정.
+  final int setNo;
+
+  /// 구 서버의 13종 상태(설치 / 렌탈 중 / AS 대기 / 바른 회수 …).
+  /// AssetStatus 6종으로는 못 담는 구분이라 코드 항목으로 따로 남겼다.
+  final CodeItem? statusItem;
+
+  /// 화면에 뿌릴 상태 이름. 세부 상태가 있으면 그쪽이 정확하다.
+  String get statusLabel => statusItem?.name ?? status.label;
+
+  /// 지금 어디에 있는지 한 줄로.
+  String get placeLabel =>
+      storeName ?? location?.shortLabel ?? '위치 미지정';
+
   bool get warrantyExpired =>
       warrantyUntil != null && warrantyUntil!.isBefore(DateTime.now());
 
@@ -197,6 +220,12 @@ class Asset {
         holderId: j['holder_id'] as String?,
         holder:
             j['holder'] is Map ? UserBrief.fromJson(asMap(j['holder'])) : null,
+        storeId: j['store_id'] as String?,
+        storeName: j['store'] is Map ? asString(asMap(j['store'])['name']) : null,
+        setNo: asInt(j['set_no']),
+        statusItem: j['status_item'] is Map
+            ? CodeItem.fromJson(asMap(j['status_item']))
+            : null,
         minQuantity: asDouble(j['min_quantity']),
         purchaseDate: asDate(j['purchase_date']),
         purchasePrice: asDouble(j['purchase_price']),

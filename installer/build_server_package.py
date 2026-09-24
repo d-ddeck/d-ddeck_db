@@ -26,7 +26,9 @@ DIST = ROOT / "dist"
 # 서버에 필요한 것만 담는다. 클라이언트(app/)와 설치 산출물은 뺀다.
 INCLUDE = ["backend", "deploy"]
 
-EXCLUDE_DIRS = {".venv", "__pycache__", ".git", ".ruff_cache", "storage", "backups"}
+# .venv-linux: 이 저장소는 Windows 에서 만든 .venv 를 커밋해 두고 있어서, 리눅스
+# 개발 PC 는 다른 이름의 venv 를 쓴다. 빠뜨리면 패키지가 100MB 넘게 부푼다.
+EXCLUDE_DIRS = {".venv", ".venv-linux", "__pycache__", ".git", ".ruff_cache", "storage", "backups"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".db", ".db-wal", ".db-shm", ".log"}
 # .env 는 서버마다 다르고 비밀키가 들어 있다. 절대 패키지에 넣지 않는다.
 EXCLUDE_NAMES = {".env", ".DS_Store"}

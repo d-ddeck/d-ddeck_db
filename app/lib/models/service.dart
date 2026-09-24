@@ -331,15 +331,18 @@ class ServiceGrouped {
     required this.groupBy,
     required this.total,
     required this.buckets,
+    this.totalCauses,
   });
 
   final String groupBy;
   final int total;
+  final int? totalCauses;
   final List<StatBucket> buckets;
 
   factory ServiceGrouped.fromJson(Map<String, dynamic> j) => ServiceGrouped(
         groupBy: asString(j['group_by']),
         total: asInt(j['total']),
+        totalCauses: j['total_causes'] == null ? null : asInt(j['total_causes']),
         buckets: asList(j['buckets'], StatBucket.fromJson),
       );
 }
@@ -380,10 +383,16 @@ enum StatAxis {
   symptom('symptom', '증상'),
   cause('cause', '원인'),
   action('action', '조치'),
+  maker('maker', '제조사'),
+  fault('fault', '과실'),
+  store('store', '매장'),
+  brand('brand', '브랜드'),
   assignee('assignee', '담당자'),
   status('status', '상태'),
   priority('priority', '우선순위'),
   channel('channel', '접수 경로');
+
+  bool get isMultiValue => this == category || this == symptom || this == maker;
 
   const StatAxis(this.value, this.label);
   final String value;

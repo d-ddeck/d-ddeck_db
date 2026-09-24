@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/file_repository.dart';
 import '../../data/board_repository.dart';
 import '../../models/board.dart';
 import '../../models/common.dart';
 import '../../state/auth_state.dart';
 import '../async_view.dart';
+import '../common/attachment_section.dart';
 import '../format.dart';
 
 /// 게시판. The board list doubles as the tab bar, and each Board object
@@ -235,6 +237,11 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   const Divider(height: 24),
                   SelectableText(post.content,
                       style: const TextStyle(fontSize: 14, height: 1.6)),
+                  const SizedBox(height: 24),
+                  AttachmentSection(
+                    entityType: FileRepository.post,
+                    entityId: post.id,
+                  ),
                   const SizedBox(height: 24),
                   if (widget.board.allowComment) ...[
                     Text('댓글 ${post.comments.length}',

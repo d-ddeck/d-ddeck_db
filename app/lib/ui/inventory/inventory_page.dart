@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/auth_repository.dart';
+import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
+import '../../data/store_repository.dart';
 import '../../models/common.dart';
 import '../../models/inventory.dart';
 import '../async_view.dart';
 import '../format.dart';
 import '../theme.dart';
+import 'asset_form_page.dart';
 
 /// 재고관리: asset list, location tree, and the move dialog that is the single
 /// write path for location / holder / status.
@@ -70,6 +73,28 @@ class _AssetListTabState extends State<_AssetListTab> {
   AssetStatus? _status;
   bool _belowMinOnly = false;
 
+  /// 자산 분류(로봇팔 / 제어박스 / 전동 그리퍼 / …). 코드 마스터에서 읽으므로
+  /// 화면이 종류를 하드코딩하지 않는다 - 관리 화면에서 항목을 더하면 여기에
+  /// 바로 탭이 하나 는다.
+  String? _categoryId;
+  List<CodeItem> _categories = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final group = await context.read<AdminRepository>().codeGroup('ASSET_CATEGORY');
+      if (!mounted) return;
+      setState(() => _categories = group.items.where((i) => i.isActive).toList());
+    } catch (_) {
+      // 분류를 못 읽어도 목록 자체는 보여야 한다. 필터만 빠진다.
+    }
+  }
+
   @override
   void dispose() {
     _search.dispose();
@@ -87,18 +112,64 @@ class _AssetListTabState extends State<_AssetListTab> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: Column(
             children: [
-              TextField(
-                controller: _search,
-                decoration: const InputDecoration(
-                  hintText: '품명 / 자산번호 / 시리얼 / 바코드 검색',
-                  prefixIcon: Icon(Icons.search, size: 20),
-                ),
-                textInputAction: TextInputAction.search,
-                onSubmitted: (v) => setState(() {
-                  _query = v.trim().isEmpty ? null : v.trim();
-                  _refresh();
-                }),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _search,
+                      decoration: const InputDecoration(
+                        hintText: '품명 / 자산번호 / 시리얼 / 바코드 검색',
+                        prefixIcon: Icon(Icons.search, size: 20),
+                      ),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (v) => setState(() {
+                        _query = v.trim().isEmpty ? null : v.trim();
+                        _refresh();
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () async {
+                      final added = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(builder: (_) => const AssetFormPage()),
+                      );
+                      if (added == true) _refresh();
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text('등록'),
+                  ),
+                ],
               ),
+              if (_categories.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('전체 종류'),
+                        selected: _categoryId == null,
+                        onSelected: (_) => setState(() {
+                          _categoryId = null;
+                          _refresh();
+                        }),
+                      ),
+                      for (final c in _categories) ...[
+                        const SizedBox(width: 6),
+                        ChoiceChip(
+                          label: Text(c.name),
+                          selected: _categoryId == c.id,
+                          onSelected: (_) => setState(() {
+                            _categoryId = c.id;
+                            _refresh();
+                          }),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -146,6 +217,7 @@ class _AssetListTabState extends State<_AssetListTab> {
             load: () => repo.list(
               query: _query,
               status: _status,
+              categoryId: _categoryId,
               belowMinOnly: _belowMinOnly,
               size: 50,
             ),
@@ -374,16 +446,37 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
     );
   }
 
+  /// 위치 · 매장 · 상태를 한 화면에서 바꾼다.
+  ///
+  /// PATCH 로는 이 셋을 못 바꾼다 - /move 만 이력을 남기기 때문이다. 그래서
+  /// "어디로 보낼지"(창고 / 매장 / 사람)와 "무슨 상태가 되는지"를 같이 받는다.
   Future<void> _showMoveDialog(Asset asset, VoidCallback reload) async {
     final repo = context.read<InventoryRepository>();
     final authRepo = context.read<AuthRepository>();
+    final storeRepo = context.read<StoreRepository>();
+    final adminRepo = context.read<AdminRepository>();
+
     final locations = await repo.locations();
     final members = (await authRepo.directory(size: 100)).items;
+    final stores = (await storeRepo.list(size: 300, includeClosed: true)).items;
+    List<CodeItem> statuses = const [];
+    try {
+      statuses = (await adminRepo.codeGroup('ASSET_STATUS'))
+          .items
+          .where((i) => i.isActive)
+          .toList();
+    } catch (_) {
+      // 세부 상태 목록이 없어도 나머지는 바꿀 수 있어야 한다.
+    }
     if (!mounted) return;
 
     var type = MovementType.move;
+    var target = asset.storeId != null ? _MoveTarget.store : _MoveTarget.location;
     String? locationId = asset.locationId;
+    String? storeId = asset.storeId;
     String? holderId = asset.holderId;
+    String? statusItemId = asset.statusItem?.id;
+    AssetStatus status = asset.status;
     final reason = TextEditingController();
 
     final confirmed = await showDialog<bool>(
@@ -391,57 +484,133 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setInner) => AlertDialog(
           title: const Text('위치 / 상태 변경'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<MovementType>(
-                  initialValue: type,
-                  decoration: const InputDecoration(labelText: '변경 유형'),
-                  isExpanded: true,
-                  items: [
-                    for (final t in MovementType.values)
-                      if (t != MovementType.inbound)
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<MovementType>(
+                    initialValue: type,
+                    decoration: const InputDecoration(labelText: '변경 유형'),
+                    isExpanded: true,
+                    items: [
+                      for (final t in MovementType.values)
                         DropdownMenuItem(value: t, child: Text(t.label)),
+                    ],
+                    onChanged: (v) => setInner(() => type = v ?? type),
+                  ),
+                  const SizedBox(height: 14),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('어디로 보내나요?',
+                        style: Theme.of(ctx).textTheme.labelLarge),
+                  ),
+                  const SizedBox(height: 6),
+                  SegmentedButton<_MoveTarget>(
+                    segments: const [
+                      ButtonSegment(
+                        value: _MoveTarget.location,
+                        label: Text('창고'),
+                        icon: Icon(Icons.warehouse_outlined),
+                      ),
+                      ButtonSegment(
+                        value: _MoveTarget.store,
+                        label: Text('매장'),
+                        icon: Icon(Icons.storefront_outlined),
+                      ),
+                      ButtonSegment(
+                        value: _MoveTarget.person,
+                        label: Text('사람'),
+                        icon: Icon(Icons.person_outline),
+                      ),
+                    ],
+                    selected: {target},
+                    onSelectionChanged: (v) =>
+                        setInner(() => target = v.first),
+                  ),
+                  const SizedBox(height: 12),
+                  if (target == _MoveTarget.location)
+                    DropdownButtonFormField<String>(
+                      initialValue: locationId,
+                      decoration: const InputDecoration(labelText: '이동할 위치'),
+                      isExpanded: true,
+                      items: [
+                        for (final l in locations)
+                          DropdownMenuItem(
+                            value: l.id,
+                            child: Text(l.display,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (v) => setInner(() => locationId = v),
+                    )
+                  else if (target == _MoveTarget.store)
+                    DropdownButtonFormField<String>(
+                      initialValue: storeId,
+                      decoration: const InputDecoration(labelText: '이동할 매장'),
+                      isExpanded: true,
+                      items: [
+                        for (final st in stores)
+                          DropdownMenuItem(
+                            value: st.id,
+                            child: Text(
+                              '${st.brandName} · ${st.name}'
+                              '${st.isClosed ? ' (폐점)' : ''}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (v) => setInner(() => storeId = v),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      initialValue: holderId,
+                      decoration: const InputDecoration(labelText: '불출 대상자'),
+                      isExpanded: true,
+                      items: [
+                        for (final m in members)
+                          DropdownMenuItem(value: m.id, child: Text(m.display)),
+                      ],
+                      onChanged: (v) => setInner(() => holderId = v),
+                    ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<AssetStatus>(
+                    initialValue: status,
+                    decoration: const InputDecoration(labelText: '상태'),
+                    isExpanded: true,
+                    items: [
+                      for (final st in AssetStatus.values)
+                        DropdownMenuItem(value: st, child: Text(st.label)),
+                    ],
+                    onChanged: (v) => setInner(() => status = v ?? status),
+                  ),
+                  if (statuses.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: statusItemId,
+                      decoration: const InputDecoration(
+                        labelText: '세부 상태',
+                        helperText: '설치 / 렌탈 중 / AS 대기 / 회수 …',
+                      ),
+                      isExpanded: true,
+                      items: [
+                        const DropdownMenuItem(
+                            value: null, child: Text('바꾸지 않음')),
+                        for (final c in statuses)
+                          DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      ],
+                      onChanged: (v) => setInner(() => statusItemId = v),
+                    ),
                   ],
-                  onChanged: (v) => setInner(() => type = v ?? type),
-                ),
-                if (type.needsLocation) ...[
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: locationId,
-                    decoration: const InputDecoration(labelText: '이동할 위치'),
-                    isExpanded: true,
-                    items: [
-                      for (final l in locations)
-                        DropdownMenuItem(
-                          value: l.id,
-                          child: Text(l.display,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                    ],
-                    onChanged: (v) => setInner(() => locationId = v),
+                  TextField(
+                    controller: reason,
+                    decoration: const InputDecoration(labelText: '사유'),
                   ),
                 ],
-                if (type.needsHolder) ...[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: holderId,
-                    decoration: const InputDecoration(labelText: '불출 대상자'),
-                    isExpanded: true,
-                    items: [
-                      for (final m in members)
-                        DropdownMenuItem(value: m.id, child: Text(m.display)),
-                    ],
-                    onChanged: (v) => setInner(() => holderId = v),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reason,
-                  decoration: const InputDecoration(labelText: '사유'),
-                ),
-              ],
+              ),
             ),
           ),
           actions: [
@@ -464,8 +633,14 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
       () => repo.move(
         asset.id,
         type: type,
-        toLocationId: type.needsLocation ? locationId : null,
-        toHolderId: type.needsHolder ? holderId : null,
+        toLocationId: target == _MoveTarget.location ? locationId : null,
+        toStoreId: target == _MoveTarget.store ? storeId : null,
+        toHolderId: target == _MoveTarget.person ? holderId : null,
+        // 창고나 사람에게 보내면 매장 연결을 끊는다. 매장에 있으면서 동시에
+        // 창고에 있을 수는 없다.
+        clearStore: target != _MoveTarget.store,
+        toStatusItemId: statusItemId,
+        toStatus: status,
         reason: reason.text,
       ),
       successMessage: '${type.label} 처리되었습니다.',
@@ -473,6 +648,9 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
     if (ok) reload();
   }
 }
+
+/// 이동 대상. 자산은 우리 위치에 있거나, 매장에 나가 있거나, 누군가 들고 있다.
+enum _MoveTarget { location, store, person }
 
 class _LocationTreeTab extends StatelessWidget {
   const _LocationTreeTab();

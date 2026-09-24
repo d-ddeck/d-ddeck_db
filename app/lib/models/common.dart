@@ -151,6 +151,7 @@ class StatBucket {
     required this.label,
     required this.count,
     required this.ratio,
+    this.ticketCount,
     this.color,
     this.avgResolutionMinutes,
     this.totalCost,
@@ -159,6 +160,8 @@ class StatBucket {
   final String key;
   final String label;
   final int count;
+  // 한 대응에 여러 분류가 붙으므로 원인 수와 중복을 뺀 대응 건수는 다를 수 있다.
+  final int? ticketCount;
   final double ratio;
   final String? color;
   final double? avgResolutionMinutes;
@@ -168,6 +171,7 @@ class StatBucket {
         key: asString(j['key']),
         label: asString(j['label']),
         count: asInt(j['count']),
+        ticketCount: j['ticket_count'] == null ? null : asInt(j['ticket_count']),
         ratio: asDouble(j['ratio']) ?? 0,
         color: j['color'] as String?,
         avgResolutionMinutes: asDouble(j['avg_resolution_minutes']),

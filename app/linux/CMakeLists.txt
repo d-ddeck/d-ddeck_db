@@ -42,6 +42,15 @@ endif()
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_14)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
+  # clang 20+ rejects the nlohmann/json copy bundled inside
+  # flutter_secure_storage_linux (`operator "" _json`) under
+  # -Wdeprecated-literal-operator, and -Werror above makes that fatal - the
+  # Linux build cannot finish on Ubuntu 26.04. Keep it a warning rather than
+  # silencing it: the diagnostic is about a third-party header's style, not
+  # about anything in this project.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(${TARGET} PRIVATE -Wno-error=deprecated-literal-operator)
+  endif()
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
 endfunction()

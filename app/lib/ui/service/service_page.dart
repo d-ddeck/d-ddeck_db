@@ -63,19 +63,111 @@ class ServiceListTab extends StatefulWidget {
 class _ServiceListTabState extends State<ServiceListTab> {
   final _searchController = TextEditingController();
   final _viewKey = GlobalKey<AsyncViewState<PagedList<ServiceTicket>>>();
+  final _scroll = ScrollController();
 
   String? _query;
   ServiceStatus? _status;
   bool _onlyOpen = false;
   bool _mineOnly = false;
 
+  /// 첫 쪽 뒤에 이어 붙인 것들. 한 번에 566건을 내려받으면 화면이 멎으므로
+  /// 50건씩 이어 받는다. AsyncView 가 첫 쪽을 들고 있고 여기가 나머지다.
+  final List<ServiceTicket> _more = [];
+  int _loadedPage = 1;
+  int _total = 0;
+  bool _loadingMore = false;
+
+  static const _pageSize = 50;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
     super.dispose();
   }
 
-  void _refresh() => _viewKey.currentState?.reload();
+  void _onScroll() {
+    if (!_scroll.hasClients || _loadingMore) return;
+    final remaining = _scroll.position.maxScrollExtent - _scroll.position.pixels;
+    if (remaining < 400) _loadMore();
+  }
+
+  /// 이미 화면에 있는 건수. 첫 쪽(AsyncView 가 들고 있는 50건) + 이어 받은 것.
+  int get _shownCount => _pageSize + _more.length;
+
+  bool get _hasMore => _total == 0 || _shownCount < _total;
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final next = await context.read<ServiceRepository>().list(
+            query: _query,
+            status: _status,
+            onlyOpen: _onlyOpen,
+            assigneeId: _mineOnly ? context.read<AuthState>().user?.id : null,
+            page: _loadedPage + 1,
+            size: _pageSize,
+          );
+      if (!mounted) return;
+      setState(() {
+        _loadedPage += 1;
+        _more.addAll(next.items);
+        _total = next.total;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      // 다음 쪽을 못 받아도 이미 받은 목록은 그대로 둔다. 스크롤을 더 내리면
+      // 다시 시도한다.
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  /// 필터가 바뀌면 이어 받은 것들은 버려야 한다. 안 그러면 새 조건에
+  /// 맞지 않는 옛 행이 아래에 남는다.
+  void _refresh() {
+    setState(() {
+      _more.clear();
+      _loadedPage = 1;
+      _total = 0;
+    });
+    _viewKey.currentState?.reload();
+  }
+
+  Widget _footer(int shown, int total) {
+    if (_loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    final style = Theme.of(context)
+        .textTheme
+        .bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.outline);
+    if (shown >= total) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(child: Text('전체 $total건을 모두 표시했습니다', style: style)),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Center(
+        child: TextButton(
+          onPressed: _loadMore,
+          child: Text('더 보기 ($shown / $total)'),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,32 +213,30 @@ class _ServiceListTabState extends State<ServiceListTab> {
               emptyCheck: (p) => p.isEmpty,
               emptyMessage: '조건에 맞는 접수 건이 없습니다.',
               emptyIcon: Icons.assignment_outlined,
-              builder: (context, page, reload) => ListView.separated(
-                itemCount: page.items.length + 1,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  if (i == page.items.length) {
-                    return Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          '전체 ${page.total}건 중 ${page.items.length}건 표시',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                  color:
-                                      Theme.of(context).colorScheme.outline),
-                        ),
-                      ),
+              builder: (context, page, reload) {
+                // 첫 쪽 총계를 상태로 끌어와 "더 있는지"를 판단한다.
+                if (_total != page.total) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _total = page.total);
+                  });
+                }
+                final rows = [...page.items, ..._more];
+                return ListView.separated(
+                  controller: _scroll,
+                  itemCount: rows.length + 1,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    if (i == rows.length) return _footer(rows.length, page.total);
+                    return _TicketTile(
+                      ticket: rows[i],
+                      onChanged: () {
+                        _refresh();
+                        reload();
+                      },
                     );
-                  }
-                  return _TicketTile(
-                    ticket: page.items[i],
-                    onChanged: reload,
-                  );
-                },
-              ),
+                  },
+                );
+              },
             ),
           ),
         ],

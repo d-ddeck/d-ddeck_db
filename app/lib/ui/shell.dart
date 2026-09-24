@@ -12,7 +12,9 @@ import 'dashboard_page.dart';
 import 'inventory/inventory_page.dart';
 import 'notifications_page.dart';
 import 'service/service_page.dart';
+import 'store/store_page.dart';
 import 'theme.dart';
+import 'vpn/vpn_setup_page.dart';
 
 /// Root frame once signed in.
 ///
@@ -107,6 +109,14 @@ class _HomeShellState extends State<HomeShell> {
           icon: Icons.inventory_2_outlined,
           selectedIcon: Icons.inventory_2,
           page: InventoryPage(),
+        ),
+        const _Destination(
+          label: '매장',
+          // storefront_outlined(0xf3ef) 대신 store(0xe60a). 코드포인트가 낮아
+          // 글리프가 빠질 여지가 없다.
+          icon: Icons.store_mall_directory_outlined,
+          selectedIcon: Icons.store,
+          page: StorePage(),
         ),
         const _Destination(
           label: '게시판',
@@ -218,11 +228,16 @@ class _AccountMenu extends StatelessWidget {
         const PopupMenuItem(value: 'alarms', child: Text('일정 알림')),
         const PopupMenuItem(value: 'password', child: Text('비밀번호 변경')),
         const PopupMenuItem(value: 'server', child: Text('서버 정보')),
+        const PopupMenuItem(value: 'vpn', child: Text('사외 접속(VPN) 설정')),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('로그아웃')),
       ],
       onSelected: (value) async {
         switch (value) {
+          case 'vpn':
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VpnSetupPage()),
+            );
           case 'alarms':
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AlarmSettingsPage()),

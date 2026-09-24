@@ -16,7 +16,15 @@ from app.models.calendar import (
     Notification,
 )
 from app.models.inventory import Asset, AssetMovement, Location
-from app.models.service import Customer, ServiceLog, ServicePart, ServiceTicket
+from app.models.service import (
+    Customer,
+    ServiceLog,
+    ServicePart,
+    ServiceTicket,
+    ServiceTicketCause,
+    ServiceTicketResponder,
+)
+from app.models.store import Store, StoreSet
 from app.models.user import Department, Device, RefreshToken, User
 
 __all__ = [
@@ -37,6 +45,11 @@ __all__ = [
     "ServiceTicket",
     "ServicePart",
     "ServiceLog",
+    "ServiceTicketCause",
+    "ServiceTicketResponder",
+    # store
+    "Store",
+    "StoreSet",
     # inventory
     "Location",
     "Asset",

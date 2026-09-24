@@ -22,7 +22,7 @@ from app.schemas.common import Message
 
 router = APIRouter(prefix="/files", tags=["files"])
 
-ALLOWED_ENTITIES = {"service_ticket", "asset", "post", "event", "user"}
+ALLOWED_ENTITIES = {"service_ticket", "asset", "post", "event", "user", "store"}
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9가-힣._-]")
 CHUNK = 1024 * 1024
 

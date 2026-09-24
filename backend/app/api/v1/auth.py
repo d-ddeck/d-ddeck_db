@@ -130,10 +130,29 @@ def signup(payload: SignupRequest, db: DbSession, client: Client) -> Message:
 
 
 # ------------------------------------------------------------------ login
+def _find_login_user(db: Session, identifier: str) -> User | None:
+    """Resolve what was typed in the login form to an account.
+
+    A full address matches exactly. A bare id (`admin`) matches the account
+    whose address starts with `admin@` - one less thing to type on a shared
+    office PC, where everyone is on the same intranet domain.
+
+    A bare id matching more than one account resolves to nobody rather than to
+    the first row, so two domains can never let someone in as the wrong person.
+    `LoginId` already rejects `%` and `_`, so the LIKE pattern below carries no
+    wildcard beyond the one written here.
+    """
+    stmt = select(User).where(User.deleted_at.is_(None))
+    if "@" in identifier:
+        return db.scalar(stmt.where(User.email == identifier))
+    matches = db.scalars(stmt.where(User.email.like(f"{identifier}@%"))).all()
+    return matches[0] if len(matches) == 1 else None
+
+
 @router.post("/login", response_model=TokenPair)
 def login(payload: LoginRequest, db: DbSession, client: Client) -> TokenPair:
     email = payload.email.lower().strip()
-    user = db.scalar(select(User).where(User.email == email, User.deleted_at.is_(None)))
+    user = _find_login_user(db, email)
 
     # Same error for unknown email and wrong password: do not leak who has an account.
     bad_credentials = AppError(

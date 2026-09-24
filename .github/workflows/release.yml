@@ -1,0 +1,180 @@
+# 릴리스 빌드 - 태그 하나로 세 플랫폼을 한꺼번에.
+#
+#   git tag v1.0.3 && git push origin v1.0.3
+#
+# 이렇게 태그를 올리면 Windows 설치 파일 · Android APK · 우분투 서버 설치 파일을
+# 각자 맞는 러너에서 빌드하고, GitHub Release 에 한데 모아 붙인다.
+#
+# 왜 CI 인가: Flutter 의 Windows 빌드는 Windows 에서만 되고(MSVC 필요), 개발 PC 는
+# 우분투다. 사람이 Windows PC 를 켜서 빌드하는 단계를 없애지 않으면 "세 플랫폼을
+# 항상 같은 버전으로" 라는 배포 방침이 손에 달려 있게 된다.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "버전 (예: 1.0.3). 태그 없이 손으로 돌릴 때만."
+        required: true
+
+env:
+  FLUTTER_VERSION: "3.47.5"
+  # 설치 프로그램이 기본값으로 보여 주는 서버 주소. 설치 중 바꿀 수 있다.
+  DEFAULT_SERVER_URL: "http://192.168.0.20:8000"
+
+jobs:
+  # ------------------------------------------------------------ 버전 결정
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "릴리스 버전: $v"
+
+  # ------------------------------------------------------------ 검사
+  # 빌드 전에 백엔드 스모크 테스트와 Flutter 테스트를 통과해야 한다.
+  # 깨진 채로 세 플랫폼에 나가는 것이 가장 비싼 실패다.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 백엔드 스모크 테스트
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          python scripts/smoke_test.py
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Flutter 테스트
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter test
+
+  # ------------------------------------------------------------ Windows
+  windows:
+    needs: [meta, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      # windows-latest 러너에는 Inno Setup 6 이 들어 있다. build.ps1 이
+      # 표준 경로에서 찾는다. 없으면 스크립트가 설치 안내와 함께 멈춘다.
+      - name: 설치 파일 빌드
+        shell: pwsh
+        run: |
+          .\installer\build.ps1 -ServerUrl "${{ env.DEFAULT_SERVER_URL }}" -Version "${{ needs.meta.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/ddeck-setup-*.exe
+          if-no-files-found: error
+
+  # ------------------------------------------------------------ Android
+  android:
+    needs: [meta, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Gradle 8.14 / AGP 8.11 조합은 Java 17~21 을 요구한다. 25 는 안 된다.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: APK 빌드 (arm64)
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release --target-platform android-arm64
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "../dist/ddeck-${{ needs.meta.outputs.version }}-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/ddeck-*-arm64.apk
+          if-no-files-found: error
+
+  # ------------------------------------------------------------ 서버 (우분투)
+  server:
+    needs: [meta, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 서버 설치 파일 빌드
+        run: python installer/build_server_package.py --version "${{ needs.meta.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: dist/ddeck-server-*.run
+          if-no-files-found: error
+
+  # ------------------------------------------------------------ 릴리스로 묶기
+  publish:
+    needs: [meta, windows, android, server]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: 산출물 확인
+        run: ls -la out/
+      # 릴리스 노트는 docs/releases/<버전>.md 에 쓴다 (dist/ 는 gitignore 라
+      # 체크아웃에 없다). 파일이 없으면 기본 한 줄로 대신한다 - 노트가 없다고
+      # 릴리스가 실패하면 안 된다.
+      - name: 릴리스 노트 준비
+        shell: bash
+        run: |
+          v="${{ needs.meta.outputs.version }}"
+          if [ -f "docs/releases/$v.md" ]; then
+            cp "docs/releases/$v.md" out/NOTES.md
+          else
+            printf 'd-ddeck %s\n\n릴리스 노트 없음. 변경 내역은 커밋 기록을 참고.\n' "$v" > out/NOTES.md
+          fi
+      # 태그로 시작된 실행만 Release 를 만든다. 손으로 돌린(workflow_dispatch)
+      # 빌드는 아티팩트로만 남겨 시험용으로 쓴다.
+      - name: GitHub Release 생성
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: d-ddeck ${{ needs.meta.outputs.version }}
+          body_path: out/NOTES.md
+          files: |
+            out/ddeck-setup-*.exe
+            out/ddeck-*-arm64.apk
+            out/ddeck-server-*.run

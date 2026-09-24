@@ -88,6 +88,36 @@ DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]
         ],
     ),
     (
+        # 과실 - who the failure is attributable to. A separate axis from
+        # SERVICE_CAUSE: "whose fault" and "what broke" are different answers.
+        "SERVICE_FAULT", "과실 구분", ModuleKey.SERVICE,
+        [
+            ("SELF_COLLISION", "자체 충돌", "#EF4444"),
+            ("SELF_MALFUNCTION", "자체 오동작", "#F97316"),
+            ("DEFECT", "제품 불량", "#DC2626"),
+            ("USER_COLLISION", "사용자 충돌", "#F59E0B"),
+            ("USER_MISUSE", "사용자 오조작", "#FBBF24"),
+            ("POOR_UPKEEP", "관리 미흡", "#A16207"),
+            ("UNKNOWN", "미확인", "#94A3B8"),
+            ("ETC", "기타", "#6B7280"),
+        ],
+    ),
+    (
+        # 대응인원 - deliberately a code list, not the user table. It holds
+        # people who never had an account and entries that are not individuals
+        # at all (CS팀, 레인보우CS팀). Where a responder does have an account,
+        # the item carries its user id in `extra`. Seeded empty: who responds
+        # is per-company.
+        "SERVICE_RESPONDER", "대응인원", ModuleKey.SERVICE, [],
+    ),
+    (
+        "SERVICE_RENTAL_TYPE", "렌탈 장비 종류", ModuleKey.SERVICE, [],
+    ),
+    (
+        # 브랜드 - per-company, so no defaults.
+        "STORE_BRAND", "매장 브랜드", ModuleKey.STORE, [],
+    ),
+    (
         "EVENT_CATEGORY", "일정 유형", ModuleKey.CALENDAR,
         [
             ("MEETING", "회의", "#3B82F6"),
@@ -132,6 +162,9 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
     (ModuleKey.CALENDAR, "business_hours_start", "09:00", "string", "업무 시작", True),
     (ModuleKey.CALENDAR, "business_hours_end", "18:00", "string", "업무 종료", True),
     (ModuleKey.CALENDAR, "allow_personal_calendar", True, "bool", "개인 캘린더 허용", True),
+
+    (ModuleKey.STORE, "default_gripper_type", "전동", "string", "기본 그리퍼 종류", True),
+    (ModuleKey.STORE, "show_closed_stores", False, "bool", "폐점 매장 목록에 표시", True),
 ]
 
 DEFAULT_BOARDS: list[tuple[str, str, BoardType, Role, int]] = [

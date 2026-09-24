@@ -204,6 +204,34 @@ class ApiClient {
 
   Future<dynamic> delete(String path) => _send(() => _dio.delete(_url(path)));
 
+  /// 멀티파트 업로드.
+  ///
+  /// post() 와 나눠 둔 이유는 진행률 콜백 때문이다. 사진 여러 장이면 몇 초씩
+  /// 걸려서, 화면이 "얼마나 갔는지"를 보여 줄 수 있어야 한다.
+  Future<dynamic> postMultipart(
+    String path,
+    FormData form, {
+    void Function(int sent, int total)? onProgress,
+  }) =>
+      _send(() => _dio.post(
+            _url(path),
+            data: form,
+            onSendProgress: onProgress,
+          ));
+
+  /// 첨부 내려받기. JSON 이 아니라 원본 바이트를 그대로 받는다.
+  Future<List<int>> getBytes(String path) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        _url(path),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return res.data ?? const [];
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
   Future<dynamic> _send(Future<Response> Function() call) async {
     try {
       final res = await call();

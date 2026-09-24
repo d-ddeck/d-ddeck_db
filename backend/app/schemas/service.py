@@ -208,6 +208,13 @@ class StatBucket(BaseModel):
     label: str
     color: str | None = None
     count: int
+    # On a 분류 axis this is 원인 수, not 대응 건수: one 건 filed under three
+    # 서비스구분 counts once in each. `ticket_count` is the de-duplicated
+    # number. The previous server showed both columns side by side and so
+    # should any screen built on this.
+    ticket_count: int | None = Field(
+        None, description="distinct tickets behind this bucket (multi-value axes only)"
+    )
     ratio: float = Field(description="share of the total, 0.0 to 1.0")
     avg_resolution_minutes: float | None = None
     total_cost: Decimal | None = None
@@ -242,5 +249,10 @@ class ServiceTrend(BaseModel):
 
 class ServiceGrouped(BaseModel):
     group_by: str
-    total: int
+    total: int = Field(description="대응 건수 - tickets matching the filters")
+    # Set on multi-value axes (분류 / 증상 / 제조사). It is the denominator of
+    # `ratio` there, because a 건 with three 분류 contributes three rows.
+    total_causes: int | None = Field(
+        None, description="원인 수 - classification rows behind those tickets"
+    )
     buckets: list[StatBucket]

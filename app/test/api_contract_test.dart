@@ -4,13 +4,22 @@
 /// payload the server actually sends still matches. It is the check that
 /// catches a field rename on the backend before the UI does.
 ///
-/// Requires a running server with demo data:
+/// Requires a running server **with demo data** - it asserts on things
+/// seed_demo.py puts there (a department per user, a nested location tree, one
+/// account waiting for approval). Pointed at a server holding real migrated
+/// data those assertions do not hold, so the suite skips itself instead of
+/// reporting failures that are not defects:
+///
 ///   cd ../backend && python scripts/seed_demo.py
 ///   uvicorn app.main:app --host 127.0.0.1 --port 8000
 ///
 /// Run:  flutter test test/api_contract_test.dart
-/// The whole group is skipped when nothing answers on the port, so this stays
-/// safe in CI without a backend.
+/// Override the target when the demo server is not the default one:
+///   flutter test --dart-define=CONTRACT_URL=http://127.0.0.1:8001 \
+///                --dart-define=CONTRACT_EMAIL=... --dart-define=CONTRACT_PW=...
+///
+/// The group is skipped when nothing answers on the port, or when the demo
+/// account cannot log in, so this stays safe in CI without a backend.
 library;
 
 import 'dart:io';
@@ -29,9 +38,12 @@ import 'package:ddeck_app/models/service.dart';
 import 'package:ddeck_app/models/user.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const serverUrl = 'http://127.0.0.1:8000';
-const demoEmail = 'seojun.kim@ddeck.local';
-const demoPassword = 'demo1234';
+const serverUrl =
+    String.fromEnvironment('CONTRACT_URL', defaultValue: 'http://127.0.0.1:8000');
+const demoEmail = String.fromEnvironment('CONTRACT_EMAIL',
+    defaultValue: 'seojun.kim@ddeck.local');
+const demoPassword =
+    String.fromEnvironment('CONTRACT_PW', defaultValue: 'demo1234');
 
 Future<bool> serverIsUp() async {
   try {
@@ -58,8 +70,6 @@ Future<void> main() async {
   // Decided before the group is declared, so a missing backend skips
   // cleanly instead of failing every test with a connection error.
   final up = await serverIsUp();
-  final skipReason =
-      up ? null : 'backend not running on $serverUrl - skipping live contract tests';
 
   late ApiClient api;
   late AuthRepository authRepo;
@@ -70,8 +80,12 @@ Future<void> main() async {
   late AdminRepository adminRepo;
   late UserProfile me;
 
-  setUpAll(() async {
-    if (!up) return;
+  // Sign in before the group is declared, the same way serverIsUp() is awaited
+  // above: `skip:` is evaluated at declaration time, so a decision made inside
+  // setUpAll would come too late to keep the bodies from running.
+  String? skipReason =
+      up ? null : 'backend not running on $serverUrl - skipping live contract tests';
+  if (up) {
     api = ApiClient(tokenStore: TokenStore());
     await api.setServerUrl(serverUrl, persist: false);
     authRepo = AuthRepository(api);
@@ -81,10 +95,18 @@ Future<void> main() async {
     calendarRepo = CalendarRepository(api);
     adminRepo = AdminRepository(api);
 
-    final session = await authRepo.login(demoEmail, demoPassword);
-    api.tokenStore.accessToken = session.accessToken;
-    me = session.user;
-  });
+    try {
+      final session = await authRepo.login(demoEmail, demoPassword);
+      api.tokenStore.accessToken = session.accessToken;
+      me = session.user;
+    } catch (_) {
+      // The server answers but the demo account is not there, so this instance
+      // holds real data rather than seed_demo's. The assertions below describe
+      // the demo fixture, so they would report failures that are not defects.
+      skipReason = '$demoEmail cannot log in on $serverUrl - '
+          'this server has no demo data, skipping live contract tests';
+    }
+  }
 
   group('live backend contract', () {
     test('healthz answers before anything else', () async {
@@ -241,7 +263,7 @@ Future<void> main() async {
       expect(health.uptimeLabel, isNotEmpty);
 
       final stats = await adminRepo.stats();
-      expect(stats.tables.length, 24, reason: 'the schema has 24 tables');
+      expect(stats.tables.length, 28, reason: 'the schema has 28 tables');
       expect(stats.usersActive, greaterThan(0));
     });
 

@@ -28,6 +28,7 @@ from app.models.enums import (
     MovementType,
 )
 from app.models.inventory import Asset, AssetMovement, Location
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.common import CodeItemBrief, Message, Page, UserBrief
 from app.schemas.inventory import (
@@ -43,6 +44,7 @@ from app.schemas.inventory import (
     LocationNode,
     LocationOut,
     LocationUpdate,
+    StoreBrief,
 )
 from app.services import audit, settings_store
 
@@ -166,6 +168,8 @@ def list_assets(
     category_id: uuid.UUID | None = None,
     location_id: uuid.UUID | None = None,
     holder_id: uuid.UUID | None = None,
+    store_id: uuid.UUID | None = Query(None, description="이 매장에 나가 있는 자산만"),
+    brand_id: uuid.UUID | None = Query(None, description="이 브랜드의 매장에 있는 자산만"),
     include_sublocations: bool = True,
     below_min_only: bool = False,
 ) -> Page[AssetOut]:
@@ -192,6 +196,17 @@ def list_assets(
             stmt = stmt.where(Asset.location_id.in_(_descendant_ids(db, location_id)))
         else:
             stmt = stmt.where(Asset.location_id == location_id)
+    if store_id:
+        stmt = stmt.where(Asset.store_id == store_id)
+    if brand_id:
+        # 브랜드는 매장에 달려 있다. 자산 -> 매장 -> 브랜드로 한 단계 더 탄다.
+        stmt = stmt.where(
+            Asset.store_id.in_(
+                select(Store.id).where(
+                    Store.brand_id == brand_id, Store.deleted_at.is_(None)
+                )
+            )
+        )
     if below_min_only:
         stmt = stmt.where(
             Asset.min_quantity.isnot(None), Asset.quantity < Asset.min_quantity
@@ -213,10 +228,14 @@ def create_asset(
     data = payload.model_dump()
     asset_no = data.pop("asset_no", None)
 
-    if settings_store.get(db, ModuleKey.INVENTORY, "require_location", True) and not data.get(
-        "location_id"
+    # 자산은 우리 위치(창고·사무실)에 있거나 매장에 나가 있거나 둘 중 하나다.
+    # location_id 만 보고 막으면 매장 설치 장비를 등록할 수 없다.
+    if settings_store.get(db, ModuleKey.INVENTORY, "require_location", True) and not (
+        data.get("location_id") or data.get("store_id")
     ):
-        raise AppError("LOCATION_REQUIRED", "자산 등록 시 위치는 필수입니다.")
+        raise AppError(
+            "LOCATION_REQUIRED", "자산 등록 시 위치 또는 매장 중 하나는 지정해야 합니다."
+        )
 
     asset = Asset(**data, created_by_id=user.id)
     if asset_no:
@@ -306,9 +325,11 @@ def move_asset(
         from_location_id=asset.location_id,
         from_holder_id=asset.holder_id,
         from_status=asset.status,
-        to_location_id=payload.to_location_id,
-        to_holder_id=payload.to_holder_id,
-        to_status=payload.to_status,
+        from_store_id=asset.store_id,
+        from_status_item_id=asset.status_item_id,
+        # to_* 는 아래에서 자산을 고친 뒤 그 결과로 채운다. 요청에 실려 온
+        # 값만 적으면, 상태만 바꾼 이동이 "매장에서 나감"으로 읽힌다
+        # (안 보낸 칸이 None 으로 남아서).
         quantity=payload.quantity if payload.quantity is not None else asset.quantity,
         moved_at=payload.moved_at or now_utc(),
         moved_by_id=user.id,
@@ -317,14 +338,32 @@ def move_asset(
         reference_id=payload.reference_id,
     )
 
-    if payload.to_location_id is not None:
+    # 자산은 우리 위치에 있거나 매장에 나가 있거나 둘 중 하나다. 한쪽을
+    # 채우면 반대쪽을 비워야 두 칸이 동시에 차서 "어디 있는지 모르는" 행이
+    # 생기지 않는다. 구 서버도 store 와 place 를 이렇게 배타적으로 다뤘다.
+    if payload.to_store_id is not None:
+        asset.store_id = payload.to_store_id
+        asset.location_id = None
+    elif payload.to_location_id is not None:
         asset.location_id = payload.to_location_id
+        asset.store_id = None
+    elif payload.clear_store:
+        asset.store_id = None
+
     if payload.to_holder_id is not None:
         asset.holder_id = payload.to_holder_id
     if payload.to_status is not None:
         asset.status = payload.to_status
     elif payload.movement_type in _IMPLIED_STATUS:
         asset.status = _IMPLIED_STATUS[payload.movement_type]
+    if payload.to_status_item_id is not None:
+        asset.status_item_id = payload.to_status_item_id
+
+    # 세트는 그 매장 안에서만 뜻이 있다. 매장을 떠나면 미지정으로 되돌린다.
+    if payload.to_set_no is not None:
+        asset.set_no = payload.to_set_no
+    elif asset.store_id is None:
+        asset.set_no = 0
 
     if payload.movement_type == MovementType.RETURN:
         asset.holder_id = None
@@ -334,6 +373,15 @@ def move_asset(
         asset.quantity = payload.quantity
 
     asset.updated_by_id = user.id
+
+    # 결과 상태를 이력에 박는다. from_* 가 "직전 상태"이므로 to_* 도
+    # "직후 상태"여야 한 줄만 읽고도 무엇이 바뀌었는지 알 수 있다.
+    movement.to_location_id = asset.location_id
+    movement.to_holder_id = asset.holder_id
+    movement.to_status = asset.status
+    movement.to_store_id = asset.store_id
+    movement.to_status_item_id = asset.status_item_id
+
     db.add(movement)
     audit.record(
         db,
@@ -503,6 +551,12 @@ def _detail(db: Session, asset_id: uuid.UUID) -> AssetDetail:
     if asset.category_id:
         cat = db.get(CodeItem, asset.category_id)
         out.category = CodeItemBrief.model_validate(cat) if cat else None
+    if asset.store_id:
+        store = db.get(Store, asset.store_id)
+        out.store = StoreBrief.model_validate(store) if store else None
+    if asset.status_item_id:
+        item = db.get(CodeItem, asset.status_item_id)
+        out.status_item = CodeItemBrief.model_validate(item) if item else None
     return out
 
 

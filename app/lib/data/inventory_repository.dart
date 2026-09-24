@@ -42,6 +42,8 @@ class InventoryRepository {
     AssetStatus? status,
     String? categoryId,
     String? locationId,
+    String? storeId,
+    String? brandId,
     bool includeSublocations = true,
     bool belowMinOnly = false,
   }) async {
@@ -52,6 +54,8 @@ class InventoryRepository {
       'status': status?.value,
       'category_id': categoryId,
       'location_id': locationId,
+      'store_id': storeId,
+      'brand_id': brandId,
       // Only send when it changes the default, to keep the URL readable.
       'include_sublocations': includeSublocations ? null : false,
       'below_min_only': belowMinOnly ? true : null,
@@ -62,10 +66,18 @@ class InventoryRepository {
   Future<Asset> get(String id) async =>
       Asset.fromJson(asMap(await _api.get('/inventory/assets/$id')));
 
+  /// 자산 한 대 등록.
+  ///
+  /// 서버는 위치와 매장 중 **하나**를 요구한다. 매장에 설치된 장비는 창고
+  /// 위치가 없는 것이 정상이라, 둘 다 비면 거절당한다.
   Future<Asset> create({
     required String name,
     String? categoryId,
     String? locationId,
+    String? storeId,
+    String? statusItemId,
+    int setNo = 0,
+    AssetStatus? status,
     String? manufacturer,
     String? modelName,
     String? serialNo,
@@ -73,11 +85,16 @@ class InventoryRepository {
     String unit = 'EA',
     double? minQuantity,
     double? purchasePrice,
+    String? note,
   }) async {
     final res = await _api.post('/inventory/assets', body: {
       'name': name,
       'category_id': categoryId,
       'location_id': locationId,
+      'store_id': storeId,
+      'status_item_id': statusItemId,
+      'set_no': setNo == 0 ? null : setNo,
+      'status': status?.value,
       'manufacturer': manufacturer,
       'model_name': modelName,
       'serial_no': serialNo,
@@ -85,6 +102,7 @@ class InventoryRepository {
       'unit': unit,
       'min_quantity': minQuantity,
       'purchase_price': purchasePrice,
+      'note': note,
     }..removeWhere((_, v) => v == null));
     return Asset.fromJson(asMap(res));
   }
@@ -103,7 +121,11 @@ class InventoryRepository {
     required MovementType type,
     String? toLocationId,
     String? toHolderId,
+    String? toStoreId,
+    String? toStatusItemId,
+    int? toSetNo,
     AssetStatus? toStatus,
+    bool clearStore = false,
     double? quantity,
     String? reason,
   }) async {
@@ -111,7 +133,11 @@ class InventoryRepository {
       'movement_type': type.value,
       if (toLocationId != null) 'to_location_id': toLocationId,
       if (toHolderId != null) 'to_holder_id': toHolderId,
+      if (toStoreId != null) 'to_store_id': toStoreId,
+      if (toStatusItemId != null) 'to_status_item_id': toStatusItemId,
+      if (toSetNo != null) 'to_set_no': toSetNo,
       if (toStatus != null) 'to_status': toStatus.value,
+      if (clearStore) 'clear_store': true,
       if (quantity != null) 'quantity': quantity,
       if (reason?.isNotEmpty == true) 'reason': reason,
     });

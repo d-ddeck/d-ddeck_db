@@ -38,6 +38,7 @@ class ModuleKey(StrEnum):
     INVENTORY = "INVENTORY"
     BOARD = "BOARD"
     CALENDAR = "CALENDAR"
+    STORE = "STORE"          # 매장 - 브랜드/폐점/납품 장비 세트
 
 
 # ---------------- Service (AS) ----------------

@@ -28,7 +28,13 @@ from app.models.enums import (
     ServicePriority,
     ServiceStatus,
 )
-from app.models.service import Customer, ServiceLog, ServicePart, ServiceTicket
+from app.models.service import (
+    Customer,
+    ServiceLog,
+    ServicePart,
+    ServiceTicket,
+    ServiceTicketCause,
+)
 from app.schemas.common import Message, Page, UserBrief
 from app.schemas.service import (
     CustomerCreate,
@@ -167,6 +173,37 @@ def list_tickets(
     )
 
 
+def _sync_head_cause(db: Session, ticket: ServiceTicket) -> None:
+    """티켓의 대표 분류를 service_ticket_causes 의 seq 1 행과 맞춘다.
+
+    통계가 원인 행을 세기 때문에(구 서버와 같은 방식) 원인 행이 하나도 없는
+    티켓은 분류별 집계에서 통째로 빠진다. 화면이 아직 다중 분류를 입력받지
+    않으므로, 대표 분류를 seq 1 로 비춰 두어 API 로 만든 건도 집계에 잡히게
+    한다. 다중 입력이 붙으면 이 함수가 seq 1 만 손본다는 점은 그대로다.
+    """
+    head = db.scalar(
+        select(ServiceTicketCause).where(
+            ServiceTicketCause.ticket_id == ticket.id, ServiceTicketCause.seq == 1
+        )
+    )
+    if ticket.category_id is None and ticket.symptom_id is None:
+        if head is not None:
+            db.delete(head)
+        return
+    if head is None:
+        db.add(
+            ServiceTicketCause(
+                ticket_id=ticket.id,
+                seq=1,
+                category_id=ticket.category_id,
+                symptom_id=ticket.symptom_id,
+            )
+        )
+    else:
+        head.category_id = ticket.category_id
+        head.symptom_id = ticket.symptom_id
+
+
 @router.post("/tickets", response_model=ServiceTicketDetail, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: ServiceTicketCreate, db: DbSession, user: CurrentUser, client: Client
@@ -188,6 +225,7 @@ def create_ticket(
         created_by_id=user.id,
     )
     _insert_with_ticket_no(db, ticket)
+    _sync_head_cause(db, ticket)
 
     for part in payload.parts:
         db.add(ServicePart(ticket_id=ticket.id, **part.model_dump()))
@@ -238,6 +276,8 @@ def update_ticket(
         setattr(ticket, field, value)
     ticket.updated_by_id = user.id
     _recalc_costs(db, ticket)
+    if "category_id" in data or "symptom_id" in data:
+        _sync_head_cause(db, ticket)
 
     if "assignee_id" in data and data["assignee_id"] != previous_assignee:
         if ticket.status == ServiceStatus.RECEIVED and ticket.assignee_id:
@@ -441,9 +481,13 @@ def stats_grouped(
     db: DbSession,
     _: CurrentUser,
     group_by: Annotated[
+        # stats.GroupBy 와 같은 목록이어야 한다. 두 군데에 적혀 있으니
+        # 축을 더할 때 둘 다 고쳐야 한다.
         Literal[
-            "category", "symptom", "cause", "action",
+            "category", "symptom", "maker",
+            "cause", "action", "fault",
             "assignee", "status", "priority", "channel", "department",
+            "store", "brand",
         ],
         Query(description="classification axis"),
     ] = "category",

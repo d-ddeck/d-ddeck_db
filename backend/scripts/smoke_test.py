@@ -126,7 +126,7 @@ with TestClient(app) as c:
 
     r = c.get("/api/v1/admin/settings/SERVICE", headers=bearer(admin_token))
     check("서비스 설정창 로드", r.status_code == 200 and len(r.json()["settings"]) >= 5, r.text)
-    check("설정창에 분류 코드 동봉", len(r.json()["code_groups"]) == 4, len(r.json()["code_groups"]))
+    check("설정창에 분류 코드 동봉", len(r.json()["code_groups"]) == 7, len(r.json()["code_groups"]))
 
     r = c.put(
         "/api/v1/admin/settings/SERVICE",
@@ -578,7 +578,7 @@ with TestClient(app) as c:
     check("계정 수", st["users_active"] == 2, st["users_active"])
     check("AS 건수", st["tickets_total"] == 4, st["tickets_total"])
     check("자산 건수", st["assets_total"] == 2, st["assets_total"])
-    check("테이블 목록", len(st["tables"]) == 24, len(st["tables"]))
+    check("테이블 목록", len(st["tables"]) == 28, len(st["tables"]))
 
     r = c.get("/api/v1/admin/audit-logs?size=100", headers=bearer(admin_token))
     logs = r.json()

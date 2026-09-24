@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.2+2
 
 environment:
   sdk: ^3.9.2
@@ -60,6 +60,28 @@ dependencies:
   # 알람 예약은 로컬 타임존 기준이어야 한다. 서버가 주는 UTC 를 변환한다.
   timezone: ^0.9.4
   flutter_timezone: ^3.0.1
+
+  # WireGuard 터널을 앱이 직접 올리고 내린다.
+  #
+  # 공식 안드로이드 라이브러리(com.wireguard.android:tunnel)를 감싼 얇은
+  # 플러그인이라, 암호화와 터널 구현은 WireGuard 프로젝트 코드 그대로다.
+  # 이 패키지가 하는 일은 설정을 넘기고 VpnService 수명주기를 다루는 것뿐이다.
+  wireguard_flutter_plus: ^1.0.7
+
+  # WireGuard 설정 QR 촬영. 공유기가 피어마다 QR 을 발급하고, 그 QR 안에는
+  # .conf 텍스트가 그대로 들어 있다. 안드로이드 전용 - 데스크톱은 카메라가
+  # 없어 .conf 파일 가져오기로 대신한다.
+  mobile_scanner: ^7.4.2
+
+  # 첨부 고르기. 구 서버에는 있었으나 이 클라이언트에는 빠져 있던 기능이다.
+  # 데스크톱(GTK 파일 대화상자)과 안드로이드를 같은 API 로 다룬다.
+  file_picker: ^8.1.4
+
+  # 내려받은 첨부를 OS 기본 앱으로 연다.
+  open_filex: ^4.5.0
+
+  # 첨부를 저장할 폴더(다운로드/문서)를 OS 규칙대로 찾는다.
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

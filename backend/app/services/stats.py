@@ -12,9 +12,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Literal
 
-from sqlalchemy import Float, Select, and_, case, cast, func, select
+from sqlalchemy import Float, Select, and_, case, cast, distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -26,7 +26,8 @@ from app.models.enums import (
     ServicePriority,
     ServiceStatus,
 )
-from app.models.service import ServiceTicket
+from app.models.service import ServiceTicket, ServiceTicketCause
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.service import (
     ServiceGrouped,
@@ -38,9 +39,15 @@ from app.schemas.service import (
 
 Interval = Literal["day", "week", "month"]
 GroupBy = Literal[
-    "category", "symptom", "cause", "action",
+    "category", "symptom", "maker",
+    "cause", "action", "fault",
     "assignee", "status", "priority", "channel", "department",
+    "store", "brand",
 ]
+
+# 한 건에 여러 값이 달리는 축. 이 축들은 service_ticket_causes 를 세므로
+# 버킷 합계가 대응 건수보다 커질 수 있다(구 서버와 같은 방식).
+MULTI_AXES = ("category", "symptom", "maker")
 
 # Korean labels for the enum-backed axes, so the client does not need its own map.
 STATUS_LABELS = {
@@ -134,13 +141,19 @@ def apply_filters(
 
 
 def _buckets(
-    rows: list[tuple[Any, int, float | None, Any]],
+    rows: list[tuple],
     total: int,
     labels: dict | None = None,
     colors: dict | None = None,
 ) -> list[StatBucket]:
+    """rows 는 (key, count, avg_min, cost) 또는 (key, count, avg_min, cost, tickets).
+
+    다섯 번째 값이 있으면 그 버킷의 대응 건수(중복 제거)다.
+    """
     out: list[StatBucket] = []
-    for key, count, avg_min, cost in rows:
+    for row in rows:
+        key, count, avg_min, cost = row[:4]
+        tickets = row[4] if len(row) > 4 else None
         k = str(key) if key is not None else "UNASSIGNED"
         out.append(
             StatBucket(
@@ -148,6 +161,7 @@ def _buckets(
                 label=(labels or {}).get(key, k) if labels else k,
                 color=(colors or {}).get(key) if colors else None,
                 count=count,
+                ticket_count=tickets,
                 ratio=round(count / total, 4) if total else 0.0,
                 avg_resolution_minutes=round(avg_min, 1) if avg_min is not None else None,
                 total_cost=Decimal(str(cost)) if cost is not None else None,
@@ -211,12 +225,107 @@ def summary(db: Session, **filters) -> ServiceSummary:
 
 
 # --------------------------------------------------------------- grouped
+
+# 한 건에 값이 하나뿐인 축. 티켓 행을 그대로 센다.
 _CODE_AXES = {
-    "category": ServiceTicket.category_id,
-    "symptom": ServiceTicket.symptom_id,
     "cause": ServiceTicket.cause_id,
     "action": ServiceTicket.action_id,
+    "fault": ServiceTicket.fault_id,
 }
+
+# 한 건에 여러 값이 달리는 축. service_ticket_causes 행을 센다.
+#
+# 구 서버가 이렇게 셌다: 서비스구분이 세 개 달린 건은 세 버킷에 각각 1씩
+# 들어가고, 화면은 그 옆에 중복을 뺀 '대응 건수'를 같이 보여 줬다. 두 숫자가
+# 다른 것이 정상이라, 어느 쪽을 말하는지 화면이 밝혀야 한다.
+_CAUSE_AXES = {
+    "category": ServiceTicketCause.category_id,
+    "symptom": ServiceTicketCause.symptom_id,
+    "maker": ServiceTicketCause.maker_id,
+}
+
+
+def _store_grouped(db: Session, total: int, **filters) -> ServiceGrouped:
+    """매장별. 구 서버 통계의 1차 축 중 하나였다."""
+    res_min = resolution_minutes_expr()
+    stmt = apply_filters(
+        select(
+            func.coalesce(Store.name, "미지정"),
+            func.count(ServiceTicket.id),
+            func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
+            func.sum(ServiceTicket.total_cost),
+        )
+        .select_from(ServiceTicket)
+        .outerjoin(Store, Store.id == ServiceTicket.store_id),
+        **filters,
+    ).group_by(Store.id, Store.name).order_by(func.count(ServiceTicket.id).desc())
+    return ServiceGrouped(
+        group_by="store", total=total, buckets=_buckets(list(db.execute(stmt).all()), total)
+    )
+
+
+def _brand_grouped(db: Session, total: int, **filters) -> ServiceGrouped:
+    """브랜드별. 매장에 달린 브랜드 코드를 한 번 더 타고 올라간다."""
+    res_min = resolution_minutes_expr()
+    stmt = apply_filters(
+        select(
+            func.coalesce(CodeItem.name, "미지정"),
+            func.count(ServiceTicket.id),
+            func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
+            func.sum(ServiceTicket.total_cost),
+        )
+        .select_from(ServiceTicket)
+        .outerjoin(Store, Store.id == ServiceTicket.store_id)
+        .outerjoin(CodeItem, CodeItem.id == Store.brand_id),
+        **filters,
+    ).group_by(CodeItem.id, CodeItem.name).order_by(func.count(ServiceTicket.id).desc())
+    return ServiceGrouped(
+        group_by="brand", total=total, buckets=_buckets(list(db.execute(stmt).all()), total)
+    )
+
+
+def _cause_grouped(db: Session, group_by: GroupBy, total: int, **filters) -> ServiceGrouped:
+    """분류 / 증상 / 제조사 - 원인 행을 세는 축."""
+    col = _CAUSE_AXES[group_by]
+    total_causes = db.scalar(
+        apply_filters(
+            select(func.count(ServiceTicketCause.id))
+            .select_from(ServiceTicket)
+            .join(ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id),
+            **filters,
+        )
+    ) or 0
+
+    stmt = apply_filters(
+        select(
+            func.coalesce(CodeItem.name, "미분류"),
+            func.count(ServiceTicketCause.id),
+            None,
+            None,
+            func.count(distinct(ServiceTicket.id)),
+        )
+        .select_from(ServiceTicket)
+        .join(ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id)
+        .outerjoin(CodeItem, CodeItem.id == col),
+        **filters,
+    ).group_by(CodeItem.id, CodeItem.name).order_by(func.count(ServiceTicketCause.id).desc())
+
+    color_stmt = apply_filters(
+        select(func.coalesce(CodeItem.name, "미분류"), CodeItem.color)
+        .select_from(ServiceTicket)
+        .join(ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id)
+        .outerjoin(CodeItem, CodeItem.id == col),
+        **filters,
+    ).group_by(CodeItem.id, CodeItem.name, CodeItem.color)
+    colors = {name: c for name, c in db.execute(color_stmt).all()}
+
+    # 비율의 분모는 원인 총수다. 대응 건수로 나누면 합이 1 을 넘는다.
+    buckets = _buckets(list(db.execute(stmt).all()), total_causes)
+    for b in buckets:
+        b.color = colors.get(b.key)
+    return ServiceGrouped(
+        group_by=group_by, total=total, total_causes=total_causes, buckets=buckets
+    )
 
 
 def grouped(db: Session, group_by: GroupBy, **filters) -> ServiceGrouped:
@@ -228,6 +337,15 @@ def grouped(db: Session, group_by: GroupBy, **filters) -> ServiceGrouped:
     total = db.scalar(
         apply_filters(select(func.count(ServiceTicket.id)), **filters)
     ) or 0
+
+    if group_by in _CAUSE_AXES:
+        return _cause_grouped(db, group_by, total, **filters)
+
+    if group_by == "store":
+        return _store_grouped(db, total, **filters)
+
+    if group_by == "brand":
+        return _brand_grouped(db, total, **filters)
 
     if group_by in _CODE_AXES:
         col = _CODE_AXES[group_by]

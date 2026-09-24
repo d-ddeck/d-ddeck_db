@@ -29,7 +29,13 @@ class _FormOptions {
 /// editing 서비스 분류 in the settings screen changes this form with no
 /// client release.
 class ServiceFormPage extends StatefulWidget {
-  const ServiceFormPage({super.key});
+  const ServiceFormPage({super.key, this.ticket});
+
+  /// null 이면 신규 접수, 아니면 그 건을 고친다.
+  ///
+  /// 상태만은 여기서 못 바꾼다. 상태는 /status 로만 움직여야 타임라인과
+  /// 처리 이력이 같이 따라오기 때문에, 상세 화면의 상태 버튼이 그 자리다.
+  final ServiceTicket? ticket;
 
   @override
   State<ServiceFormPage> createState() => _ServiceFormPageState();
@@ -55,6 +61,30 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   bool _isWarranty = true;
   bool _busy = false;
 
+  bool get _isEdit => widget.ticket != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.ticket;
+    if (t == null) return;
+    _title.text = t.title;
+    _customerName.text = t.customerName ?? '';
+    _phone.text = t.contactPhone ?? '';
+    _address.text = t.siteAddress ?? '';
+    _product.text = t.productName ?? '';
+    _model.text = t.modelName ?? '';
+    _serial.text = t.serialNo ?? '';
+    _description.text = t.description ?? '';
+    _customerId = t.customerId;
+    _categoryId = t.categoryId;
+    _symptomId = t.symptomId;
+    _assigneeId = t.assigneeId;
+    _priority = t.priority;
+    _channel = t.channel;
+    _isWarranty = t.isWarranty;
+  }
+
   @override
   void dispose() {
     for (final c in [
@@ -79,7 +109,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     final authRepo = context.read<AuthRepository>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('AS 접수')),
+      appBar: AppBar(title: Text(_isEdit ? 'AS 수정' : 'AS 접수')),
       body: AsyncView<_FormOptions>(
         load: () async {
           final results = await Future.wait([
@@ -272,7 +302,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                         width: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('접수 등록'),
+                    : Text(_isEdit ? '저장' : '접수 등록'),
               ),
               const SizedBox(height: 24),
             ],
@@ -286,10 +316,36 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
 
+    final repo = context.read<ServiceRepository>();
     final ok = await runGuarded(
       context,
       () async {
-        await context.read<ServiceRepository>().create(
+        if (_isEdit) {
+          // PATCH 는 보낸 칸만 바꾼다. 비운 칸을 지우려면 null 을 명시해야
+          // 하므로 전 칸을 싣는다.
+          await repo.update(widget.ticket!.id, {
+            'title': _title.text.trim(),
+            'customer_id': _customerId,
+            'customer_name':
+                _customerId == null && _customerName.text.trim().isNotEmpty
+                    ? _customerName.text.trim()
+                    : null,
+            'contact_phone': _nullIfBlank(_phone.text),
+            'site_address': _nullIfBlank(_address.text),
+            'product_name': _nullIfBlank(_product.text),
+            'model_name': _nullIfBlank(_model.text),
+            'serial_no': _nullIfBlank(_serial.text),
+            'category_id': _categoryId,
+            'symptom_id': _symptomId,
+            'assignee_id': _assigneeId,
+            'priority': _priority.value,
+            'channel': _channel.value,
+            'is_warranty': _isWarranty,
+            'description': _nullIfBlank(_description.text),
+          });
+          return;
+        }
+        await repo.create(
               title: _title.text.trim(),
               customerId: _customerId,
               customerName:
@@ -312,11 +368,13 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   : _description.text.trim(),
             );
       },
-      successMessage: 'AS가 접수되었습니다.',
+      successMessage: _isEdit ? '수정되었습니다.' : 'AS가 접수되었습니다.',
     );
 
     if (!mounted) return;
     setState(() => _busy = false);
     if (ok) Navigator.of(context).pop(true);
   }
+
+  static String? _nullIfBlank(String v) => v.trim().isEmpty ? null : v.trim();
 }

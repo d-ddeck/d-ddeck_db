@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/file_repository.dart';
 import '../../data/service_repository.dart';
 import '../../models/service.dart';
 import '../async_view.dart';
+import '../common/attachment_section.dart';
 import '../format.dart';
 import '../theme.dart';
+import 'service_form_page.dart';
 
 class ServiceDetailPage extends StatefulWidget {
   const ServiceDetailPage({super.key, required this.ticketId});
@@ -19,6 +22,15 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
   final _viewKey = GlobalKey<AsyncViewState<ServiceTicket>>();
   bool _changed = false;
 
+  /// 앱바의 수정 버튼이 집어 갈 현재 건. builder 안에서만 알 수 있어 들고 있는다.
+  ServiceTicket? _current;
+
+  /// builder 가 만든 화면을 그대로 돌려주면서 현재 건만 기억한다.
+  Widget _wrap(ServiceTicket t, Widget child) {
+    _current = t;
+    return child;
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = context.read<ServiceRepository>();
@@ -28,11 +40,32 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
         if (!didPop) Navigator.of(context).pop(_changed);
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('AS 상세')),
+        appBar: AppBar(
+          title: const Text('AS 상세'),
+          actions: [
+            IconButton(
+              tooltip: '내용 수정',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () async {
+                final t = _current;
+                if (t == null) return;
+                final saved = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceFormPage(ticket: t),
+                  ),
+                );
+                if (saved == true) {
+                  _changed = true;
+                  _viewKey.currentState?.reload();
+                }
+              },
+            ),
+          ],
+        ),
         body: AsyncView<ServiceTicket>(
           key: _viewKey,
           load: () => repo.get(widget.ticketId),
-          builder: (context, t, reload) => ListView(
+          builder: (context, t, reload) => _wrap(t, ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Row(
@@ -169,6 +202,11 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 ),
               ),
 
+              const SizedBox(height: 12),
+              AttachmentSection(
+                entityType: FileRepository.serviceTicket,
+                entityId: t.id,
+              ),
               const SizedBox(height: 20),
               Wrap(
                 spacing: 8,
@@ -190,7 +228,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               ),
               const SizedBox(height: 24),
             ],
-          ),
+          )),
         ),
       ),
     );

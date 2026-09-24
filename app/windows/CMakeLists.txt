@@ -57,6 +57,14 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# wireguard_flutter_plus 의 windows/CMakeLists.txt 는 runner 에
+# requireAdministrator UAC 매니페스트를 링크 플래그로 건다. 이 앱은 데스크톱에서
+# VPN 을 쓰지 않고(VpnService.isSupported 가 false) 설치 프로그램도
+# PrivilegesRequired=lowest 라, 쓰지도 않는 기능이 관리자 권한만 요구하게 된다.
+# set_target_properties 는 나중 호출이 이기므로 플러그인 포함 뒤에서 되돌린다.
+set_target_properties(${BINARY_NAME} PROPERTIES
+  LINK_FLAGS "/MANIFESTUAC:\"level='asInvoker' uiAccess='false'\" /SUBSYSTEM:WINDOWS")
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

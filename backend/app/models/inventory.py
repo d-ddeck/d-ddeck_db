@@ -87,6 +87,23 @@ class Asset(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), index=True
     )  # 현 사용자 / 보관 책임자
 
+    # 매장 - set when the unit is out at a customer site. Mutually exclusive
+    # with location_id in practice: the old server split these too (an asset is
+    # either at a 매장 or at a 창고), and keeping both columns preserves that.
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("stores.id", ondelete="SET NULL"), index=True
+    )
+    # 납품 세트 번호 within that store; 0 = 세트 미지정. Points at StoreSet.set_no.
+    set_no: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # The old server tracked 13 states (설치 / 렌탈 중 / AS 대기 / 바른 회수 /
+    # 미상 ...) where AssetStatus has 6. `status` keeps the coarse enum every
+    # existing query relies on; this holds the original value so nothing is
+    # lost and the fine-grained states can be restored later.
+    status_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("code_items.id", ondelete="SET NULL"), index=True
+    )
+
     # --- quantity: 1 for a serialised unit, N for consumables ---
     quantity: Mapped[float] = mapped_column(Numeric(14, 3), default=1, nullable=False)
     unit: Mapped[str] = mapped_column(String(20), default="EA", nullable=False)
@@ -141,8 +158,24 @@ class AssetMovement(UUIDMixin, TimestampMixin, Base):
     to_holder_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL")
     )
+    # 매장 이동도 위치 이동만큼 자주 일어난다(창고 -> 설치, 폐점 -> 회수).
+    # 여기에 남기지 않으면 "이 장비가 어느 매장에 있었나"를 되짚을 수 없다.
+    from_store_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("stores.id", ondelete="SET NULL")
+    )
+    to_store_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("stores.id", ondelete="SET NULL")
+    )
+
     from_status: Mapped[AssetStatus | None] = mapped_column(enum_type(AssetStatus))
     to_status: Mapped[AssetStatus | None] = mapped_column(enum_type(AssetStatus))
+    # 구 서버의 13종 세부 상태. enum 6종으로 접히기 전의 값이라 이력에도 남긴다.
+    from_status_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("code_items.id", ondelete="SET NULL")
+    )
+    to_status_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("code_items.id", ondelete="SET NULL")
+    )
     quantity: Mapped[float | None] = mapped_column(Numeric(14, 3))
     moved_at: Mapped[datetime] = mapped_column(
         UTCDateTime, nullable=False, index=True

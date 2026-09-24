@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../core/api_exception.dart';
 import '../../core/config.dart';
 import '../../state/auth_state.dart';
+import '../../services/vpn_service.dart';
+import '../vpn/vpn_controls.dart';
 import '../theme.dart';
 import 'signup_page.dart';
 
@@ -132,6 +134,12 @@ class _LoginPageState extends State<LoginPage> {
                         ?.copyWith(color: scheme.outline),
                   ),
                   const SizedBox(height: 28),
+
+                  // VPN 이 꺼져 있으면 로그인 자체가 안 되므로 로그인 전에 연결한다.
+                  if (VpnService.isSupported) ...[
+                    const VpnControls(),
+                    const SizedBox(height: 20),
+                  ],
 
                   TextFormField(
                     controller: _email,

@@ -2169,13 +2169,17 @@
               "enum": [
                 "category",
                 "symptom",
+                "maker",
                 "cause",
                 "action",
+                "fault",
                 "assignee",
                 "status",
                 "priority",
                 "channel",
-                "department"
+                "department",
+                "store",
+                "brand"
               ],
               "type": "string",
               "description": "classification axis",
@@ -2829,6 +2833,44 @@
             }
           },
           {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 매장에 나가 있는 자산만",
+              "title": "Store Id"
+            },
+            "description": "이 매장에 나가 있는 자산만"
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "이 브랜드의 매장에 있는 자산만",
+              "title": "Brand Id"
+            },
+            "description": "이 브랜드의 매장에 있는 자산만"
+          },
+          {
             "name": "include_sublocations",
             "in": "query",
             "required": false,
@@ -3253,6 +3295,344 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/stores/brands": {
+      "get": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "List Brands",
+        "description": "브랜드별 매장 수와 보유 자산 수. 재고·매장 화면의 첫 단계.",
+        "operationId": "list_brands_api_v1_stores_brands_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrandSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Brands Api V1 Stores Brands Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stores": {
+      "get": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "List Stores",
+        "operationId": "list_stores_api_v1_stores_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "매장명",
+              "title": "Q"
+            },
+            "description": "매장명"
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "include_closed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "폐점 매장도 포함",
+              "default": false,
+              "title": "Include Closed"
+            },
+            "description": "폐점 매장도 포함"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-based page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "1-based page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "rows per page",
+              "default": 20,
+              "title": "Size"
+            },
+            "description": "rows per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_StoreOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Create Store",
+        "operationId": "create_store_api_v1_stores_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stores/{store_id}": {
+      "get": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Get Store",
+        "description": "매장 하나와 그 매장에 나가 있는 우리 자산 전부(종류별로 묶어서).",
+        "operationId": "get_store_api_v1_stores__store_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Update Store",
+        "operationId": "update_store_api_v1_stores__store_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Delete Store",
+        "operationId": "delete_store_api_v1_stores__store_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/board/boards": {
@@ -4637,6 +5017,63 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/calendar/reminders/upcoming": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Upcoming Reminders",
+        "description": "Alarms this user's device should schedule locally.\n\nThe client hands these to the OS alarm scheduler, so a reminder fires even\nwith no network and no VPN - the situation someone on the road is actually\nin. Server-side push stays as the mechanism for *changes*; this is the\nmechanism for *ringing*.\n\nOnly reminders the user is a participant of (or organiser of) are returned,\nand only ones that have not already been sent.",
+        "operationId": "upcoming_reminders_api_v1_calendar_reminders_upcoming_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 1,
+              "description": "look-ahead window",
+              "default": 7,
+              "title": "Days"
+            },
+            "description": "look-ahead window"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UpcomingReminder"
+                  },
+                  "title": "Response Upcoming Reminders Api V1 Calendar Reminders Upcoming Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/calendar/reminders/run": {
@@ -6053,6 +6490,38 @@
             ],
             "title": "Holder Id"
           },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "set_no": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Set No",
+            "description": "매장 납품 세트 번호, 0 = 미지정",
+            "default": 0
+          },
+          "status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Item Id",
+            "description": "세부 상태 코드(설치 / 렌탈 중 / AS 대기 ...)"
+          },
           "quantity": {
             "anyOf": [
               {
@@ -6265,6 +6734,35 @@
             ],
             "title": "Holder Id"
           },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "set_no": {
+            "type": "integer",
+            "title": "Set No",
+            "default": 0
+          },
+          "status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Item Id"
+          },
           "quantity": {
             "type": "string",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -6396,6 +6894,26 @@
               }
             ]
           },
+          "store": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "is_below_min": {
             "type": "boolean",
             "title": "Is Below Min",
@@ -6414,6 +6932,83 @@
           "updated_at"
         ],
         "title": "AssetDetail"
+      },
+      "AssetInStore": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "asset_no": {
+            "type": "string",
+            "title": "Asset No"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "serial_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial No"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "status_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "set_no": {
+            "type": "integer",
+            "title": "Set No",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "asset_no",
+          "name",
+          "status"
+        ],
+        "title": "AssetInStore",
+        "description": "매장 상세의 보유 장비 한 줄."
       },
       "AssetMoveRequest": {
         "properties": {
@@ -6454,6 +7049,50 @@
                 "type": "null"
               }
             ]
+          },
+          "to_store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Store Id"
+          },
+          "to_set_no": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Set No",
+            "description": "매장 납품 세트 번호"
+          },
+          "to_status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Status Item Id",
+            "description": "세부 상태 코드(설치 / 렌탈 중 / AS 대기 ...)"
+          },
+          "clear_store": {
+            "type": "boolean",
+            "title": "Clear Store",
+            "description": "매장에서 거두어들일 때 true - 매장 연결을 끊는다",
+            "default": false
           },
           "quantity": {
             "anyOf": [
@@ -6537,6 +7176,54 @@
           },
           "movement_type": {
             "$ref": "#/components/schemas/MovementType"
+          },
+          "from_store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Store Id"
+          },
+          "to_store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Store Id"
+          },
+          "from_status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status Item Id"
+          },
+          "to_status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Status Item Id"
           },
           "from_location_id": {
             "anyOf": [
@@ -6787,6 +7474,35 @@
               }
             ],
             "title": "Holder Id"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "set_no": {
+            "type": "integer",
+            "title": "Set No",
+            "default": 0
+          },
+          "status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Item Id"
           },
           "quantity": {
             "type": "string",
@@ -7103,6 +7819,18 @@
               }
             ],
             "title": "Note"
+          },
+          "status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Item Id"
           }
         },
         "type": "object",
@@ -7585,6 +8313,58 @@
           "file"
         ],
         "title": "Body_upload_api_v1_files_post"
+      },
+      "BrandSummary": {
+        "properties": {
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand_name": {
+            "type": "string",
+            "title": "Brand Name"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "store_count": {
+            "type": "integer",
+            "title": "Store Count"
+          },
+          "open_store_count": {
+            "type": "integer",
+            "title": "Open Store Count"
+          },
+          "asset_count": {
+            "type": "integer",
+            "title": "Asset Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brand_name",
+          "store_count",
+          "open_store_count",
+          "asset_count"
+        ],
+        "title": "BrandSummary",
+        "description": "브랜드별 매장·자산 현황. 재고 화면의 1차 분류."
       },
       "BroadcastRequest": {
         "properties": {
@@ -10202,8 +10982,8 @@
           "email": {
             "type": "string",
             "maxLength": 255,
-            "minLength": 3,
-            "pattern": "^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$",
+            "minLength": 1,
+            "pattern": "^(?:[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+|[A-Za-z0-9가-힣.+-]+)$",
             "title": "Email"
           },
           "password": {
@@ -10266,7 +11046,8 @@
           "SERVICE",
           "INVENTORY",
           "BOARD",
-          "CALENDAR"
+          "CALENDAR",
+          "STORE"
         ],
         "title": "ModuleKey"
       },
@@ -10646,6 +11427,42 @@
           "pages"
         ],
         "title": "Page[ServiceTicketOut]"
+      },
+      "Page_StoreOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StoreOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size",
+          "pages"
+        ],
+        "title": "Page[StoreOut]"
       },
       "Page_UserAdminView_": {
         "properties": {
@@ -11195,7 +12012,20 @@
           },
           "total": {
             "type": "integer",
-            "title": "Total"
+            "title": "Total",
+            "description": "대응 건수 - tickets matching the filters"
+          },
+          "total_causes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Causes",
+            "description": "원인 수 - classification rows behind those tickets"
           },
           "buckets": {
             "items": {
@@ -13227,6 +14057,18 @@
             "type": "integer",
             "title": "Count"
           },
+          "ticket_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Count",
+            "description": "distinct tickets behind this bucket (multi-value axes only)"
+          },
           "ratio": {
             "type": "number",
             "title": "Ratio",
@@ -13265,6 +14107,559 @@
         ],
         "title": "StatBucket",
         "description": "One row of any grouped statistic.\n\nkey is a stable identifier (enum value or code); label is for display."
+      },
+      "StoreAssetGroup": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/AssetInStore"
+            },
+            "type": "array",
+            "title": "Assets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_name",
+          "count",
+          "assets"
+        ],
+        "title": "StoreAssetGroup",
+        "description": "보유 장비를 종류별로 묶은 것. 매장 화면이 종류 단위로 읽힌다."
+      },
+      "StoreBrief": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "is_closed": {
+            "type": "boolean",
+            "title": "Is Closed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "StoreBrief",
+        "description": "자산 화면에서 \"어느 매장에 있나\"를 보여 줄 만큼만."
+      },
+      "StoreCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "open_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Date"
+          },
+          "is_closed": {
+            "type": "boolean",
+            "title": "Is Closed",
+            "default": false
+          },
+          "closed_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "gripper_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gripper Type"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "StoreCreate"
+      },
+      "StoreDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Date"
+          },
+          "is_closed": {
+            "type": "boolean",
+            "title": "Is Closed"
+          },
+          "closed_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "gripper_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gripper Type"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "asset_count": {
+            "type": "integer",
+            "title": "Asset Count",
+            "default": 0
+          },
+          "ticket_count": {
+            "type": "integer",
+            "title": "Ticket Count",
+            "default": 0
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/StoreSetOut"
+            },
+            "type": "array",
+            "title": "Sets",
+            "default": []
+          },
+          "asset_groups": {
+            "items": {
+              "$ref": "#/components/schemas/StoreAssetGroup"
+            },
+            "type": "array",
+            "title": "Asset Groups",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_closed",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "StoreDetail"
+      },
+      "StoreOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Date"
+          },
+          "is_closed": {
+            "type": "boolean",
+            "title": "Is Closed"
+          },
+          "closed_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "gripper_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gripper Type"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "asset_count": {
+            "type": "integer",
+            "title": "Asset Count",
+            "default": 0
+          },
+          "ticket_count": {
+            "type": "integer",
+            "title": "Ticket Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_closed",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "StoreOut"
+      },
+      "StoreSetOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "set_no": {
+            "type": "integer",
+            "title": "Set No"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "set_no"
+        ],
+        "title": "StoreSetOut"
+      },
+      "StoreUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "open_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Date"
+          },
+          "is_closed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Closed"
+          },
+          "closed_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "gripper_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gripper Type"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          }
+        },
+        "type": "object",
+        "title": "StoreUpdate"
       },
       "SystemStats": {
         "properties": {
@@ -13406,6 +14801,95 @@
           "completed"
         ],
         "title": "TrendPoint"
+      },
+      "UpcomingReminder": {
+        "properties": {
+          "reminder_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Reminder Id"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "all_day": {
+            "type": "boolean",
+            "title": "All Day"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled At",
+            "description": "when the alarm should fire, UTC"
+          },
+          "offset_minutes": {
+            "type": "integer",
+            "title": "Offset Minutes"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color",
+            "description": "event colour, else the calendar's"
+          },
+          "calendar_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reminder_id",
+          "event_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "all_day",
+          "scheduled_at",
+          "offset_minutes"
+        ],
+        "title": "UpcomingReminder",
+        "description": "One alarm the device should schedule locally.\n\nThe client registers these with the OS alarm scheduler so a reminder still\nfires when the phone is offline or outside the company VPN - which is\nexactly when someone on the road needs it. Everything needed to build the\nnotification is here, so no follow-up request is required."
       },
       "UserAdminView": {
         "properties": {

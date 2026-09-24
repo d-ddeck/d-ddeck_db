@@ -8,9 +8,12 @@ import 'data/admin_repository.dart';
 import 'data/auth_repository.dart';
 import 'data/board_repository.dart';
 import 'data/calendar_repository.dart';
+import 'data/file_repository.dart';
 import 'data/inventory_repository.dart';
 import 'data/service_repository.dart';
+import 'data/store_repository.dart';
 import 'services/alarm_service.dart';
+import 'services/vpn_service.dart';
 import 'state/auth_state.dart';
 import 'ui/auth/login_page.dart';
 import 'ui/auth/signup_page.dart';
@@ -46,6 +49,11 @@ Future<void> main() async {
         Provider<InventoryRepository>(create: (_) => InventoryRepository(api)),
         Provider<BoardRepository>(create: (_) => BoardRepository(api)),
         Provider<CalendarRepository>.value(value: calendarRepo),
+        Provider<StoreRepository>(create: (_) => StoreRepository(api)),
+        Provider<FileRepository>(create: (_) => FileRepository(api)),
+        ChangeNotifierProvider<VpnService>(
+          create: (_) => VpnService()..bootstrap(),
+        ),
         Provider<AdminRepository>(create: (_) => AdminRepository(api)),
         Provider<AlarmService>.value(value: alarms),
         ChangeNotifierProvider<AuthState>(

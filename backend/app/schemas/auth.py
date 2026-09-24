@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.security import validate_password_strength
 from app.models.enums import DevicePlatform, Role, UserStatus
-from app.schemas.common import Email, ORMModel
+from app.schemas.common import Email, LoginId, ORMModel
 
 
 class SignupRequest(BaseModel):
@@ -33,7 +33,10 @@ class SignupRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: Email
+    # LoginId, not Email: the field accepts `admin` as well as
+    # `admin@ddeck.local`. Accounts are still keyed by the full address - see
+    # `_find_login_user` in api/v1/auth.py.
+    email: LoginId
     password: str
     # Sent by the client so the token row shows a human-readable session name.
     device_name: str | None = Field(None, max_length=120)

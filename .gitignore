@@ -27,3 +27,9 @@ installer/Output/
 # VPN 설정 - PrivateKey / PresharedKey 가 들어 있다. 절대 커밋 금지
 *.conf
 *.conf.bak
+
+# 구 서버(CS_Record) 백업 스냅샷 - 실제 고객·대응 데이터(cs.db)와 설정이 들어 있다. 절대 커밋 금지
+beforeserver/
+
+# 리눅스 개발 PC 용 venv (Windows 용 .venv 와 이름을 달리 씀)
+backend/.venv-linux/
