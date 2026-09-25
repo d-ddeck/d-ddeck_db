@@ -28,6 +28,8 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
   final _viewKey = GlobalKey<AsyncViewState<ModuleSettings>>();
   bool _saving = false;
   bool _dirty = false;
+  // AsyncView unmounts cards while reloading; restore their parent selection.
+  final Map<String, String?> _selectedParents = {};
 
   @override
   Widget build(BuildContext context) {
@@ -98,8 +100,18 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
               const SizedBox(height: 10),
               for (final group in data.codeGroups)
                 Padding(
+                  key: ValueKey(group.id),
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _CodeGroupCard(group: group, onChanged: reload),
+                  child: _CodeGroupCard(
+                    group: group,
+                    parentGroup: data.codeGroups.where(
+                        (g) => g.code == group.parentGroupCode).firstOrNull,
+                    childGroups: data.codeGroups.where(
+                        (g) => g.parentGroupCode == group.code).toList(),
+                    initialParentId: _selectedParents[group.id],
+                    onParentSelected: (id) => _selectedParents[group.id] = id,
+                    onChanged: reload,
+                  ),
                 ),
             ],
           ],
@@ -265,19 +277,130 @@ class _SettingRowState extends State<_SettingRow> {
   }
 }
 
-class _CodeGroupCard extends StatelessWidget {
-  const _CodeGroupCard({required this.group, required this.onChanged});
+class _CodeGroupCard extends StatefulWidget {
+  const _CodeGroupCard({required this.group, required this.parentGroup,
+    required this.childGroups, required this.initialParentId,
+    required this.onParentSelected, required this.onChanged});
 
   final CodeGroup group;
+  final CodeGroup? parentGroup;
+  final List<CodeGroup> childGroups;
+  final String? initialParentId;
+  final ValueChanged<String?> onParentSelected;
   final VoidCallback onChanged;
 
   @override
+  State<_CodeGroupCard> createState() => _CodeGroupCardState();
+}
+
+class _CodeGroupCardState extends State<_CodeGroupCard> {
+  // An empty ID represents the explicit "상위 미지정" filter.
+  static const _unassigned = '';
+  String? _selectedParentId;
+  CodeGroup get group => widget.group;
+  CodeGroup? get parentGroup => widget.parentGroup;
+  VoidCallback get onChanged => widget.onChanged;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedParentId = widget.initialParentId;
+    _restoreParent();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CodeGroupCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _restoreParent();
+  }
+
+  void _restoreParent() {
+    if (parentGroup == null) return;
+    final parents = parentGroup?.items ?? const <CodeItem>[];
+    final hasUnassigned = group.items.any((i) => i.parentId == null);
+    if (!parents.any((p) => p.id == _selectedParentId) &&
+        !(_selectedParentId == _unassigned && hasUnassigned)) {
+      _selectedParentId = parents.where((p) =>
+          group.items.any((i) => i.parentId == p.id)).firstOrNull?.id ??
+          parents.firstOrNull?.id ?? (hasUnassigned ? _unassigned : null);
+    }
+    widget.onParentSelected(_selectedParentId);
+  }
+
+  void _selectParent(String? id) {
+    setState(() => _selectedParentId = id);
+    widget.onParentSelected(id);
+  }
+
+  Widget _parentField(String? value, ValueChanged<String?> onChanged) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: InputDecoration(labelText: '${parentGroup!.name} *'),
+      items: [for (final parent in parentGroup!.items)
+        DropdownMenuItem(value: parent.id,
+          child: Text('${parent.name}${parent.isActive ? '' : ' (비활성)'}',
+            overflow: TextOverflow.ellipsis)),
+      ],
+      validator: (id) => id == null ? '상위 분류를 선택해 주세요' : null,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget? _subtitle(BuildContext context, CodeItem item) {
+    if (parentGroup != null && item.parentId == null) {
+      return Text('상위 분류가 없어 접수 화면에 나오지 않습니다 · 이름·색 수정에서 상위를 지정하세요',
+        style: TextStyle(color: Theme.of(context).colorScheme.error));
+    }
+    final children = <String>[];
+    for (final child in widget.childGroups) {
+      final count = child.items.where((i) => i.parentId == item.id).length;
+      if (count > 0) children.add('${child.name} $count');
+    }
+    final lines = [
+      if (!item.isActive) '비활성 · 새 등록 때 선택 안 됨'
+      else if (item.code != item.name) item.code,
+      if (children.isNotEmpty) '하위: ${children.join(' · ')}',
+    ];
+    return lines.isEmpty ? null : Text(lines.join('\n'));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final items = parentGroup == null ? group.items : group.items.where(
+        (i) => _selectedParentId == _unassigned
+            ? i.parentId == null
+            : _selectedParentId != null && i.parentId == _selectedParentId).toList();
+    final unassignedCount = group.items.where((i) => i.parentId == null).length;
     return SectionCard(title: group.name, actions: [
       TextButton.icon(onPressed: () => _addItem(context), icon: const Icon(Icons.add), label: const Text('항목 추가')),
     ], child: Column(children: [
-      if (group.items.isEmpty) const EmptyState(message: '아직 등록된 코드 항목이 없습니다'),
-      for (final item in group.items) ListTile(
+      if (parentGroup != null) Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Align(alignment: Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: AppTheme.isWide(context) ? 360 : double.infinity),
+            child: DropdownButtonFormField<String>(
+              key: ValueKey(_selectedParentId),
+              initialValue: _selectedParentId,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: parentGroup!.name),
+              items: [
+                for (final parent in parentGroup!.items)
+                  DropdownMenuItem(value: parent.id, child: Text(
+                    '${parent.name} (하위 ${group.items.where((i) => i.parentId == parent.id).length}개)${parent.isActive ? '' : ' (비활성)'}',
+                    overflow: TextOverflow.ellipsis)),
+                if (unassignedCount > 0)
+                  DropdownMenuItem(value: _unassigned,
+                    child: Text('상위 미지정 ($unassignedCount)')),
+              ],
+              onChanged: _selectParent,
+            ),
+          ),
+        ),
+      ),
+      if (items.isEmpty) const EmptyState(message: '아직 등록된 코드 항목이 없습니다'),
+      for (final item in items) ListTile(
         title: Row(children: [
           Flexible(child: Text(item.name, style: TextStyle(
             color: item.isActive ? null : Theme.of(context).colorScheme.outline))),
@@ -287,9 +410,7 @@ class _CodeGroupCard extends StatelessWidget {
               child: Icon(Icons.lock_outline, size: 14)),
           ],
         ]),
-        subtitle: !item.isActive
-            ? const Text('비활성 · 새 등록 때 선택 안 됨')
-            : item.code != item.name ? Text(item.code) : null,
+        subtitle: _subtitle(context, item),
         leading: item.color == null ? null : CircleAvatar(radius: 7, backgroundColor: parseHexColor(item.color!)),
         trailing: PopupMenuButton<String>(
           tooltip: '항목 관리',
@@ -342,38 +463,60 @@ class _CodeGroupCard extends StatelessWidget {
   }
 
   Future<void> _addItem(BuildContext context) async {
-    final code = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var parentId = parentGroup?.items.where(
+        (p) => p.id == _selectedParentId).firstOrNull?.id;
+    final parent = parentGroup?.items.where((p) => p.id == parentId).firstOrNull;
+    final code = TextEditingController(text: parent == null ? '' : '${parent.code}_');
     final name = TextEditingController();
+    var codeEdited = false;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => ConfirmDialog.form(
         title: Text('${group.name} 항목 추가'),
-        content: Column(
+        content: Form(key: formKey, child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            if (parentGroup != null) ...[
+              _parentField(parentId, (id) {
+                parentId = id;
+                if (!codeEdited) {
+                  final parent = parentGroup!.items.where((p) => p.id == id).firstOrNull;
+                  code.text = parent == null ? '' : '${parent.code}_';
+                }
+              }),
+              const SizedBox(height: 10),
+            ],
+            TextFormField(
               controller: code,
               decoration: const InputDecoration(
                 labelText: '코드 *',
                 helperText: '영문 대문자 권장 (예: EMERGENCY)',
               ),
               textCapitalization: TextCapitalization.characters,
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? '코드를 입력해 주세요' : null,
+              onChanged: (_) => codeEdited = true,
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextFormField(
               controller: name,
               decoration: const InputDecoration(labelText: '표시 이름 *'),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? '이름을 입력해 주세요' : null,
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('취소'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.of(ctx).pop(true);
+            },
             child: const Text('추가'),
           ),
         ],
@@ -392,17 +535,21 @@ class _CodeGroupCard extends StatelessWidget {
             group.id,
             code: code.text.trim().toUpperCase(),
             name: name.text.trim(),
+            parentId: parentId,
             sortOrder: group.items.length + 1,
           ),
       successMessage: '항목이 추가되었습니다.',
     );
-    if (ok) onChanged();
+    if (!ok || !context.mounted) return;
+    if (parentGroup != null) _selectParent(parentId);
+    onChanged();
   }
 
   Future<void> _editItem(BuildContext context, CodeItem item) async {
     final formKey = GlobalKey<FormState>();
     var name = item.name;
     var color = item.color;
+    var parentId = parentGroup?.items.where((p) => p.id == item.parentId).firstOrNull?.id;
     const palette = [
       ('파랑', '#3B82F6'), ('하늘', '#0EA5E9'),
       ('청록', '#14B8A6'), ('초록', '#22C55E'),
@@ -417,6 +564,10 @@ class _CodeGroupCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (parentGroup != null) ...[
+              _parentField(parentId, (id) => setState(() => parentId = id)),
+              const SizedBox(height: 10),
+            ],
             TextFormField(
               initialValue: name,
               decoration: const InputDecoration(labelText: '표시 이름 *'),
@@ -460,9 +611,11 @@ class _CodeGroupCard extends StatelessWidget {
       await context.read<AdminRepository>().updateCodeItem(item.id, {
         'name': name.trim(),
         'color': color,
+        if (parentGroup != null) 'parent_id': parentId,
       });
     });
     if (!ok || !context.mounted) return;
+    if (parentGroup != null) _selectParent(parentId);
     onChanged();
     AppSnack.show(context, '저장되었습니다');
   }

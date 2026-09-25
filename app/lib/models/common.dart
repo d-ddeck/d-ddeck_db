@@ -106,6 +106,7 @@ class CodeGroup {
     required this.module,
     required this.items,
     this.isSystem = false,
+    this.parentGroupCode,
   });
 
   final String id;
@@ -114,6 +115,7 @@ class CodeGroup {
   final String module;
   final List<CodeItem> items;
   final bool isSystem;
+  final String? parentGroupCode;
 
   /// Only the entries that may be offered as a new choice.
   List<CodeItem> get selectable => items.where((i) => i.isActive).toList();
@@ -124,6 +126,7 @@ class CodeGroup {
         name: asString(j['name']),
         module: asString(j['module']),
         isSystem: asBool(j['is_system']),
+        parentGroupCode: j['parent_group_code'] as String?,
         items: (j['items'] as List? ?? [])
             .map((e) => CodeItem.fromJson(asMap(e)))
             .toList()

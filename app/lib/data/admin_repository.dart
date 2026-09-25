@@ -37,12 +37,14 @@ class AdminRepository {
     required String code,
     required String name,
     String? color,
+    String? parentId,
     int sortOrder = 0,
   }) async {
     final res = await _api.post('/admin/codes/$groupId/items', body: {
       'code': code,
       'name': name,
       if (color != null) 'color': color,
+      if (parentId != null) 'parent_id': parentId,
       'sort_order': sortOrder,
     });
     return CodeItem.fromJson(asMap(res));
