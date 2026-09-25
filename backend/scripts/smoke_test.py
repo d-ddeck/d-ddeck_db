@@ -640,6 +640,32 @@ with TestClient(app) as c:
     )
     check("이미 승인된 계정 재승인 차단", r.status_code == 400, r.status_code)
 
+    # ---- 계정 삭제 (관리자): 본인 · 마지막 관리자는 못 지운다 (구 서버 규칙) ----
+    r = c.delete(f"/api/v1/users/{admin_id}", headers=bearer(admin_token))
+    check("본인 계정 삭제 차단", r.status_code == 400 and r.json()["error"]["code"] == "CANNOT_DELETE_SELF", r.text)
+    r = c.delete(f"/api/v1/users/{user_id}", headers=bearer(admin_token))
+    check("팀원 계정 삭제", r.status_code == 200, r.text)
+    r = c.get(f"/api/v1/users/{user_id}", headers=bearer(admin_token))
+    check("삭제된 계정은 조회되지 않음", r.status_code == 404, r.status_code)
+    r = c.post("/api/v1/auth/login", json={"email": email, "password": "test1234"})
+    check("삭제된 계정 로그인 차단", r.status_code in (401, 403), r.status_code)
+    r = c.get("/api/v1/users?size=100", headers=bearer(admin_token))
+    admins = [u for u in r.json()["items"] if u["role"] in ("ADMIN", "SUPERADMIN") and u["status"] == "APPROVED"]
+    check("남은 관리자 1명", len(admins) == 1, admins)
+    # 다른 관리자로 마지막 관리자를 지우려 해도 막힌다: 임시 관리자를 만들어 시험
+    r = c.post("/api/v1/auth/signup", json={"email": "admin2@ddeck.local", "password": "admin2pass1", "full_name": "임시관리자"})
+    tmp_id = r.json()["id"] if r.status_code == 201 and "id" in r.json() else None
+    if tmp_id is None:
+        tmp_id = next(u["id"] for u in c.get("/api/v1/users/pending", headers=bearer(admin_token)).json()["items"] if u["email"] == "admin2@ddeck.local")
+    c.post(f"/api/v1/users/{tmp_id}/approve", headers=bearer(admin_token), json={"role": "ADMIN"})
+    r = c.post("/api/v1/auth/login", json={"email": "admin2@ddeck.local", "password": "admin2pass1"})
+    check("임시 관리자 로그인", r.status_code == 200, r.text)
+    tmp_token = r.json()["access_token"]
+    r = c.delete(f"/api/v1/users/{admin_id}", headers=bearer(tmp_token))
+    check("일반 관리자는 최고 관리자를 못 지움", r.status_code == 403, r.text)
+    r = c.delete(f"/api/v1/users/{tmp_id}", headers=bearer(admin_token))
+    check("관리자가 둘이면 하나는 지울 수 있음", r.status_code == 200, r.text)
+
 print(f"\n{'=' * 60}")
 print(f"  통과 {PASSED}건 - 전 모듈 정상 동작")
 print(f"{'=' * 60}")

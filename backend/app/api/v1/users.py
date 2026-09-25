@@ -286,6 +286,22 @@ def deactivate(
         raise AppError(
             "FORBIDDEN", "최고 관리자 계정은 삭제할 수 없습니다.", status.HTTP_403_FORBIDDEN
         )
+    # 구 서버 규칙: 마지막 관리자 계정은 지울 수 없다. 관리자가 한 명도 안 남으면
+    # 승인·설정을 아무도 못 하게 된다.
+    if ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.ADMIN]:
+        remaining = db.scalar(
+            select(func.count(User.id)).where(
+                User.id != user.id,
+                User.deleted_at.is_(None),
+                User.status == UserStatus.APPROVED,
+                User.role.in_([Role.ADMIN, Role.SUPERADMIN]),
+            )
+        ) or 0
+        if remaining == 0:
+            raise AppError(
+                "LAST_ADMIN",
+                "마지막 관리자 계정은 삭제할 수 없습니다. 다른 계정을 먼저 관리자로 만드세요.",
+            )
 
     user.deleted_at = now_utc()
     user.status = UserStatus.RESIGNED
