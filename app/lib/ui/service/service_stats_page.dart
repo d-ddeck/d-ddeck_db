@@ -177,7 +177,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                   for (final a in StatAxis.values)
                     DropdownMenuItem(
                       value: a,
-                      child: Text(a.label, style: const TextStyle(fontSize: 13)),
+                      child: Text(a == StatAxis.symptom ? '세부분류' : a.label, style: const TextStyle(fontSize: 13)),
                     ),
                 ],
                 onChanged: (v) => setState(() {

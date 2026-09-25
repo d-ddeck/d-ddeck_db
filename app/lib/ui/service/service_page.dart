@@ -232,7 +232,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
                 _select('매장', 'store_id', {for (final s in _stores) s.id: '${s.name}${s.isClosed ? ' (폐점)' : ''}'}, update, enabled: !_storesLoading),
                 _select('서비스구분', 'category_id', _codeChoices('SERVICE_CATEGORY'), update,
                   after: (_) => update(() => _filters.remove('symptom_id'))),
-                _select('증상', 'symptom_id', _filters['category_id'] == null ? {} : _codeChoices('SERVICE_SYMPTOM', parent: _filters['category_id'] as String?), update,
+                _select('세부분류', 'symptom_id', _filters['category_id'] == null ? {} : _codeChoices('SERVICE_SYMPTOM', parent: _filters['category_id'] as String?), update,
                   enabled: _filters['category_id'] != null && _codeChoices('SERVICE_SYMPTOM', parent: _filters['category_id'] as String?).isNotEmpty),
                 _select('과실', 'fault_id', _codeChoices('SERVICE_FAULT'), update),
                 _select('대응인원', 'responder_id', _codeChoices('SERVICE_RESPONDER'), update),

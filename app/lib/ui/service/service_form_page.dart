@@ -72,6 +72,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   bool _storesLoading = false;
   int _storeRequest = 0;
   bool _defaultsLoaded = false;
+  bool _causeRowsInitialized = false;
   ServicePriority _priority = ServicePriority.normal;
   ServiceChannel _channel = ServiceChannel.phone;
   bool _isWarranty = true;
@@ -110,6 +111,18 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       _rentalReturnDate = t.rentalReturnDate;
     }
     if (_causes.isEmpty) _causes.add(_CauseInput(categoryId: t?.categoryId, symptomId: t?.symptomId));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_causeRowsInitialized) return;
+    _causeRowsInitialized = true;
+    if (!_isEdit && AppTheme.isWide(context)) {
+      while (_causes.length < 3) {
+        _causes.add(_CauseInput());
+      }
+    }
   }
 
   @override
@@ -217,8 +230,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     final fields = [
       _code('서비스구분 ${index + 1}', row.categoryId, categories, (v) => setState(() {
         row.categoryId = v; row.symptomId = null; row.makerId = null;
-      }), required: true),
-      _code('증상 ${index + 1}', row.symptomId, symptoms, (v) => setState(() => row.symptomId = v), enabled: symptoms.isNotEmpty),
+      }), required: index == 0),
+      _code('세부분류 ${index + 1}', row.symptomId, symptoms, (v) => setState(() => row.symptomId = v), enabled: symptoms.isNotEmpty),
       if (_makerCategories.contains(category?.name))
         _code('제조사 ${index + 1}', row.makerId, makers, (v) => setState(() => row.makerId = v), required: true),
     ];
@@ -426,7 +439,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     final repo = context.read<ServiceRepository>();
-    final causes = _causes.map((c) => c.toJson()).toList();
+    final causes = _causes.where((c) => c.categoryId != null && c.categoryId!.isNotEmpty)
+        .map((c) => c.toJson()).toList();
     bool submitted = false;
     final ok = await runGuarded(context, () async {
       if (_isRental && await _rentalField.currentState?.validate() != true) return;

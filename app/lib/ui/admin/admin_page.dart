@@ -313,7 +313,7 @@ class _SettingsHubTab extends StatelessWidget {
   static String _descriptionFor(SettingsModule m) => switch (m) {
         SettingsModule.system => '회사명, 시간대, 점검 모드',
         SettingsModule.auth => '가입 승인 정책, 로그인 잠금, 기본 권한',
-        SettingsModule.service => '접수번호 규칙, 처리 기한, 서비스/증상/원인/조치 분류',
+        SettingsModule.service => '접수번호 규칙, 처리 기한, 서비스/세부분류/원인/조치 분류',
         SettingsModule.inventory => '자산번호 규칙, 안전재고 경고, 자산 분류',
         SettingsModule.board => '첨부 용량, 기본 목록 개수',
         SettingsModule.calendar => '기본 알림 시점, 업무 시간, 일정 유형',

@@ -118,7 +118,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 onTap: t.storeId == null ? null : () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => StoreDetailPage(storeId: t.storeId!))),
               )),
-              _TextCard(title: '원인 · 서비스구분 · 증상 · 제조사', body: t.causes.isEmpty
+              _TextCard(title: '원인 · 서비스구분 · 세부분류 · 제조사', body: t.causes.isEmpty
                 ? (t.causeLabels.isEmpty ? '-' : t.causeLabels.join('\n'))
                 : t.causes.map((c) => '${c.category?.name ?? '-'}${c.symptom == null ? '' : ' > ${c.symptom!.name}'}${c.maker == null ? '' : ' (${c.maker!.name})'}').join('\n')),
               SectionCard(title: '대응인원', child: Wrap(spacing: 8, children: [for (final r in t.responders) Chip(label: Text(r.name))])),
