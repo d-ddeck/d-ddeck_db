@@ -1,6 +1,7 @@
 import '../core/api_client.dart';
 import '../models/common.dart';
 import '../models/inventory.dart';
+import 'service_repository.dart';
 
 class InventoryRepository {
   InventoryRepository(this._api);
@@ -44,6 +45,9 @@ class InventoryRepository {
     String? locationId,
     String? storeId,
     String? brandId,
+    String? statusItemId,
+    bool? atStore,
+    String? sort,
     bool includeSublocations = true,
     bool belowMinOnly = false,
   }) async {
@@ -56,6 +60,9 @@ class InventoryRepository {
       'location_id': locationId,
       'store_id': storeId,
       'brand_id': brandId,
+      'status_item_id': statusItemId,
+      'at_store': atStore,
+      'sort': sort,
       // Only send when it changes the default, to keep the URL readable.
       'include_sublocations': includeSublocations ? null : false,
       'below_min_only': belowMinOnly ? true : null,
@@ -155,4 +162,32 @@ class InventoryRepository {
 
   Future<InventorySummary> summary() async =>
       InventorySummary.fromJson(asMap(await _api.get('/inventory/summary')));
+
+  Future<InventoryOverview> overview() async =>
+      InventoryOverview.fromJson(asMap(await _api.get('/inventory/overview')));
+
+  Future<BulkCreateResult> createBulk({
+    required List<String> serialNos, String? categoryId, String? modelName,
+    String? manufacturer, String? statusItemId, String? locationId,
+    String? storeId, int setNo = 0, DateTime? purchaseDate, String? note,
+  }) async => BulkCreateResult.fromJson(asMap(await _api.post('/inventory/assets/bulk', body: {
+    'serial_nos': serialNos, 'category_id': categoryId, 'model_name': modelName,
+    'manufacturer': manufacturer, 'status_item_id': statusItemId,
+    'location_id': locationId, 'store_id': storeId, 'set_no': setNo,
+    'purchase_date': ServiceRepository.dateOnly(purchaseDate), 'note': note,
+  })));
+
+  Future<BulkMoveResult> bulkMove({
+    required List<String> assetIds, String? toStoreId, String? toLocationId,
+    String? toStatusItemId, int? toSetNo, bool clearStore = false, String? reason,
+  }) async => BulkMoveResult.fromJson(asMap(await _api.post('/inventory/assets/bulk-move', body: {
+    'asset_ids': assetIds, 'to_store_id': toStoreId, 'to_location_id': toLocationId,
+    'to_status_item_id': toStatusItemId, 'to_set_no': toSetNo,
+    'clear_store': clearStore, 'reason': reason,
+  })));
+
+  Future<List<int>> exportXlsx({Map<String, dynamic> filters = const {}}) =>
+      _api.getBytes(Uri(path: '/inventory/assets/export.xlsx', queryParameters: {
+        for (final e in filters.entries) if (e.value != null) e.key: e.value.toString(),
+      }).toString());
 }

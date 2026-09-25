@@ -6,12 +6,11 @@ import '../../data/admin_repository.dart';
 import '../../data/store_repository.dart';
 import '../../models/common.dart';
 import '../../models/store.dart';
+import '../../state/auth_state.dart';
+import '../inventory/asset_destination.dart';
+import 'store_equipment_page.dart';
 
-/// 매장 등록 / 수정.
-///
-/// 폐점 처리가 여기 있는 이유: 구 서버에서 폐점은 단순한 표시가 아니라 그
-/// 매장에 설치된 장비를 어디로 거두어들일지까지 정하는 일이었다. 지금은 표시만
-/// 바꾸고 장비는 재고 화면에서 옮기므로, 남아 있는 장비 수를 같이 보여 준다.
+/// 매장 등록 / 수정. 폐점은 회수 상태를 확인한 뒤 전용 API로 저장한다.
 class StoreFormPage extends StatefulWidget {
   const StoreFormPage({super.key, this.store});
 
@@ -67,11 +66,12 @@ class _StoreFormPageState extends State<StoreFormPage> {
           await context.read<AdminRepository>().codeGroup('STORE_BRAND');
       if (!mounted) return;
       setState(() {
-        _brands = group.items.where((i) => i.isActive).toList();
+        _brands = group.items.where((i) => i.isActive || i.id == _brandId).toList();
         _loading = false;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
+      inventoryMessage(context, e.message);
       setState(() {
         _error = e.message;
         _loading = false;
@@ -100,31 +100,34 @@ class _StoreFormPageState extends State<StoreFormPage> {
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!_isNew && !context.read<AuthState>().isAdmin) return;
 
-    // 장비가 남아 있는 매장을 폐점으로 넘기면 그 장비들이 "폐점한 매장에
-    // 설치됨" 상태로 남는다. 막지는 않되 반드시 알린다.
-    final held = widget.store?.assetCount ?? 0;
-    if (_isClosed && !(widget.store?.isClosed ?? false) && held > 0) {
-      final go = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('폐점 처리'),
-          content: Text(
-            '이 매장에 장비 $held대가 설치된 것으로 남아 있습니다.\n'
-            '폐점으로 저장해도 장비는 그대로 남으니, 재고 화면에서 창고나 '
-            '회수 상태로 옮겨 주세요.',
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('취소')),
-            FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('폐점으로 저장')),
-          ],
+    String? recoverId;
+    if (!_isNew && _isClosed) {
+      final store = widget.store!;
+      recoverId = store.recoverOptions.firstOrNull?.id;
+      final confirmed = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(
+        builder: (ctx, update) => AlertDialog(title: const Text('폐점 처리'),
+          content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('설치 장비 ${store.movableCount}대가 옮겨집니다'),
+              if (store.rentalCount > 0) Text('렌탈 중 ${store.rentalCount}대는 대응 기록에서 회수 처리'),
+              RadioGroup<String>(groupValue: recoverId ?? '', onChanged: (v) => update(() => recoverId = v == '' ? null : v),
+                child: Column(children: [
+                  for (final option in store.recoverOptions) RadioListTile<String>(value: option.id, title: Text(option.name)),
+                  const RadioListTile<String>(value: '', title: Text('옮기지 않음')),
+                ])),
+              ListTile(title: const Text('폐점일'), subtitle: Text(_closedDate?.toIso8601String().split('T').first ?? '지정 안 함'),
+                onTap: () async {
+                  final date = await showDatePicker(context: ctx, initialDate: _closedDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
+                  if (date != null && ctx.mounted) update(() => _closedDate = date);
+                }),
+            ]))),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('폐점으로 저장'))],
         ),
-      );
-      if (go != true) return;
+      ));
+      if (confirmed != true || !mounted) return;
     }
 
     setState(() {
@@ -134,23 +137,30 @@ class _StoreFormPageState extends State<StoreFormPage> {
     final repo = context.read<StoreRepository>();
     try {
       if (_isNew) {
-        await repo.create(
+        final created = await repo.create(
           name: _name.text.trim(),
+          openDate: _openDate,
           brandId: _brandId,
           gripperType: _gripperType,
           note: _note.text.trim(),
         );
+        if (!mounted) return;
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => StoreEquipmentPage(storeId: created.id)));
       } else {
         await repo.update(widget.store!.id, {
           'name': _name.text.trim(),
           'brand_id': _brandId,
           'gripper_type': _gripperType,
           'note': _note.text.trim(),
-          'is_closed': _isClosed,
+          if (!_isClosed) 'is_closed': false,
           'open_date': _openDate?.toIso8601String().split('T').first,
-          'closed_date':
-              _isClosed ? _closedDate?.toIso8601String().split('T').first : null,
+          if (!_isClosed) 'closed_date': null,
         });
+        if (_isClosed) {
+          final result = await repo.close(widget.store!.id, closedDate: _closedDate, recoverToStatusItemId: recoverId, note: _note.text.trim());
+          if (!mounted) return;
+          await inventoryResult(context, '폐점 처리 결과', '이동 ${result.moved.length}대\n${result.moved.join('\n')}\n\n${result.notices.join('\n')}');
+        }
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -159,6 +169,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      inventoryMessage(context, e.message);
       setState(() {
         _error = e.message;
         _saving = false;

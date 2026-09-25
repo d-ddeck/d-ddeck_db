@@ -148,6 +148,7 @@ class Asset {
     this.storeId,
     this.storeName,
     this.setNo = 0,
+    this.statusItemId,
     this.statusItem,
   });
 
@@ -186,6 +187,7 @@ class Asset {
 
   /// 구 서버의 13종 상태(설치 / 렌탈 중 / AS 대기 / 바른 회수 …).
   /// AssetStatus 6종으로는 못 담는 구분이라 코드 항목으로 따로 남겼다.
+  final String? statusItemId;
   final CodeItem? statusItem;
 
   /// 화면에 뿌릴 상태 이름. 세부 상태가 있으면 그쪽이 정확하다.
@@ -223,6 +225,7 @@ class Asset {
         storeId: j['store_id'] as String?,
         storeName: j['store'] is Map ? asString(asMap(j['store'])['name']) : null,
         setNo: asInt(j['set_no']),
+        statusItemId: j['status_item_id'] as String? ?? (j['status_item'] is Map ? asString(asMap(j['status_item'])['id']) : null),
         statusItem: j['status_item'] is Map
             ? CodeItem.fromJson(asMap(j['status_item']))
             : null,
@@ -246,6 +249,10 @@ class AssetMovement {
     this.fromStatus,
     this.toStatus,
     this.quantity,
+    this.fromStoreId,
+    this.toStoreId,
+    this.fromStatusItemId,
+    this.toStatusItemId,
     this.reason,
   });
 
@@ -257,6 +264,10 @@ class AssetMovement {
   final AssetStatus? fromStatus;
   final AssetStatus? toStatus;
   final double? quantity;
+  final String? fromStoreId;
+  final String? toStoreId;
+  final String? fromStatusItemId;
+  final String? toStatusItemId;
   final String? reason;
 
   factory AssetMovement.fromJson(Map<String, dynamic> j) => AssetMovement(
@@ -272,6 +283,10 @@ class AssetMovement {
             ? null
             : AssetStatus.parse(j['to_status'] as String?),
         quantity: asDouble(j['quantity']),
+        fromStoreId: j['from_store_id'] as String?,
+        toStoreId: j['to_store_id'] as String?,
+        fromStatusItemId: j['from_status_item_id'] as String?,
+        toStatusItemId: j['to_status_item_id'] as String?,
         reason: j['reason'] as String?,
       );
 }
@@ -338,4 +353,141 @@ class InventorySummary {
         belowMinCount: 0,
         warrantyExpiringCount: 0,
       );
+}
+
+class OverviewRow {
+  const OverviewRow({
+    required this.key,
+    required this.label,
+    required this.color,
+    required this.counts,
+    required this.total,
+  });
+  final String key;
+  final String label;
+  final String? color;
+  final Map<String, int> counts;
+  final int total;
+  factory OverviewRow.fromJson(Map<String, dynamic> j) => OverviewRow(
+        key: asString(j['key']),
+        label: asString(j['label']),
+        color: j['color'] as String?,
+        counts: asMap(j['counts']).map((k, v) => MapEntry(k, asInt(v))),
+        total: asInt(j['total']),
+      );
+}
+
+class AttentionAsset {
+  const AttentionAsset({
+    required this.id,
+    required this.assetNo,
+    required this.name,
+    required this.categoryId,
+    required this.categoryName,
+    required this.serialNo,
+    required this.statusName,
+    required this.storeId,
+    required this.storeName,
+    required this.locationName,
+    required this.note,
+  });
+  final String id;
+  final String assetNo;
+  final String name;
+  final String? categoryId;
+  final String? categoryName;
+  final String? serialNo;
+  final String? statusName;
+  final String? storeId;
+  final String? storeName;
+  final String? locationName;
+  final String? note;
+  AttentionAsset.fromJson(Map<String, dynamic> j) :
+        id = asString(j['id']),
+        assetNo = asString(j['asset_no']),
+        name = asString(j['name']),
+        categoryId = j['category_id'] as String?,
+        categoryName = j['category_name'] as String?,
+        serialNo = j['serial_no'] as String?,
+        statusName = j['status_name'] as String?,
+        storeId = j['store_id'] as String?,
+        storeName = j['store_name'] as String?,
+        locationName = j['location_name'] as String?,
+        note = j['note'] as String?;
+}
+
+class InventoryOverview {
+  const InventoryOverview({
+    required this.total,
+    required this.kinds,
+    required this.statuses,
+    required this.byStatus,
+    required this.byBrand,
+    required this.byPlace,
+    required this.attention,
+    required this.rentals,
+  });
+  final int total;
+  final List<CodeItem> kinds;
+  final List<CodeItem> statuses;
+  final List<OverviewRow> byStatus;
+  final List<OverviewRow> byBrand;
+  final List<OverviewRow> byPlace;
+  final List<AttentionAsset> attention;
+  final List<RentalAsset> rentals;
+  factory InventoryOverview.fromJson(Map<String, dynamic> j) => InventoryOverview(
+        total: asInt(j['total']),
+        kinds: asList(j['kinds'], CodeItem.fromJson),
+        statuses: asList(j['statuses'], CodeItem.fromJson),
+        byStatus: asList(j['by_status'], OverviewRow.fromJson),
+        byBrand: asList(j['by_brand'], OverviewRow.fromJson),
+        byPlace: asList(j['by_place'], OverviewRow.fromJson),
+        attention: asList(j['attention'], AttentionAsset.fromJson),
+        rentals: asList(j['rentals'], RentalAsset.fromJson),
+      );
+}
+
+class BulkMoveResult {
+  const BulkMoveResult({
+    required this.moved,
+    required this.skipped,
+    required this.errors,
+  });
+  final List<String> moved;
+  final List<String> skipped;
+  final List<String> errors;
+  factory BulkMoveResult.fromJson(Map<String, dynamic> j) => BulkMoveResult(
+        moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
+        skipped: (j['skipped'] as List? ?? []).map((e) => e.toString()).toList(),
+        errors: (j['errors'] as List? ?? []).map((e) => e.toString()).toList(),
+      );
+}
+
+class BulkCreateResult {
+  const BulkCreateResult({
+    required this.created,
+    required this.duplicates,
+  });
+  final List<Asset> created;
+  final List<String> duplicates;
+  factory BulkCreateResult.fromJson(Map<String, dynamic> j) => BulkCreateResult(
+        created: asList(j['created'], Asset.fromJson),
+        duplicates: (j['duplicates'] as List? ?? []).map((e) => e.toString()).toList(),
+      );
+}
+
+class RentalAsset extends AttentionAsset {
+  // The JSON map is also used by the rental-specific initializers.
+  // ignore: use_super_parameters
+  RentalAsset.fromJson(Map<String, dynamic> j) : ticketId = j['ticket_id'] as String?,
+      ticketNo = j['ticket_no'] as String?,
+      rentedAt = asDate(j['rented_at']),
+      dueDate = asDate(j['due_date']),
+      dday = j['dday'] == null ? null : asInt(j['dday']),
+      super.fromJson(j);
+  final String? ticketId;
+  final String? ticketNo;
+  final DateTime? rentedAt;
+  final DateTime? dueDate;
+  final int? dday;
 }

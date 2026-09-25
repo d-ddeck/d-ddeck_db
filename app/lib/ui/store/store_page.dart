@@ -6,6 +6,7 @@ import '../../models/store.dart';
 import '../async_view.dart';
 import '../format.dart';
 import '../theme.dart';
+import '../inventory/asset_destination.dart';
 import 'store_detail_page.dart';
 import 'store_form_page.dart';
 
@@ -29,7 +30,7 @@ class _StorePageState extends State<StorePage> {
   String _query = '';
   bool _includeClosed = false;
 
-  final _listKey = GlobalKey<AsyncViewState<PagedStores>>();
+  int _revision = 0;
 
   @override
   void dispose() {
@@ -49,9 +50,10 @@ class _StorePageState extends State<StorePage> {
     final repo = context.read<StoreRepository>();
 
     // 브랜드를 고르기 전에는 브랜드 카드만 보여 준다.
-    if (_brandId == null && _query.isEmpty) {
+    if (_brandId == null && _brandName.isEmpty && _query.isEmpty && !_includeClosed) {
       return AsyncView<List<BrandSummary>>(
-        load: repo.brands,
+        key: ValueKey('brands:$_revision'),
+        load: () => inventoryLoad(context, repo.brands),
         emptyCheck: (d) => d.isEmpty,
         emptyMessage: '등록된 매장이 없습니다.',
         builder: (context, brands, reload) => _BrandGrid(
@@ -66,7 +68,7 @@ class _StorePageState extends State<StorePage> {
     return Column(
       children: [
         _buildSearch(),
-        if (_brandId != null)
+        if (_brandName.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -76,27 +78,28 @@ class _StorePageState extends State<StorePage> {
                   label: Text(_brandName),
                   onPressed: () => _pickBrand(null),
                 ),
-                const Spacer(),
-                FilterChip(
-                  label: const Text('폐점 포함'),
-                  selected: _includeClosed,
-                  onSelected: (v) => setState(() => _includeClosed = v),
-                ),
               ],
             ),
           ),
         Expanded(
           child: AsyncView<PagedStores>(
-            key: ValueKey('$_brandId|$_query|$_includeClosed'),
-            load: () async {
-              final page = await repo.list(
-                brandId: _brandId,
-                query: _query.isEmpty ? null : _query,
-                includeClosed: _includeClosed,
-                size: 200,
-              );
-              return PagedStores(page.items, page.total);
-            },
+            key: ValueKey('$_brandId|$_brandName|$_query|$_includeClosed|$_revision'),
+            load: () => inventoryLoad(context, () async {
+              final items = <Store>[];
+              var pageNo = 1;
+              while (true) {
+                final page = await repo.list(
+                  page: pageNo++,
+                  brandId: _brandId,
+                  query: _query.isEmpty ? null : _query,
+                  includeClosed: _includeClosed,
+                  size: 200,
+                );
+                items.addAll(page.items.where((s) => _brandId != null || _brandName.isEmpty || s.brandId == null));
+                if (!page.hasMore) break;
+              }
+              return PagedStores(items, items.length);
+            }),
             emptyCheck: (d) => d.items.isEmpty,
             emptyMessage: '조건에 맞는 매장이 없습니다.',
             builder: (context, data, reload) => _StoreList(
@@ -114,12 +117,12 @@ class _StorePageState extends State<StorePage> {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const StoreFormPage()),
     );
-    if (saved == true && mounted) setState(() {});
+    if (saved == true && mounted) setState(() => _revision++);
   }
 
   Widget _buildSearch() => Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Row(children: [
+        child: Column(children: [Row(children: [
           Expanded(
             child: _searchBox(),
           ),
@@ -130,13 +133,18 @@ class _StorePageState extends State<StorePage> {
             label: const Text('매장'),
           ),
         ]),
+          Align(alignment: Alignment.centerLeft, child: FilterChip(
+            label: const Text('폐점 포함'), selected: _includeClosed,
+            onSelected: (v) => setState(() => _includeClosed = v),
+          )),
+        ]),
       );
 
   Widget _searchBox() => Builder(
         builder: (context) => TextField(
           controller: _searchCtl,
           decoration: InputDecoration(
-            hintText: '매장 이름으로 검색',
+            hintText: '매장명 · 메모 검색',
             prefixIcon: const Icon(Icons.search),
             isDense: true,
             border: const OutlineInputBorder(),
@@ -363,11 +371,11 @@ class _StoreList extends StatelessWidget {
                     style: theme.textTheme.bodySmall),
               ],
             ),
-            onTap: () => Navigator.of(context).push(
+            onTap: () async { await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => StoreDetailPage(storeId: store.id),
               ),
-            ),
+            ); if (context.mounted) onRefresh(); },
           );
         },
       ),

@@ -130,6 +130,14 @@ class Store {
     this.assetCount = 0,
     this.ticketCount = 0,
     this.sets = const [],
+    this.openTicketCount = 0,
+    this.installDate,
+    this.categoryCounts = const [],
+    this.unreturnedRentals = const [],
+    this.recentTickets = const [],
+    this.recoverOptions = const [],
+    this.movableCount = 0,
+    this.rentalCount = 0,
     this.assetGroups = const [],
   });
 
@@ -147,6 +155,14 @@ class Store {
 
   /// 상세 조회에서만 채워진다.
   final List<StoreSet> sets;
+  final int openTicketCount;
+  final DateTime? installDate;
+  final List<CategoryCount> categoryCounts;
+  final List<StoreRentalRow> unreturnedRentals;
+  final List<StoreTicketBrief> recentTickets;
+  final List<CodeItem> recoverOptions;
+  final int movableCount;
+  final int rentalCount;
   final List<StoreAssetGroup> assetGroups;
 
   String get brandName => brand?.name ?? '미지정';
@@ -164,6 +180,121 @@ class Store {
         assetCount: asInt(j['asset_count']),
         ticketCount: asInt(j['ticket_count']),
         sets: asList(j['sets'], StoreSet.fromJson),
+        openTicketCount: asInt(j['open_ticket_count']),
+        installDate: asDate(j['install_date']),
+        categoryCounts: asList(j['category_counts'], CategoryCount.fromJson),
+        unreturnedRentals: asList(j['unreturned_rentals'], StoreRentalRow.fromJson),
+        recentTickets: asList(j['recent_tickets'], StoreTicketBrief.fromJson),
+        recoverOptions: asList(j['recover_options'], CodeItem.fromJson),
+        movableCount: asInt(j['movable_count']),
+        rentalCount: asInt(j['rental_count']),
         assetGroups: asList(j['asset_groups'], StoreAssetGroup.fromJson),
+      );
+}
+
+class CategoryCount {
+  const CategoryCount({
+    required this.categoryId,
+    required this.label,
+    required this.color,
+    required this.count,
+  });
+  final String? categoryId;
+  final String label;
+  final String? color;
+  final int count;
+  factory CategoryCount.fromJson(Map<String, dynamic> j) => CategoryCount(
+        categoryId: j['category_id'] as String?,
+        label: asString(j['label']),
+        color: j['color'] as String?,
+        count: asInt(j['count']),
+      );
+}
+
+class StoreRentalRow {
+  const StoreRentalRow({
+    required this.ticketId,
+    required this.ticketNo,
+    required this.rentalType,
+    required this.serials,
+    required this.dueDate,
+    required this.dday,
+  });
+  final String ticketId;
+  final String ticketNo;
+  final String? rentalType;
+  final String? serials;
+  final DateTime? dueDate;
+  final int? dday;
+  factory StoreRentalRow.fromJson(Map<String, dynamic> j) => StoreRentalRow(
+        ticketId: asString(j['ticket_id']),
+        ticketNo: asString(j['ticket_no']),
+        rentalType: j['rental_type'] as String?,
+        serials: j['serials'] as String?,
+        dueDate: asDate(j['due_date']),
+        dday: j['dday'] == null ? null : asInt(j['dday']),
+      );
+}
+
+class StoreTicketBrief {
+  const StoreTicketBrief({
+    required this.id,
+    required this.ticketNo,
+    required this.title,
+    required this.status,
+    required this.receivedAt,
+    required this.completedAt,
+    required this.causeLabels,
+  });
+  final String id;
+  final String ticketNo;
+  final String title;
+  final String status;
+  final DateTime? receivedAt;
+  final DateTime? completedAt;
+  final List<String> causeLabels;
+  factory StoreTicketBrief.fromJson(Map<String, dynamic> j) => StoreTicketBrief(
+        id: asString(j['id']),
+        ticketNo: asString(j['ticket_no']),
+        title: asString(j['title']),
+        status: asString(j['status']),
+        receivedAt: asDate(j['received_at']),
+        completedAt: asDate(j['completed_at']),
+        causeLabels: (j['cause_labels'] as List? ?? []).map((e) => e.toString()).toList(),
+      );
+}
+
+class StoreCloseResult {
+  const StoreCloseResult({
+    required this.store,
+    required this.moved,
+    required this.notices,
+  });
+  final Store store;
+  final List<String> moved;
+  final List<String> notices;
+  factory StoreCloseResult.fromJson(Map<String, dynamic> j) => StoreCloseResult(
+        store: Store.fromJson(asMap(j['store'])),
+        moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
+        notices: (j['notices'] as List? ?? []).map((e) => e.toString()).toList(),
+      );
+}
+
+class EquipmentSetupResult {
+  const EquipmentSetupResult({
+    required this.added,
+    required this.moved,
+    required this.kept,
+    required this.store,
+  });
+  final List<String> added;
+  final List<String> moved;
+  final List<String> kept;
+  final Store store;
+  factory EquipmentSetupResult.fromJson(Map<String, dynamic> j) => EquipmentSetupResult(
+        added: (j['added'] as List? ?? []).map((e) => e.toString()).toList(),
+        moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
+        kept: (j['kept'] as List? ?? []).map((e) => e.toString()).toList(),
+        store: Store.fromJson(asMap(j['store'])),
       );
 }

@@ -4,6 +4,11 @@ import 'package:provider/provider.dart';
 import '../../data/file_repository.dart';
 import '../../data/store_repository.dart';
 import '../../models/store.dart';
+import '../../models/service.dart';
+import '../../state/auth_state.dart';
+import '../inventory/asset_destination.dart';
+import '../service/service_detail_page.dart';
+import 'store_equipment_page.dart';
 import '../async_view.dart';
 import '../common/attachment_section.dart';
 import '../format.dart';
@@ -30,7 +35,7 @@ class StoreDetailPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('매장'),
         actions: [
-          IconButton(
+          if (context.watch<AuthState>().isAdmin) IconButton(
             tooltip: '수정',
             icon: const Icon(Icons.edit_outlined),
             onPressed: () async {
@@ -47,7 +52,7 @@ class StoreDetailPage extends StatelessWidget {
       ),
       body: AsyncView<Store>(
         key: viewKey,
-        load: () => repo.get(storeId),
+        load: () => inventoryLoad(context, () => repo.get(storeId)),
         builder: (context, store, reload) {
           // 앱바의 수정 버튼이 최신 매장을 집어 갈 수 있게 들고 있는다.
           current = store;
@@ -88,22 +93,6 @@ class _StoreBody extends StatelessWidget {
           const SizedBox(height: 4),
           Text(store.brandName, style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('이 매장 기록 추가'),
-              onPressed: () async {
-                final saved = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(builder: (_) => ServiceFormPage(
-                    initialStoreId: store.id,
-                    initialBrandId: store.brandId,
-                  )),
-                );
-                if (saved == true && context.mounted) onRefresh();
-              },
-            ),
-          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -125,7 +114,14 @@ class _StoreBody extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          Text('매장 상태', style: theme.textTheme.titleMedium),
           _InfoCard(store: store),
+          if (store.rentalCount > 0) Text('렌탈 중 ${store.rentalCount}대는 대응 기록에서 회수 처리'),
+          OutlinedButton.icon(icon: const Icon(Icons.settings), label: const Text('장비 설정'),
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => StoreEquipmentPage(storeId: store.id)));
+              if (context.mounted) onRefresh();
+            }),
           if (store.sets.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text('납품 세트', style: theme.textTheme.titleMedium),
@@ -156,7 +152,60 @@ class _StoreBody extends StatelessWidget {
               message: '이 매장에 등록된 장비가 없습니다.',
             )
           else
-            for (final group in store.assetGroups) _AssetGroupCard(group: group),
+            for (final number in (store.assetGroups.expand((g) => g.assets).map((a) => a.setNo).toSet().toList()..sort())) ...[
+              Text(store.sets.where((s) => s.setNo == number).firstOrNull?.label ?? (number == 0 ? '세트 미지정' : '세트 $number'), style: theme.textTheme.titleSmall),
+              for (final group in store.assetGroups)
+                if (group.assets.any((a) => a.setNo == number)) _AssetGroupCard(group: StoreAssetGroup(
+                  categoryId: group.categoryId, categoryName: group.categoryName, color: group.color,
+                  count: group.assets.where((a) => a.setNo == number).length,
+                  assets: group.assets.where((a) => a.setNo == number).toList(),
+                )),
+            ],
+          const SizedBox(height: 20),
+          Text('서비스구분별 발생', style: theme.textTheme.titleMedium),
+          if (store.categoryCounts.isEmpty) const Text('발생 기록 없음'),
+          for (final c in store.categoryCounts) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${c.label} · ${c.count}건'),
+              LinearProgressIndicator(value: c.count / store.categoryCounts.fold<int>(1, (n, row) => row.count > n ? row.count : n),
+                color: _parseColor(c.color), minHeight: 10),
+            ],
+          )),
+          const SizedBox(height: 20), Text('미회수 렌탈', style: theme.textTheme.titleMedium),
+          if (store.unreturnedRentals.isEmpty) const Text('미회수 렌탈 없음'),
+          for (final rental in store.unreturnedRentals) ListTile(contentPadding: EdgeInsets.zero,
+            title: Text('${rental.ticketNo} · ${rental.serials ?? '-'}'),
+            subtitle: Text('${rental.rentalType ?? ''} · ${Fmt.date(rental.dueDate)} · ${rentalDday(rental.dday)}'),
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: rental.ticketId)));
+              if (context.mounted) onRefresh();
+            }),
+          const SizedBox(height: 20), Text('대응 이력 (미종결 ${store.openTicketCount}건)', style: theme.textTheme.titleMedium),
+          if (store.recentTickets.isEmpty) const Text('대응 이력 없음'),
+          for (final ticket in store.recentTickets) ListTile(contentPadding: EdgeInsets.zero,
+            title: Text('${ticket.ticketNo} · ${ServiceStatus.parse(ticket.status).label}'),
+            subtitle: Text('${Fmt.date(ticket.receivedAt)} · ${ticket.causeLabels.join(' · ')}'),
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: ticket.id)));
+              if (context.mounted) onRefresh();
+            }),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('이 매장 기록 추가'),
+              onPressed: () async {
+                final saved = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(builder: (_) => ServiceFormPage(
+                    initialStoreId: store.id,
+                    initialBrandId: store.brandId,
+                  )),
+                );
+                if (saved == true && context.mounted) onRefresh();
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -171,6 +220,8 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rows = <(String, String)>[
       ('브랜드', store.brandName),
+      ('폐점 여부', store.isClosed ? '폐점' : '운영'),
+      ('설치일', Fmt.date(store.installDate)),
       if (store.openDate != null) ('개점일', Fmt.date(store.openDate)),
       if (store.isClosed && store.closedDate != null)
         ('폐점일', Fmt.date(store.closedDate)),
