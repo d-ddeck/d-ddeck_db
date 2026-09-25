@@ -7,6 +7,7 @@ import '../../state/auth_state.dart';
 import '../../services/vpn_service.dart';
 import '../vpn/vpn_controls.dart';
 import '../theme.dart';
+import '../common/common.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -105,10 +106,12 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: Form(
+            child: Card(child: Padding(
+              padding: const EdgeInsets.all(AppSpace.xl),
+              child: Form(
               key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -153,13 +156,14 @@ class _LoginPageState extends State<LoginPage> {
                     validator: (v) =>
                         (v == null || v.trim().isEmpty) ? '이메일을 입력해 주세요.' : null,
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   TextFormField(
                     controller: _password,
                     decoration: InputDecoration(
                       labelText: '비밀번호',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
+                        tooltip: _obscure ? '비밀번호 표시' : '비밀번호 숨기기',
                         icon: Icon(_obscure
                             ? Icons.visibility_off_outlined
                             : Icons.visibility_outlined),
@@ -192,8 +196,15 @@ class _LoginPageState extends State<LoginPage> {
                     dense: true,
                   ),
 
-                  if (_showServerField) ...[
-                    const SizedBox(height: 12),
+                  ExpansionTile(
+                    key: ValueKey(_showServerField),
+                    initiallyExpanded: _showServerField,
+                    enabled: !_busy,
+                    onExpansionChanged: (value) => setState(() => _showServerField = value),
+                    title: const Text('연결 설정'),
+                    tilePadding: EdgeInsets.zero,
+                    children: [
+                    const FormGap(),
                     TextFormField(
                       controller: _server,
                       decoration: InputDecoration(
@@ -214,12 +225,13 @@ class _LoginPageState extends State<LoginPage> {
                         style: TextStyle(
                           fontSize: 12,
                           color: _serverProbe!.contains('정상')
-                              ? Colors.green.shade700
+                              ? AppColors.success(context)
                               : scheme.error,
                         ),
                       ),
                     ],
-                  ],
+                    ],
+                  ),
 
                   if (_error != null) ...[
                     const SizedBox(height: 14),
@@ -271,20 +283,6 @@ class _LoginPageState extends State<LoginPage> {
                     child: const Text('회원가입 신청'),
                   ),
                   const SizedBox(height: 14),
-                  TextButton.icon(
-                    onPressed: () =>
-                        setState(() => _showServerField = !_showServerField),
-                    icon: Icon(
-                      _showServerField
-                          ? Icons.expand_less
-                          : Icons.settings_ethernet,
-                      size: 16,
-                    ),
-                    label: Text(
-                      _showServerField ? '서버 설정 닫기' : '서버 주소 설정',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
                   const SizedBox(height: 4),
                   Text(
                     '가입 후 관리자 승인이 완료되어야 로그인할 수 있습니다.',
@@ -297,6 +295,7 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ),
+            )),
           ),
         ),
       ),

@@ -11,6 +11,8 @@ import '../models/service.dart';
 import '../state/auth_state.dart';
 import 'async_view.dart';
 import 'format.dart';
+import 'common/common.dart';
+import 'calendar/calendar_page.dart';
 import 'theme.dart';
 import 'service/service_detail_page.dart';
 import 'service/service_page.dart';
@@ -74,9 +76,13 @@ class DashboardPage extends StatelessWidget {
       }),
       builder: (context, data, reload) {
         final wide = AppTheme.isWide(context);
+        Future<void> viewAll(Widget page) async {
+          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('전체 보기')), body: page)));
+          if (context.mounted) reload();
+        }
         return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+          children: [PageBody(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(
               '${auth.user?.fullName ?? ''}님, 안녕하세요',
               style: Theme.of(context)
@@ -90,20 +96,20 @@ class DashboardPage extends StatelessWidget {
                     color: Theme.of(context).colorScheme.outline,
                   ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
             GridView.count(
               crossAxisCount: wide ? 4 : 2,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: wide ? 1.9 : 1.55,
+              mainAxisSpacing: AppSpace.md,
+              crossAxisSpacing: AppSpace.md,
+              mainAxisExtent: 132 * MediaQuery.textScalerOf(context).scale(14) / 14,
               children: [
                 StatTile(
                   label: 'AS 접수 (당월)',
-                  value: '${data.summary.total}건',
-                  hint: '완료 ${data.summary.completedCount}건',
+                  value: '${Fmt.number(data.summary.total)}건',
+                  hint: '완료 ${Fmt.number(data.summary.completedCount)}건',
                   icon: Icons.assignment_outlined,
                 ),
                 StatTile(
@@ -111,33 +117,35 @@ class DashboardPage extends StatelessWidget {
                   value: Fmt.percent(data.summary.completionRate, digits: 0),
                   hint: '평균 ${Fmt.duration(data.summary.avgResolutionMinutes)}',
                   icon: Icons.check_circle_outline,
-                  color: const Color(0xFF10B981),
+                  color: AppColors.success(context),
                 ),
                 StatTile(
                   label: '처리 지연',
-                  value: '${data.summary.overdueCount}건',
-                  hint: '미완료 ${data.summary.openCount}건',
+                  value: '${Fmt.number(data.summary.overdueCount)}건',
+                  hint: '미완료 ${Fmt.number(data.summary.openCount)}건',
                   icon: Icons.schedule,
                   color: data.summary.overdueCount > 0
-                      ? const Color(0xFFEF4444)
+                      ? AppColors.danger(context)
                       : null,
                 ),
                 StatTile(
                   label: '보유 자산',
-                  value: '${data.inventory.totalAssets}건',
+                  value: '${Fmt.number(data.inventory.totalAssets)}건',
                   hint: data.inventory.belowMinCount > 0
-                      ? '안전재고 미만 ${data.inventory.belowMinCount}건'
+                      ? '안전재고 미만 ${Fmt.number(data.inventory.belowMinCount)}건'
                       : Fmt.money(data.inventory.totalValue),
                   icon: Icons.inventory_2_outlined,
                   color: data.inventory.belowMinCount > 0
-                      ? const Color(0xFFF59E0B)
+                      ? AppColors.warning(context)
                       : null,
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppSpace.xl),
 
-            _Section(title: '미종결 ${data.service.openCount}건', child: Column(children: [
+            SectionCard(title: '미종결 ${Fmt.number(data.service.openCount)}건', actions: [
+              TextButton(onPressed: () => viewAll(const ServiceListTab(initialOnlyOpen: true)), child: const Text('전체 보기')),
+            ], child: Column(children: [
               if (data.service.openTickets.isEmpty) const _EmptyRow(text: '미종결 기록이 없습니다.'),
               for (final t in data.service.openTickets.take(10)) ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -148,13 +156,11 @@ class DashboardPage extends StatelessWidget {
                   if (context.mounted) reload();
                 },
               ),
-              TextButton(onPressed: () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ServiceListTab(initialOnlyOpen: true)));
-                if (context.mounted) reload();
-              }, child: const Text('전체 보기')),
             ])),
-            const SizedBox(height: 16),
-            _Section(title: '렌탈 미회수', child: Column(children: [
+            const SizedBox(height: AppSpace.lg),
+            SectionCard(title: '렌탈 미회수', actions: [
+              TextButton(onPressed: () => viewAll(const ServiceListTab(initialFilters: {'is_rental': true, 'rental_unreturned': true})), child: const Text('전체 보기')),
+            ], child: Column(children: [
               if (data.service.unreturnedRentals.isEmpty) const _EmptyRow(text: '미회수 렌탈이 없습니다.'),
               for (final r in data.service.unreturnedRentals) ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -162,7 +168,7 @@ class DashboardPage extends StatelessWidget {
                 subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${r.rentalType ?? '-'} · ${r.serials ?? '-'}'),
                   Text('회수 예정 ${Fmt.date(r.dueDate)} · ${r.dday == null ? '-' : r.dday == 0 ? 'D-day' : r.dday! > 0 ? 'D-${r.dday}' : 'D+${-r.dday!}'}',
-                    style: TextStyle(color: r.dday != null && r.dday! <= 0 ? Colors.red : null, fontWeight: FontWeight.w700)),
+                    style: TextStyle(color: r.dday != null && r.dday! <= 0 ? AppColors.danger(context) : null, fontWeight: FontWeight.w700)),
                 ]),
                 onTap: () async {
                   await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: r.ticketId)));
@@ -170,27 +176,41 @@ class DashboardPage extends StatelessWidget {
                 },
               ),
             ])),
-            const SizedBox(height: 16),
-            _Section(title: '최근 기록', child: Column(children: [
+            const SizedBox(height: AppSpace.lg),
+            SectionCard(
+              title: '오늘 일정 · ${Fmt.number(data.todayEvents.length)}건',
+              actions: [TextButton(onPressed: () => viewAll(const CalendarPage()), child: const Text('전체 보기'))],
+              child: data.todayEvents.isEmpty
+                  ? const _EmptyRow(text: '오늘 등록된 일정이 없습니다.')
+                  : Column(
+                      children: [
+                        for (final e in data.todayEvents) _EventRow(event: e),
+                      ],
+                    ),
+            ),
+            const SizedBox(height: AppSpace.lg),
+
+            SectionCard(title: '최근 기록', actions: [
+              TextButton(onPressed: () => viewAll(const ServiceListTab()), child: const Text('전체 보기')),
+            ], child: Column(children: [
               if (data.service.recent.isEmpty) const _EmptyRow(text: '최근 기록이 없습니다.'),
               for (final t in data.service.recent.take(10)) _TicketRow(ticket: t, onChanged: reload),
             ])),
-            const SizedBox(height: 16),
-            _Section(title: '연도별 건수', child: Column(children: [
+            const SizedBox(height: AppSpace.lg),
+            SectionCard(title: '연도별 건수', child: Column(children: [
               if (data.service.byYear.isEmpty) const _EmptyRow(text: '집계된 기록이 없습니다.'),
               for (final y in data.service.byYear) Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
                   SizedBox(width: 52, child: Text(y.year)),
                   Expanded(child: LinearProgressIndicator(minHeight: 12, value:
                     y.count / data.service.byYear.fold<int>(1, (max, row) => row.count > max ? row.count : max))),
-                  SizedBox(width: 70, child: Text('${y.count}건', textAlign: TextAlign.right)),
+                  SizedBox(width: 70, child: Text('${Fmt.number(y.count)}건', textAlign: TextAlign.right)),
                 ])),
             ])),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
-            _Section(
-              title: '내 진행중 AS',
-              trailing: '${data.myOpen.total}건',
+            SectionCard(
+              title: '내 진행중 AS · ${Fmt.number(data.myOpen.total)}건',
               child: data.myOpen.isEmpty
                   ? const _EmptyRow(text: '진행중인 AS가 없습니다.')
                   : Column(
@@ -200,23 +220,10 @@ class DashboardPage extends StatelessWidget {
                       ],
                     ),
             ),
-            const SizedBox(height: 16),
-
-            _Section(
-              title: '오늘 일정',
-              trailing: '${data.todayEvents.length}건',
-              child: data.todayEvents.isEmpty
-                  ? const _EmptyRow(text: '오늘 등록된 일정이 없습니다.')
-                  : Column(
-                      children: [
-                        for (final e in data.todayEvents) _EventRow(event: e),
-                      ],
-                    ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
             if (data.summary.byStatus.isNotEmpty)
-              _Section(
+              SectionCard(
                 title: 'AS 상태 분포 (당월)',
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -228,53 +235,10 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ),
               ),
-            const SizedBox(height: 24),
-          ],
+            const SizedBox(height: AppSpace.xl),
+          ]))],
         );
       },
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child, this.trailing});
-
-  final String title;
-  final Widget child;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                if (trailing != null)
-                  Text(
-                    trailing!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }
@@ -284,17 +248,7 @@ class _EmptyRow extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Center(
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => EmptyState(message: text);
 }
 
 class _TicketRow extends StatelessWidget {
@@ -415,7 +369,7 @@ class _BucketBar extends StatelessWidget {
           SizedBox(
             width: 62,
             child: Text(
-              '${bucket.count}건 ${Fmt.percent(bucket.ratio, digits: 0)}',
+              '${Fmt.number(bucket.count)}건 ${Fmt.percent(bucket.ratio, digits: 0)}',
               textAlign: TextAlign.right,
               style: const TextStyle(fontSize: 11),
             ),

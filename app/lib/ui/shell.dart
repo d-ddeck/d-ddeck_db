@@ -14,6 +14,7 @@ import 'notifications_page.dart';
 import 'service/service_page.dart';
 import 'store/store_page.dart';
 import 'theme.dart';
+import 'common/common.dart';
 import 'vpn/vpn_setup_page.dart';
 
 /// Root frame once signed in.
@@ -29,6 +30,8 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  bool _railExpanded = false;
+  final _pagesKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +43,7 @@ class _HomeShellState extends State<HomeShell> {
     final wide = AppTheme.isWide(context);
 
     final body = IndexedStack(
+      key: _pagesKey,
       index: index,
       children: destinations.map((d) => d.page).toList(),
     );
@@ -56,18 +60,35 @@ class _HomeShellState extends State<HomeShell> {
       body: wide
           ? Row(
               children: [
-                NavigationRail(
-                  selectedIndex: index,
-                  onDestinationSelected: (i) => setState(() => _index = i),
-                  labelType: NavigationRailLabelType.all,
-                  destinations: [
-                    for (final d in destinations)
-                      NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
+                SizedBox(
+                  width: _railExpanded ? 220 : 88,
+                  child: Column(children: [
+                    Align(alignment: Alignment.centerRight, child: IconButton(
+                      tooltip: _railExpanded ? '메뉴 접기' : '메뉴 펼치기',
+                      onPressed: () => setState(() => _railExpanded = !_railExpanded),
+                      icon: Icon(_railExpanded ? Icons.menu_open : Icons.menu),
+                    )),
+                    Expanded(child: NavigationRail(
+                      extended: _railExpanded,
+                      scrollable: true,
+                      minExtendedWidth: 220,
+                      selectedIndex: index,
+                      onDestinationSelected: (i) => setState(() => _index = i),
+                      labelType: NavigationRailLabelType.none,
+                      destinations: [for (final d in destinations) NavigationRailDestination(
+                        icon: Tooltip(message: d.label, child: Icon(d.icon)),
+                        selectedIcon: Tooltip(message: d.label, child: Icon(d.selectedIcon)),
                         label: Text(d.label),
-                      ),
-                  ],
+                      )],
+                    )),
+                    const Divider(),
+                    Padding(padding: const EdgeInsets.all(AppSpace.sm), child: Column(children: [
+                      Text(auth.user?.fullName ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(auth.role.label, style: Theme.of(context).textTheme.labelSmall),
+                      IconButton(tooltip: '로그아웃', onPressed: () => _logout(context),
+                        icon: const Icon(Icons.logout)),
+                    ])),
+                  ]),
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(child: body),
@@ -77,18 +98,38 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
-              selectedIndex: index,
-              onDestinationSelected: (i) => setState(() => _index = i),
+              selectedIndex: index < 4 ? index : 4,
+              onDestinationSelected: (i) {
+                if (i == 4) {
+                  _showMore(destinations);
+                } else {
+                  setState(() => _index = i);
+                }
+              },
               destinations: [
-                for (final d in destinations)
+                for (final d in destinations.take(4))
                   NavigationDestination(
                     icon: Icon(d.icon),
                     selectedIcon: Icon(d.selectedIcon),
                     label: d.label,
                   ),
+                const NavigationDestination(icon: Icon(Icons.more_horiz), label: '더보기'),
               ],
             ),
     );
+  }
+
+  Future<void> _showMore(List<_Destination> destinations) async {
+    final selected = await showModalBottomSheet<int>(context: context,
+      showDragHandle: true, builder: (context) => SafeArea(child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 4; i < destinations.length; i++) ListTile(
+            leading: Icon(destinations[i].icon), title: Text(destinations[i].label),
+            selected: _index == i, onTap: () => Navigator.pop(context, i),
+          ),
+        ]),
+      )));
+    if (selected != null && mounted) setState(() => _index = selected);
   }
 
   List<_Destination> _destinationsFor(Role role) => [
@@ -99,7 +140,7 @@ class _HomeShellState extends State<HomeShell> {
           page: DashboardPage(),
         ),
         const _Destination(
-          label: '서비스',
+          label: '대응',
           icon: Icons.build_outlined,
           selectedIcon: Icons.build,
           page: ServicePage(),
@@ -182,21 +223,8 @@ class _AccountMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.read<AuthState>();
     return PopupMenuButton<String>(
-      tooltip: user?.fullName ?? '계정',
-      icon: CircleAvatar(
-        radius: 14,
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        child: Text(
-          user == null || user!.fullName.isEmpty
-              ? '?'
-              : user!.fullName.characters.first,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-          ),
-        ),
-      ),
+      tooltip: '설정',
+      icon: const Icon(Icons.settings_outlined),
       itemBuilder: (context) => [
         PopupMenuItem<String>(
           enabled: false,
@@ -261,26 +289,17 @@ class _AccountMenu extends StatelessWidget {
               ),
             );
           case 'logout':
-            final ok = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('로그아웃'),
-                content: const Text('로그아웃하시겠습니까?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: const Text('취소'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    child: const Text('로그아웃'),
-                  ),
-                ],
-              ),
-            );
-            if (ok == true) await auth.logout();
+            await _logout(context);
         }
       },
     );
+  }
+}
+
+Future<void> _logout(BuildContext context) async {
+  final auth = context.read<AuthState>();
+  if (await ConfirmDialog.show(context, title: '로그아웃',
+      message: '로그아웃하시겠습니까?', confirmLabel: '로그아웃')) {
+    await auth.logout();
   }
 }

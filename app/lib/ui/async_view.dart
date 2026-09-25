@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
 import 'theme.dart';
+import 'common/states.dart';
+
+export 'common/feedback.dart' show runGuarded;
 
 /// Load-once-with-retry wrapper.
 ///
@@ -49,16 +52,14 @@ class AsyncViewState<T> extends State<AsyncView<T>> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const LoadingState();
         }
         if (snapshot.hasError) {
           final error = snapshot.error;
-          return StatePlaceholder(
-            icon: Icons.cloud_off,
+          return ErrorState(
             message: error is ApiException
                 ? error.message
-                : '데이터를 불러오지 못했습니다.',
-            detail: error is ApiException ? null : error.toString(),
+                : '데이터를 불러오지 못했습니다.\n$error',
             onRetry: reload,
           );
         }
@@ -86,35 +87,5 @@ class AsyncViewState<T> extends State<AsyncView<T>> {
         );
       },
     );
-  }
-}
-
-/// Shows an ApiException's message in a snackbar. Returns true when the call
-/// succeeded, so callers can branch without a try/catch at every tap handler.
-Future<bool> runGuarded(
-  BuildContext context,
-  Future<void> Function() action, {
-  String? successMessage,
-}) async {
-  final messenger = ScaffoldMessenger.of(context);
-  // Captured up front: after the await this BuildContext may be gone.
-  final errorColor = Theme.of(context).colorScheme.error;
-  try {
-    await action();
-    if (successMessage != null) {
-      messenger.showSnackBar(SnackBar(content: Text(successMessage)));
-    }
-    return true;
-  } on ApiException catch (e) {
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(e.message),
-        backgroundColor: errorColor,
-      ),
-    );
-    return false;
-  } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('오류가 발생했습니다: $e')));
-    return false;
   }
 }

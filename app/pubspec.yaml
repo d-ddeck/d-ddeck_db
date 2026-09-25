@@ -31,6 +31,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+
   cupertino_icons: ^1.0.8
 
   # HTTP. Chosen over `http` for interceptors - the access-token refresh on 401
@@ -48,7 +51,7 @@ dependencies:
   provider: ^6.1.2
 
   # Date/number formatting in ko_KR.
-  intl: ^0.19.0
+  intl: ^0.20.2
 
   # Charts for the AS statistics screen.
   fl_chart: ^0.69.2
