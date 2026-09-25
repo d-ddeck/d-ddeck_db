@@ -90,6 +90,18 @@ class CodeItemOut(ORMModel):
     sort_order: int
     is_active: bool
     extra: dict | None = None
+    # 재고 상태 규칙(매장 필수·AS·창고 자동 비움)에 쓰이는 항목은 삭제할 수 없다.
+    is_protected: bool = False
+
+
+class CodeItemUsage(BaseModel):
+    """삭제 확인 창에 보여 줄 것: 이 항목을 쓰는 기록 수와 삭제 가능 여부."""
+
+    count: int
+    by: dict[str, int] = Field(default_factory=dict)
+    children: int = 0
+    is_protected: bool = False
+    protected_reason: str | None = None
 
 
 class CodeGroupOut(ORMModel):

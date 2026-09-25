@@ -156,6 +156,44 @@ with TestClient(app) as c:
     )
     check("분류 항목 추가", r.status_code == 201, r.text)
 
+    # --- 항목 삭제 · 되살리기 · 규칙 항목 보호 (2026-09-25)
+    r = c.post(
+        f"/api/v1/admin/codes/{group_id}/items",
+        headers=bearer(admin_token),
+        json={"code": "TEMP_DEL", "name": "임시 분류", "sort_order": 99},
+    )
+    check("삭제 시험용 항목 추가", r.status_code == 201 and r.json()["is_protected"] is False, r.text)
+    temp_id = r.json()["id"]
+    r = c.get(f"/api/v1/admin/codes/items/{temp_id}/usage", headers=bearer(admin_token))
+    check("항목 사용처 조회 (안 쓰는 항목은 0건)",
+          r.status_code == 200 and r.json()["count"] == 0 and r.json()["is_protected"] is False, r.text)
+    r = c.delete(f"/api/v1/admin/codes/items/{temp_id}", headers=bearer(user_token))
+    check("일반 사용자는 항목 삭제 불가", r.status_code == 403, r.text)
+    r = c.delete(f"/api/v1/admin/codes/items/{temp_id}", headers=bearer(admin_token))
+    check("항목 삭제", r.status_code == 200 and "삭제했습니다" in r.json()["message"], r.text)
+    r = c.get("/api/v1/admin/codes/SERVICE_CATEGORY", headers=bearer(user_token))
+    check("삭제한 항목은 목록에서 사라짐", all(i["code"] != "TEMP_DEL" for i in r.json()["items"]), r.text)
+    r = c.patch(f"/api/v1/admin/codes/items/{temp_id}", headers=bearer(admin_token), json={"name": "x"})
+    check("삭제한 항목은 수정 불가 (404)", r.status_code == 404, r.text)
+    r = c.post(
+        f"/api/v1/admin/codes/{group_id}/items",
+        headers=bearer(admin_token),
+        json={"code": "TEMP_DEL", "name": "임시 분류 2", "sort_order": 99},
+    )
+    check("같은 코드로 다시 추가하면 되살아남 (같은 id)",
+          r.status_code == 201 and r.json()["id"] == temp_id and r.json()["name"] == "임시 분류 2", r.text)
+    c.delete(f"/api/v1/admin/codes/items/{temp_id}", headers=bearer(admin_token))
+
+    r = c.get("/api/v1/admin/codes/ASSET_STATUS", headers=bearer(admin_token))
+    statuses = {i["name"]: i for i in r.json()["items"]}
+    check("재고 상태 규칙 항목은 보호 표시 (설치·창고 O, 폐기 X)",
+          statuses["설치"]["is_protected"] and statuses["창고"]["is_protected"]
+          and not statuses["폐기"]["is_protected"],
+          {k: v["is_protected"] for k, v in statuses.items()})
+    r = c.delete(f"/api/v1/admin/codes/items/{statuses['설치']['id']}", headers=bearer(admin_token))
+    check("규칙 항목 삭제 거절 (SYSTEM_ITEM)",
+          r.status_code == 400 and r.json()["error"]["code"] == "SYSTEM_ITEM", r.text)
+
     r = c.get("/api/v1/admin/codes/SERVICE_SYMPTOM", headers=bearer(user_token))
     symptoms = {i["code"]: i["id"] for i in r.json()["items"]}
 
@@ -670,6 +708,21 @@ with TestClient(app) as c:
     check("AS 건수", st["tickets_total"] == 4, st["tickets_total"])
     check("자산 건수", st["assets_total"] == 2, st["assets_total"])
     check("테이블 목록", len(st["tables"]) == 30, len(st["tables"]))
+
+    r = c.get(f"/api/v1/admin/codes/items/{categories['REPAIR']}/usage", headers=bearer(admin_token))
+    check("쓰이는 항목의 사용처 (수리 → 대응 기록 2건 이상)",
+          r.status_code == 200 and r.json()["by"].get("대응 기록", 0) >= 2, r.text)
+    r = c.delete(f"/api/v1/admin/codes/items/{categories['REPAIR']}", headers=bearer(admin_token))
+    check("쓰이는 항목도 삭제되며 기존 기록 건수를 알려 줌",
+          r.status_code == 200 and "기존 기록" in r.json()["message"], r.text)
+    r = c.get(f"/api/v1/service/tickets/{ticket_ids[0]}", headers=bearer(user_token))
+    check("삭제한 분류를 쓰던 기록은 이름을 유지", r.status_code == 200 and r.json()["causes"][0]["category"]["name"] == "수리", r.text)
+    r = c.post(
+        f"/api/v1/admin/codes/{group_id}/items",
+        headers=bearer(admin_token),
+        json={"code": "REPAIR", "name": "수리", "sort_order": 1},
+    )
+    check("삭제한 분류를 같은 코드로 되살림", r.status_code == 201 and r.json()["id"] == categories["REPAIR"], r.text)
 
     r = c.get("/api/v1/admin/audit-logs?size=100", headers=bearer(admin_token))
     logs = r.json()

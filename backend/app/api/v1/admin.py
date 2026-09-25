@@ -14,7 +14,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings as env
@@ -23,6 +23,7 @@ from app.core.deps import AdminUser, Client, CurrentUser, DbSession, PageParams
 from app.core.errors import AppError
 from app.core.security import now_utc
 from app.models.admin import AuditLog, CodeGroup, CodeItem, ModuleSetting
+from app.models.base import Base
 from app.models.board import Post
 from app.models.calendar import Event, Notification
 from app.models.enums import (
@@ -43,6 +44,7 @@ from app.schemas.admin import (
     CodeItemOut,
     CodeItemReorder,
     CodeItemUpdate,
+    CodeItemUsage,
     DepartmentCreate,
     DepartmentOut,
     DepartmentUpdate,
@@ -54,7 +56,7 @@ from app.schemas.admin import (
     TableStat,
 )
 from app.schemas.common import Message
-from app.services import audit
+from app.services import asset_rules, audit
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -202,44 +204,96 @@ def create_code_item(
     group_id: uuid.UUID, payload: CodeItemCreate, db: DbSession, _: AdminUser
 ) -> CodeItemOut:
     group = _load_group(db, group_id)
-    if db.scalar(
-        select(CodeItem.id).where(
+    existing = db.scalar(
+        select(CodeItem).where(
             CodeItem.group_id == group.id, CodeItem.code == payload.code
         )
-    ):
+    )
+    if existing is not None and existing.deleted_at is None:
         raise AppError("CODE_TAKEN", "이미 사용 중인 항목 코드입니다.", status.HTTP_409_CONFLICT)
-    item = CodeItem(group_id=group.id, **payload.model_dump())
-    db.add(item)
+    if existing is not None:
+        # 같은 코드는 같은 분류다: 삭제된 줄을 되살려 옛 기록의 연결도 돌아오게 한다.
+        for field, value in payload.model_dump().items():
+            setattr(existing, field, value)
+        existing.deleted_at = None
+        existing.is_active = True
+        item = existing
+    else:
+        item = CodeItem(group_id=group.id, **payload.model_dump())
+        db.add(item)
     db.commit()
     db.refresh(item)
-    return CodeItemOut.model_validate(item)
+    return _item_out(item, group)
 
 
 @router.patch("/codes/items/{item_id}", response_model=CodeItemOut)
 def update_code_item(
     item_id: uuid.UUID, payload: CodeItemUpdate, db: DbSession, _: AdminUser
 ) -> CodeItemOut:
-    item = db.scalar(select(CodeItem).where(CodeItem.id == item_id))
-    if item is None:
-        raise AppError("NOT_FOUND", "항목을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+    item = _load_item(db, item_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
-    return CodeItemOut.model_validate(item)
+    return _item_out(item, item.group)
+
+
+@router.get("/codes/items/{item_id}/usage", response_model=CodeItemUsage)
+def code_item_usage(item_id: uuid.UUID, db: DbSession, _: AdminUser) -> CodeItemUsage:
+    """삭제 확인 창용: 이 항목을 쓰는 기록이 몇 건인지, 지울 수 있는지."""
+    item = _load_item(db, item_id)
+    usage = _item_usage(db, item.id)
+    reason = _protected_reason(item.group, item)
+    return CodeItemUsage(
+        count=sum(usage.values()),
+        by=usage,
+        children=_child_count(db, item.id),
+        is_protected=reason is not None,
+        protected_reason=reason,
+    )
 
 
 @router.delete("/codes/items/{item_id}", response_model=Message)
-def delete_code_item(item_id: uuid.UUID, db: DbSession, _: AdminUser) -> Message:
-    """Soft-deactivated rather than removed: existing tickets and assets still
-    point at this code and their statistics must keep resolving its name."""
-    item = db.scalar(select(CodeItem).where(CodeItem.id == item_id))
-    if item is None:
-        raise AppError("NOT_FOUND", "항목을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
-    item.is_active = False
-    item.deleted_at = now_utc()
+def delete_code_item(
+    item_id: uuid.UUID, db: DbSession, admin: AdminUser, client: Client
+) -> Message:
+    """목록에서 없앤다(하위 항목도 함께). 줄은 soft delete 로 남겨 두어
+    이미 이 분류를 쓰는 기록·장비·통계가 이름을 계속 보여 줄 수 있게 한다.
+    같은 코드로 다시 추가하면 그 줄이 되살아난다."""
+    item = _load_item(db, item_id)
+    group = item.group
+    reason = _protected_reason(group, item)
+    if reason:
+        raise AppError("SYSTEM_ITEM", reason)
+
+    usage = _item_usage(db, item.id)
+    children = db.scalars(
+        select(CodeItem).where(CodeItem.parent_id == item.id, CodeItem.deleted_at.is_(None))
+    ).all()
+    stamp = now_utc()
+    for row in (item, *children):
+        row.is_active = False
+        row.deleted_at = stamp
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=admin,
+        module=group.module,
+        entity_type="code_item",
+        entity_id=item.id,
+        summary=f"분류 항목 삭제: {group.name} › {item.name}",
+        changes={"usage": usage, "children": len(children)},
+        client=client,
+    )
     db.commit()
-    return Message(message="항목이 비활성화되었습니다. 기존 데이터의 분류는 유지됩니다.")
+
+    used = sum(usage.values())
+    message = f"'{item.name}' 항목을 삭제했습니다."
+    if children:
+        message += f" 하위 항목 {len(children)}개도 함께 삭제했습니다."
+    if used:
+        message += f" 이 항목을 쓰던 기존 기록 {used}건은 분류 이름을 그대로 보여 줍니다."
+    return Message(message=message)
 
 
 @router.post("/codes/{group_id}/reorder", response_model=Message)
@@ -466,8 +520,85 @@ def _load_group_by_code(db: Session, code: str) -> CodeGroup:
 def _group_out(group: CodeGroup) -> CodeGroupOut:
     out = CodeGroupOut.model_validate(group)
     out.items = [
-        CodeItemOut.model_validate(i)
+        _item_out(i, group)
         for i in sorted(group.items, key=lambda i: i.sort_order)
         if i.deleted_at is None
     ]
     return out
+
+
+def _item_out(item: CodeItem, group: CodeGroup) -> CodeItemOut:
+    out = CodeItemOut.model_validate(item)
+    out.is_protected = _protected_reason(group, item) is not None
+    return out
+
+
+def _load_item(db: Session, item_id: uuid.UUID) -> CodeItem:
+    item = db.scalar(
+        select(CodeItem)
+        .where(CodeItem.id == item_id, CodeItem.deleted_at.is_(None))
+        .options(selectinload(CodeItem.group))
+    )
+    if item is None:
+        raise AppError("NOT_FOUND", "항목을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+    return item
+
+
+# 재고 상태 중 서버 로직이 기대는 규칙. 'free'(회수·폐기)는 지워도 된다.
+_PROTECTED_RULES = {"store", "as", "clear"}
+
+
+def _protected_reason(group: CodeGroup, item: CodeItem) -> str | None:
+    if group.code != asset_rules.STATUS_GROUP:
+        return None
+    if asset_rules.rule_of(item).kind not in _PROTECTED_RULES:
+        return None
+    return (
+        "재고 상태 규칙(매장 필수 · AS · 창고 자동 비움)에 쓰이는 항목이라 삭제할 수 없습니다. "
+        "이름만 바꾸거나 비활성화해 주세요."
+    )
+
+
+# 사용처 표의 한글 이름. 없는 표는 표 이름 그대로.
+_USAGE_LABELS = {
+    "service_tickets": "대응 기록",
+    "service_ticket_causes": "대응 원인",
+    "service_ticket_responders": "대응 인원",
+    "stores": "매장",
+    "assets": "장비",
+    "asset_movements": "장비 이동 이력",
+    "events": "일정",
+}
+
+
+def _item_usage(db: Session, item_id: uuid.UUID) -> dict[str, int]:
+    """code_items 를 가리키는 모든 외래키 열을 훑어 이 항목을 쓰는 줄 수를 센다.
+    표가 늘어도 손볼 곳이 없도록 메타데이터에서 찾는다."""
+    out: dict[str, int] = {}
+    for table in Base.metadata.sorted_tables:
+        if table.name == CodeItem.__tablename__:
+            continue  # 하위 항목은 따로 센다
+        cols = [
+            c for c in table.columns
+            if any(fk.column.table.name == CodeItem.__tablename__ for fk in c.foreign_keys)
+        ]
+        if not cols:
+            continue
+        stmt = select(func.count()).select_from(table).where(or_(*[c == item_id for c in cols]))
+        if "deleted_at" in table.c:
+            stmt = stmt.where(table.c.deleted_at.is_(None))
+        n = int(db.scalar(stmt) or 0)
+        if n:
+            out[_USAGE_LABELS.get(table.name, table.name)] = n
+    return out
+
+
+def _child_count(db: Session, item_id: uuid.UUID) -> int:
+    return int(
+        db.scalar(
+            select(func.count()).select_from(CodeItem).where(
+                CodeItem.parent_id == item_id, CodeItem.deleted_at.is_(None)
+            )
+        )
+        or 0
+    )

@@ -93,6 +93,18 @@
 | 첨부, 엑셀, 검색(연도·달·작성자·연장·내용) | `/files` entity `worklog`, `GET /worklogs/export.xlsx`, `GET /worklogs?…` |
 | 글 파일(.txt) 폴더 저장 | 옮기지 않음 (첨부는 서버 저장소) |
 
+## 5c. 분류 항목(코드 마스터) 정리 (2026-09-25 추가)
+
+관리 › 기능 설정의 분류 목록(서비스구분 · 증상 · 제조사 · 브랜드 · 재고 상태 …)은 `code_items` 한 표다.
+
+| 동작 | 신 서버 |
+|---|---|
+| 항목 삭제 | `DELETE /admin/codes/items/{id}`: 모든 목록에서 사라짐(하위 항목도 함께). 줄은 soft delete 로 남아 **기존 기록·장비·통계는 분류 이름을 그대로** 보여 준다. 감사로그 `DELETE code_item` |
+| 삭제 전 확인 | `GET /admin/codes/items/{id}/usage` → 사용 건수(`by`: 대응 기록 · 대응 원인 · 매장 · 장비 · 장비 이동 이력 · 일정), 하위 항목 수, 보호 여부 |
+| 보호 항목 | 재고 상태 중 규칙 `store`/`as`/`clear` 인 것(창고 · 사무실 · 미상 · 설치 · 렌탈 중 · AS 대기 · AS 반출)은 삭제 불가 → 400 `SYSTEM_ITEM`. 항목 JSON 의 `is_protected`. 회수·폐기(`free`)는 지울 수 있다 |
+| 되살리기 | 삭제한 항목과 같은 코드로 다시 추가하면(`POST /admin/codes/{group_id}/items`) 그 줄이 되살아나 옛 기록의 연결도 돌아온다 |
+| 비활성화 | `PATCH /admin/codes/items/{id}` `is_active=false`: 새 등록 선택지에서만 빠지고 목록에는 남는다(다시 사용 가능) |
+
 ## 6. 아직 옮기지 않은 것
 
 - 출고 대조(게시판의 제조사 출고 엑셀 ↔ 재고) — `dddeckservercode/code/docs/디떽_출고이력.xlsx` 참고
@@ -102,8 +114,8 @@
 
 ```bash
 cd backend
-.venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (185)
-.venv-linux/bin/python scripts/smoke_test_legacy.py   # 구 서버 규칙 (143)
+.venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (198)
+.venv-linux/bin/python scripts/smoke_test_legacy.py   # 구 서버 규칙 (145)
 ```
 
 SQLite 에서 SAVEPOINT 가 제대로 롤백되도록 `app/core/database.py` 가 pysqlite 의 BEGIN 을 끄고 직접 낸다. 접수번호·자산번호 채번(`begin_nested`)과 일괄 이동의 건별 롤백이 이것에 기댄다.

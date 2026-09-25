@@ -8955,7 +8955,7 @@
           "admin"
         ],
         "summary": "Delete Code Item",
-        "description": "Soft-deactivated rather than removed: existing tickets and assets still\npoint at this code and their statistics must keep resolving its name.",
+        "description": "목록에서 없앤다(하위 항목도 함께). 줄은 soft delete 로 남겨 두어\n이미 이 분류를 쓰는 기록·장비·통계가 이름을 계속 보여 줄 수 있게 한다.\n같은 코드로 다시 추가하면 그 줄이 되살아난다.",
         "operationId": "delete_code_item_api_v1_admin_codes_items__item_id__delete",
         "security": [
           {
@@ -8981,6 +8981,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/codes/items/{item_id}/usage": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Code Item Usage",
+        "description": "삭제 확인 창용: 이 항목을 쓰는 기록이 몇 건인지, 지울 수 있는지.",
+        "operationId": "code_item_usage_api_v1_admin_codes_items__item_id__usage_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeItemUsage"
                 }
               }
             }
@@ -13014,6 +13063,11 @@
               }
             ],
             "title": "Extra"
+          },
+          "is_protected": {
+            "type": "boolean",
+            "title": "Is Protected",
+            "default": false
           }
         },
         "type": "object",
@@ -13120,6 +13174,48 @@
         },
         "type": "object",
         "title": "CodeItemUpdate"
+      },
+      "CodeItemUsage": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "by": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By"
+          },
+          "children": {
+            "type": "integer",
+            "title": "Children",
+            "default": 0
+          },
+          "is_protected": {
+            "type": "boolean",
+            "title": "Is Protected",
+            "default": false
+          },
+          "protected_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protected Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "CodeItemUsage",
+        "description": "삭제 확인 창에 보여 줄 것: 이 항목을 쓰는 기록 수와 삭제 가능 여부."
       },
       "CommentCreate": {
         "properties": {
