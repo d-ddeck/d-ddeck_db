@@ -223,16 +223,27 @@ with TestClient(app) as c:
             {"category_id": robot["id"], "serial_no": "R585EN-0002", "model_name": "RB5-850EN"},
             {"category_id": ctrl["id"], "serial_no": "C06-0009"},
         ]}]})
+    check("재고에 없는 S/N 은 거절 (아무것도 저장 안 함)", r.status_code == 400 and err(r) == "SERIAL_UNKNOWN"
+          and r.json()["error"]["details"]["unknown"] == ["로봇팔 R585EN-0002"], r.text)
+    r = c.post("/api/v1/inventory/assets/bulk", headers=H, json={
+        "serial_nos": ["R585EN-0002"], "category_id": robot["id"], "model_name": "RB5-850EN",
+        "manufacturer": "레인보우로보틱스", "location_id": locs["창고"]["id"], "purchase_date": "2026-09-01"})
+    check("장비 목록에서 먼저 등록", r.status_code == 201 and len(r.json()["created"]) == 1, r.text)
+    r = c.post(f"/api/v1/stores/{store2['id']}/equipment", headers=H, json={
+        "install_date": "2026-09-01",
+        "sets": [{"gripper_type": "비전동", "name": "1호기", "slots": [
+            {"category_id": robot["id"], "serial_no": "R585EN-0002", "model_name": "RB5-850EN"},
+            {"category_id": ctrl["id"], "serial_no": "C06-0009"},
+        ]}]})
     check("장비 설정 저장", r.status_code == 200, r.text)
     eq = r.json()
-    check("없는 S/N 은 새로 등록 + 비전동 관리 번호", any("R585EN-0002" in a for a in eq["added"]) and any("NG-0001" in a for a in eq["added"]), eq["added"])
-    check("창고에 있던 장비는 이 매장으로 이동", any("C06-0009" in m for m in eq["moved"]), eq["moved"])
+    check("비전동 관리 번호 자동 등록", any("NG-0001" in a for a in eq["added"]), eq["added"])
+    check("창고에 있던 장비는 이 매장으로 이동", any("C06-0009" in m for m in eq["moved"]) and any("R585EN-0002" in m for m in eq["moved"]), eq["moved"])
     check("매장 그리퍼 종류 갱신", eq["store"]["gripper_type"] == "비전동")
     check("세트 이름 저장", eq["store"]["sets"][0]["name"] == "1호기", eq["store"]["sets"])
     check("새 로봇팔에 기본 제조사", next(a for g in eq["store"]["asset_groups"] for a in g["assets"] if a["serial_no"] == "R585EN-0002") is not None)
     r = c.get(f"/api/v1/inventory/assets?q=R585EN-0002", headers=H)
-    check("새 장비 제조사 기본값(레인보우로보틱스) · 설치일", r.json()["items"][0]["manufacturer"] == "레인보우로보틱스"
-          and r.json()["items"][0]["purchase_date"] == "2026-09-01", r.json()["items"][0])
+    check("이동한 장비: 매장 설치 · 세트 1", r.json()["items"][0]["store_id"] == store2["id"] and r.json()["items"][0]["set_no"] == 1, r.json()["items"][0])
     r = c.post(f"/api/v1/stores/{store2['id']}/equipment", headers=H, json={
         "sets": [{"gripper_type": "비전동", "slots": [{"category_id": robot["id"], "serial_no": "R585EN-0002"}]}]})
     check("다시 저장해도 관리 번호 중복 없음", not r.json()["added"] and "로봇팔 R585EN-0002" in r.json()["kept"], r.json())

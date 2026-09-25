@@ -597,6 +597,25 @@ def setup_equipment(
 
     kinds = {k.id: k for k in _kind_items(db)}
     ne_kind = next((k for k in kinds.values() if k.name == NONELECTRIC_KIND), None)
+
+    # 재고에 등록되지 않은 S/N 은 매장에 붙일 수 없다 (설정 equipment_requires_known_serial).
+    # 장비는 [장비 목록]에서 먼저 등록하고, 여기서는 어느 매장·세트에 두는지만 정한다.
+    # 한 칸이라도 모르는 S/N 이 있으면 아무것도 저장하지 않고 전부 알려 준다.
+    if settings_store.get(db, ModuleKey.STORE, "equipment_requires_known_serial", True):
+        unknown: list[str] = []
+        for s in payload.sets:
+            for sl in s.slots:
+                serial = asset_rules.normalise_serial(sl.serial_no)
+                kind = kinds.get(sl.category_id)
+                if serial and kind is not None and asset_rules.find_asset_by_serial(db, serial, kind.id) is None:
+                    unknown.append(f"{kind.name} {serial}")
+        if unknown:
+            raise AppError(
+                "SERIAL_UNKNOWN",
+                "재고에 등록되지 않은 S/N 입니다: " + ", ".join(unknown)
+                + ". [장비 목록]에서 먼저 등록한 뒤 매장에 배치하세요.",
+                details={"unknown": unknown},
+            )
     prefix = settings_store.get(db, ModuleKey.INVENTORY, "nonelectric_serial_prefix", "NG-") or "NG-"
     # 이미 이 매장에 설치된 비전동 그리퍼 수만큼은 새 관리 번호를 만들지 않는다 (다시 저장해도 중복 안 생기게)
     ng_have = db.scalar(

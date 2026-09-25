@@ -213,6 +213,7 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
 
     (ModuleKey.STORE, "default_gripper_type", "전동", "string", "기본 그리퍼 종류", True),
     (ModuleKey.STORE, "show_closed_stores", False, "bool", "폐점 매장 목록에 표시", True),
+    (ModuleKey.STORE, "equipment_requires_known_serial", True, "bool", "매장 장비 설정은 재고에 있는 S/N 만", True),
 
     (ModuleKey.WORKLOG, "default_work_start", "09:00", "string", "근무 시작 기본값", True),
     (ModuleKey.WORKLOG, "default_work_end", "18:00", "string", "근무 종료 기본값", True),
