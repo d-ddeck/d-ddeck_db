@@ -10,6 +10,7 @@ import '../../models/common.dart';
 import '../async_view.dart';
 import '../common/common.dart';
 import '../format.dart';
+import 'color_picker_field.dart';
 
 class EventFormPage extends StatefulWidget {
   const EventFormPage({super.key, required this.initialDate}) : event = null, onSaved = null;
@@ -32,6 +33,7 @@ class _EventFormPageState extends State<EventFormPage> {
   late DateTime _end;
   bool _allDay = false;
   String? _categoryId;
+  String? _color;
   bool _isPrivate = false;
   late List<EventReminder> _reminders;
   final Set<String> _participants = {};
@@ -51,6 +53,7 @@ class _EventFormPageState extends State<EventFormPage> {
       _description.text = event.description ?? '';
       _calendarId = event.calendarId;
       _categoryId = event.categoryId;
+      _color = event.color?.trim().isNotEmpty == true ? event.color : null;
       _start = event.startsAt;
       _end = event.endsAt;
       _allDay = event.allDay;
@@ -96,6 +99,22 @@ class _EventFormPageState extends State<EventFormPage> {
             members.putIfAbsent(p.userId, () => p.user ?? UserBrief(id: p.userId, fullName: p.userId));
           }
           _calendarId ??= calendars.isNotEmpty ? calendars.first.id : null;
+
+          var defaultColor = Theme.of(context).colorScheme.primary;
+          for (final category in categories) {
+            if (category.id == _categoryId && category.color?.trim().isNotEmpty == true) {
+              defaultColor = parseHexColor(category.color!, defaultColor);
+            }
+          }
+          final existingCalendarColor = widget.event?.calendar?.color;
+          if (existingCalendarColor?.trim().isNotEmpty == true) {
+            defaultColor = parseHexColor(existingCalendarColor!, defaultColor);
+          }
+          for (final calendar in calendars) {
+            if (calendar.id == _calendarId && calendar.color.trim().isNotEmpty) {
+              defaultColor = parseHexColor(calendar.color, defaultColor);
+            }
+          }
 
           return Column(children: [Expanded(child: ListView(
             padding: EdgeInsets.zero,
@@ -146,6 +165,21 @@ class _EventFormPageState extends State<EventFormPage> {
                     DropdownMenuItem(value: c.id, child: Text(c.name)),
                 ],
                 onChanged: (v) => setState(() => _categoryId = v == '' ? null : v),
+              ),
+              const FormGap(),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _title,
+                builder: (context, title, _) => EventColorField(
+                  value: _color,
+                  existingColor: widget.event?.color,
+                  defaultColor: defaultColor,
+                  title: title.text.trim(),
+                  startsAt: _start,
+                  endsAt: _end,
+                  allDay: _allDay,
+                  canceled: widget.event?.status == EventStatus.canceled,
+                  onChanged: (value) => setState(() => _color = value),
+                ),
               ),
               const FormGap(),
               SwitchListTile(
@@ -280,7 +314,7 @@ class _EventFormPageState extends State<EventFormPage> {
         await repo.createEvent(
           calendarId: _calendarId!, title: _title.text.trim(),
           startsAt: start, endsAt: end, location: _location.text,
-          description: _description.text, categoryId: _categoryId,
+          description: _description.text, categoryId: _categoryId, color: _color,
           allDay: _allDay, isPrivate: _isPrivate,
           participantIds: _participants.toList(), reminders: reminders,
         );
@@ -289,6 +323,7 @@ class _EventFormPageState extends State<EventFormPage> {
         if (_title.text.trim() != event.title) changes['title'] = _title.text.trim();
         if (_description.text != (event.description ?? '')) changes['description'] = _description.text;
         if (_location.text != (event.location ?? '')) changes['location'] = _location.text;
+        if (_color != event.color) changes['color'] = _color;
         if (_categoryId != event.categoryId) changes['category_id'] = _categoryId;
         if (start != event.startsAt) changes['starts_at'] = start.toUtc().toIso8601String();
         if (end != event.endsAt) changes['ends_at'] = end.toUtc().toIso8601String();

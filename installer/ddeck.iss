@@ -43,6 +43,7 @@ PrivilegesRequired=lowest
 
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
+SetupIconFile=..\app\windows\runner\resources\app_icon.ico
 SetupLogging=yes
 
 [Languages]

@@ -89,6 +89,7 @@ dependencies:
   shared_preferences: ^2.5.3
 
 dev_dependencies:
+  flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
 
@@ -118,6 +119,7 @@ flutter:
   # 일정 알람 소리 (시계 앱처럼 반복 재생). 짧은 비프 패턴이라 용량이 작다.
   assets:
     - assets/sounds/alarm.wav
+    - assets/icon/app_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -144,3 +146,18 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# 실행 아이콘. 원본은 assets/icon/app_icon.png (회사 로고).
+#   dart run flutter_launcher_icons   ← 원본을 바꾼 뒤 이 명령으로 다시 생성
+# 안드로이드 적응형 아이콘은 로고만 투명 배경으로 둔 foreground + 남색 배경.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#061629"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  min_sdk_android: 24
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256

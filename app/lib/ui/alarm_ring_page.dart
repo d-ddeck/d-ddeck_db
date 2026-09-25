@@ -10,6 +10,7 @@ import '../services/connectivity_probe.dart';
 import '../services/synced_alarm_store.dart';
 import '../models/calendar.dart';
 import 'format.dart';
+import 'theme.dart';
 import '../state/auth_state.dart';
 import 'calendar/event_detail_sheet.dart';
 
@@ -139,9 +140,15 @@ class _AlarmRingPageState extends State<AlarmRingPage> {
                       const SizedBox(height: 20),
                       Text(ringing ? '일정 알람' : '알람이 꺼졌습니다', textAlign: TextAlign.center),
                       const SizedBox(height: 16),
-                      Text(data['title'] as String? ?? widget.alarm.notificationSettings.title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Container(width: 10, height: 10, decoration: BoxDecoration(
+                          color: parseHexColor(data['color'] as String? ?? '#3B82F6'),
+                          shape: BoxShape.circle)),
+                        const SizedBox(width: AppSpace.sm),
+                        Flexible(child: Text(data['title'] as String? ?? widget.alarm.notificationSettings.title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700))),
+                      ]),
                       const SizedBox(height: 16),
                       Text(data['startsLabel'] as String? ?? '', textAlign: TextAlign.center),
                       if (data['location'] != null)

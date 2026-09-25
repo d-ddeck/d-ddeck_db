@@ -87,13 +87,20 @@ class _EventDetailSheetState extends State<EventDetailSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              event.title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
+            Row(children: [
+              Container(width: 10, height: 10, decoration: BoxDecoration(
+                color: event.status == EventStatus.canceled ? Colors.grey
+                    : event.displayColor(event.calendar?.displayColor ?? Theme.of(context).colorScheme.primary),
+                shape: BoxShape.circle)),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(child: Text(
+                event.title,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              )),
+            ]),
             const SizedBox(height: 8),
             _row(context, Icons.schedule,
                 Fmt.range(event.startsAt, event.endsAt, allDay: event.allDay)),

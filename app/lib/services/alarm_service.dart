@@ -206,7 +206,7 @@ class AlarmService with WidgetsBindingObserver {
             'eventId': r.eventId, 'title': r.title,
             'startsAt': start.toIso8601String(),
             'startsLabel': '${start.month}/${start.day} ${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}',
-            'location': r.location, 'calendarName': r.calendarName,
+            'location': r.location, 'calendarName': r.calendarName, 'color': r.color,
             'scheduledAt': r.scheduledAt.toIso8601String(),
           }))) {
             count++;
