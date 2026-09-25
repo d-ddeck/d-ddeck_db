@@ -5,6 +5,8 @@ import '../../core/api_exception.dart';
 import '../../core/config.dart';
 import '../../state/auth_state.dart';
 import '../../services/vpn_service.dart';
+import '../../services/alarm_service.dart';
+import '../alarm_list_page.dart';
 import '../vpn/vpn_controls.dart';
 import '../theme.dart';
 import '../common/common.dart';
@@ -109,7 +111,8 @@ class _LoginPageState extends State<LoginPage> {
           padding: EdgeInsets.zero,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(child: Padding(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Card(child: Padding(
               padding: const EdgeInsets.all(AppSpace.xl),
               child: Form(
               key: _formKey,
@@ -296,6 +299,11 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
             )),
+            if (AlarmService.isSupported)
+              TextButton(onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const SyncedAlarmsPage())),
+                child: const Text('이 폰에 저장된 알람 보기')),
+            ]),
           ),
         ),
       )),

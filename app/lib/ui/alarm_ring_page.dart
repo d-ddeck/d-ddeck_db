@@ -6,9 +6,12 @@ import 'package:provider/provider.dart';
 
 import '../data/calendar_repository.dart';
 import '../services/alarm_service.dart';
+import '../services/connectivity_probe.dart';
+import '../services/synced_alarm_store.dart';
+import '../models/calendar.dart';
+import 'format.dart';
 import '../state/auth_state.dart';
 import 'calendar/event_detail_sheet.dart';
-import 'common/common.dart';
 
 /// 인증 화면과 별개로 표시한다. payload만으로 오프라인에서도 내용을 읽는다.
 class AlarmRingPage extends StatefulWidget {
@@ -56,17 +59,55 @@ class _AlarmRingPageState extends State<AlarmRingPage> {
   }
 
   Future<void> _detail(String id, BuildContext pageContext) async {
-    if (context.read<AuthState>().phase != AuthPhase.ready) {
-      AppSnack.show(pageContext, '로그인 후 일정 상세를 확인해 주세요.');
+    final auth = context.read<AuthState>();
+    final repo = context.read<CalendarRepository>();
+    if (auth.phase != AuthPhase.ready || !await canReachServer(auth.api)) {
+      if (pageContext.mounted) await _savedDetail(id, pageContext);
       return;
     }
     try {
-      final event = await context.read<CalendarRepository>().event(id);
+      final event = await repo.event(id).timeout(const Duration(seconds: 3));
       if (!pageContext.mounted) return;
       await EventDetailSheet.show(pageContext, event);
     } catch (_) {
-      if (pageContext.mounted) AppSnack.show(pageContext, '일정을 불러오지 못했습니다. 연결과 접근 권한을 확인해 주세요.');
+      if (pageContext.mounted) await _savedDetail(id, pageContext);
     }
+  }
+
+  Future<void> _savedDetail(String id, BuildContext pageContext) async {
+    UpcomingReminder? reminder;
+    try {
+      final saved = await SyncedAlarmStore().load();
+      for (final r in saved.reminders) {
+        if (r.alarmId == widget.alarm.id) { reminder = r; break; }
+        if (r.eventId == id) reminder ??= r;
+      }
+    } catch (_) {
+      // 저장본이 없거나 읽을 수 없어도 울림 payload에 기본 정보가 있다.
+    }
+    if (!pageContext.mounted) return;
+    final data = AlarmService.metadata(widget.alarm);
+    final title = reminder?.title ?? data['title'] as String? ?? widget.alarm.notificationSettings.title;
+    final when = reminder == null ? '${data['startsLabel'] ?? '-'}'
+        : Fmt.range(reminder.startsAt.toLocal(), reminder.endsAt.toLocal(), allDay: reminder.allDay);
+    final location = reminder?.location ?? data['location'] as String?;
+    await showModalBottomSheet<void>(context: pageContext, showDragHandle: true,
+      builder: (context) => SafeArea(child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('이 폰에 저장된 일정', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Text('일정: $when'),
+            Text('알림: ${Fmt.dateTime((reminder?.scheduledAt ?? widget.alarm.dateTime).toLocal())}'),
+            if (location?.isNotEmpty == true) Text('장소: $location'),
+            const SizedBox(height: 12),
+            const Text('폰에 저장된 내용으로, 서버의 최신 일정과 다를 수 있습니다.'),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('닫기')),
+          ]),
+      )));
   }
 
   @override

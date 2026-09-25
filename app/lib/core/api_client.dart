@@ -160,6 +160,11 @@ class ApiClient {
       }
     } catch (e) {
       debugPrint('token refresh failed: $e');
+      // 연결 실패는 세션 거부가 아니다. 폰의 오프라인 알람도 유지한다.
+      if (e is DioException && (e.response == null ||
+          (e.response?.statusCode ?? 0) >= 500)) {
+        return false;
+      }
     }
     _endSession();
     return false;

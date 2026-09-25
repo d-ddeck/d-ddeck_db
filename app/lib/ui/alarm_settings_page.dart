@@ -7,6 +7,7 @@ import 'common/common.dart';
 import '../data/calendar_repository.dart';
 import '../models/calendar.dart';
 import '../services/alarm_service.dart';
+import 'alarm_list_page.dart';
 import '../state/auth_state.dart';
 import 'async_view.dart';
 import 'format.dart';
@@ -94,13 +95,21 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> with WidgetsBindi
 
     return Scaffold(
       appBar: AppBar(title: const Text('일정 알림')),
-      body: PageBody(child: AsyncView<_AlarmStatus>(
+      body: PageBody(child: Column(children: [
+        ListTile(leading: const Icon(Icons.alarm),
+          title: const Text('이 폰에 저장된 알람 보기'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const SyncedAlarmsPage()))),
+        Expanded(child: AsyncView<_AlarmStatus>(
         key: _viewKey,
         load: () async {
           await alarms.init();
           // 네트워크가 없어도 권한과 기기에 저장된 예약을 확인할 수 있다.
           List<UpcomingReminder> reminders = [];
-          try { reminders = await repo.upcomingReminders(days: 7); } catch (_) {}
+          if (auth.phase == AuthPhase.ready) {
+            try { reminders = await repo.upcomingReminders(days: 7); } catch (_) {}
+          }
           return _AlarmStatus(
             reminders: reminders,
             pending: await alarms.pending(),
@@ -289,7 +298,8 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> with WidgetsBindi
             const SizedBox(height: 24),
           ],
         ),
-      )),
+        )),
+      ])),
     );
   }
 }

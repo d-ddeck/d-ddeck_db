@@ -10,6 +10,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/calendar.dart';
 import 'alarm_prefs.dart';
+import 'synced_alarm_store.dart';
 
 /// Android의 네이티브 알람을 사용한다. 모든 변경은 하나의 큐에서 실행한다.
 class AlarmService with WidgetsBindingObserver {
@@ -174,7 +175,11 @@ class AlarmService with WidgetsBindingObserver {
     await init();
     if (!_ready) return 0;
     return _serial(() async {
-      if (!prefs.enabled) { await Alarm.stopAll(); return 0; }
+      if (!prefs.enabled) {
+        await Alarm.stopAll();
+        await SyncedAlarmStore().save(reminders);
+        return 0;
+      }
       final retained = <int>{};
       for (final alarm in await Alarm.getAlarms()) {
         final data = metadata(alarm);
@@ -203,6 +208,7 @@ class AlarmService with WidgetsBindingObserver {
           }
         } catch (e) { debugPrint('알람 예약 실패 (${r.title}): $e'); }
       }
+      await SyncedAlarmStore().save(reminders);
       return count;
     });
   }
@@ -210,10 +216,13 @@ class AlarmService with WidgetsBindingObserver {
   Future<void> cancelAll() async {
     if (!isSupported) return;
     await init();
-    if (!_ready) return;
     await _serial(() async {
-      await Alarm.stopAll();
-      active.value = null;
+      try {
+        if (_ready) await Alarm.stopAll();
+        active.value = null;
+      } finally {
+        await SyncedAlarmStore().clear();
+      }
     });
   }
 

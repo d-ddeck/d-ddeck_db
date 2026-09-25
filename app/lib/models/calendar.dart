@@ -224,8 +224,10 @@ class UpcomingReminder {
     this.allDay = false,
     this.color,
     this.calendarName,
-  });
+    int? alarmId,
+  }) : _alarmId = alarmId;
 
+  final int? _alarmId;
   final String reminderId;
   final String eventId;
   final String title;
@@ -245,7 +247,7 @@ class UpcomingReminder {
   /// Android notification ids must fit in an int, but reminder ids are UUIDs.
   /// Hashing keeps the mapping stable across app restarts so re-syncing
   /// replaces an existing alarm instead of creating a duplicate.
-  int get alarmId => reminderId.hashCode & 0x7FFFFFFF;
+  int get alarmId => _alarmId ?? (reminderId.hashCode & 0x7FFFFFFF);
 
   String get body {
     final when = allDay
@@ -263,9 +265,19 @@ class UpcomingReminder {
     return '$when 시작 ($lead)$place';
   }
 
+  Map<String, dynamic> toJson() => {
+    'reminder_id': reminderId, 'event_id': eventId, 'alarm_id': alarmId,
+    'title': title, 'starts_at': startsAt.toUtc().toIso8601String(),
+    'ends_at': endsAt.toUtc().toIso8601String(),
+    'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+    'offset_minutes': offsetMinutes, 'location': location,
+    'all_day': allDay, 'color': color, 'calendar_name': calendarName,
+  };
+
   factory UpcomingReminder.fromJson(Map<String, dynamic> j) {
     final start = asDate(j['starts_at']) ?? DateTime.now();
     return UpcomingReminder(
+      alarmId: j['alarm_id'] == null ? null : asInt(j['alarm_id']),
       reminderId: asString(j['reminder_id']),
       eventId: asString(j['event_id']),
       title: asString(j['title']),
