@@ -100,6 +100,8 @@ class AuthRepository {
     return PagedList.fromJson(res, UserProfile.fromJson);
   }
 
+  Future<void> deleteUser(String id) => _api.delete('/users/$id');
+
   Future<UserProfile> approve(String userId, Role role,
       {String? departmentId}) async {
     final res = await _api.post('/users/$userId/approve', body: {

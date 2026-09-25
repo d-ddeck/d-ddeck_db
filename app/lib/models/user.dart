@@ -87,7 +87,8 @@ class UserProfile {
       phone: j['phone'] as String?,
       position: j['position'] as String?,
       departmentId: j['department_id'] as String?,
-      departmentName: dept is Map ? dept['name'] as String? : null,
+      departmentName: j['department_name'] as String? ??
+          (dept is Map ? dept['name'] as String? : null),
       mustChangePassword: asBool(j['must_change_password']),
       lastLoginAt: asDate(j['last_login_at']),
       createdAt: asDate(j['created_at']),
