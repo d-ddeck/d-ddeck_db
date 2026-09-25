@@ -16,6 +16,7 @@ import 'data/store_repository.dart';
 import 'services/alarm_service.dart';
 import 'services/vpn_service.dart';
 import 'state/auth_state.dart';
+import 'ui/alarm_ring_page.dart';
 import 'ui/auth/login_page.dart';
 import 'ui/auth/signup_page.dart';
 import 'ui/shell.dart';
@@ -86,6 +87,22 @@ class DdeckApp extends StatelessWidget {
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: const [Locale('ko', 'KR'), Locale('en')],
       home: const _RootRouter(),
+      builder: (context, child) => ValueListenableBuilder(
+        valueListenable: context.read<AlarmService>().active,
+        builder: (context, alarm, _) => Stack(
+          fit: StackFit.expand,
+          children: [
+            if (child != null) child,
+            if (alarm != null)
+              Navigator(
+                key: ValueKey('ring-${alarm.id}'),
+                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                  builder: (_) => AlarmRingPage(alarm: alarm),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

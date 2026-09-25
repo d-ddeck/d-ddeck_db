@@ -35,6 +35,7 @@ class AuthState extends ChangeNotifier {
     required this.alarms,
   }) {
     // Fires when a refresh fails or an admin suspends the account mid-session.
+    alarms.onStopped = syncAlarms;
     api.onSessionExpired = () => _forceLogout('세션이 만료되었습니다. 다시 로그인해 주세요.');
   }
 
@@ -197,14 +198,16 @@ class AuthState extends ChangeNotifier {
   /// 통째로 다시 거는 방식이라 삭제된 일정의 알람이 남지 않는다.
   Future<void> syncAlarms() async {
     if (_phase != AuthPhase.ready || !AlarmService.isSupported) return;
+    final owner = _user;
     try {
       final reminders = await calendarRepo.upcomingReminders(days: 7);
+      if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
       final count = await alarms.sync(reminders);
       if (count != _scheduledAlarms) {
         _scheduledAlarms = count;
         notifyListeners();
       }
-    } on ApiException {
+    } catch (_) {
       // 네트워크가 끊겨도 이미 걸어둔 알람은 그대로 울린다. 다음 폴링에서
       // 다시 시도하면 되므로 사용자에게 알리지 않는다.
     }
@@ -231,6 +234,7 @@ class AuthState extends ChangeNotifier {
     _pollTimer = null;
     _scheduledAlarms = 0;
     // 계정이 바뀌었는데 이전 사용자의 일정 알람이 울리면 안 된다.
+    _phase = AuthPhase.loggedOut;
     await alarms.cancelAll();
     await tokenStore.clearSession();
     _user = null;
@@ -247,6 +251,7 @@ class AuthState extends ChangeNotifier {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    alarms.onStopped = null;
     super.dispose();
   }
 }

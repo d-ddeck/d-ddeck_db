@@ -14,6 +14,13 @@
     <!-- 재부팅하면 예약된 알람이 모두 사라진다. 아래 리시버가 다시 건다. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- 시계 앱 알람처럼 울리기 위한 권한 (alarm 패키지): 잠금화면 위로 전면 표시,
+         울리는 동안 포그라운드 서비스로 소리·진동 유지, 화면 깨우기. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY"/>
 
     <!-- WireGuard 설정 QR 촬영. 스캔 화면에 들어갈 때만 요청하고,
          카메라가 없는 기기에서도 앱이 설치되도록 required=false 로 둔다. -->
@@ -29,6 +36,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -65,6 +74,9 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
+
+        <!-- 앱이 강제 종료되면 예약한 알람이 못 울릴 수 있다고 알려 주는 서비스 (alarm 패키지). -->
+        <service android:name="com.gdelataillade.alarm.services.NotificationOnKillService"/>
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

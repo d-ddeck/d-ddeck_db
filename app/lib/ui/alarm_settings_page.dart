@@ -17,11 +17,15 @@ class _AlarmStatus {
     required this.reminders,
     required this.pending,
     required this.exactAllowed,
+    required this.notificationAllowed,
+    required this.fullScreenAllowed,
   });
 
   final List<UpcomingReminder> reminders;
   final List<PendingNotificationRequest> pending;
   final bool exactAllowed;
+  final bool notificationAllowed;
+  final bool fullScreenAllowed;
 }
 
 /// 일정 알람 상태를 보여주고, 권한 문제를 사용자가 스스로 고치게 돕는 화면.
@@ -35,8 +39,41 @@ class AlarmSettingsPage extends StatefulWidget {
   State<AlarmSettingsPage> createState() => _AlarmSettingsPageState();
 }
 
-class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
+class _AlarmSettingsPageState extends State<AlarmSettingsPage> with WidgetsBindingObserver {
   final _viewKey = GlobalKey<AsyncViewState<_AlarmStatus>>();
+
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _viewKey.currentState?.reload();
+  }
+
+  Future<void> _save(AlarmService alarms, AuthState auth) async {
+    setState(() => _saving = true);
+    try {
+      await alarms.prefs.save();
+      if (!alarms.prefs.enabled) await alarms.cancelAll();
+      await auth.syncAlarms();
+      _viewKey.currentState?.reload();
+    } catch (_) {
+      if (mounted) AppSnack.show(context, '알람 설정을 저장하지 못했습니다.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,16 +97,61 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
       body: PageBody(child: AsyncView<_AlarmStatus>(
         key: _viewKey,
         load: () async {
-          final reminders = await repo.upcomingReminders(days: 7);
+          await alarms.init();
+          // 네트워크가 없어도 권한과 기기에 저장된 예약을 확인할 수 있다.
+          List<UpcomingReminder> reminders = [];
+          try { reminders = await repo.upcomingReminders(days: 7); } catch (_) {}
           return _AlarmStatus(
             reminders: reminders,
             pending: await alarms.pending(),
             exactAllowed: await alarms.hasExactAlarmPermission(),
+            notificationAllowed: await alarms.hasNotificationPermission(),
+            fullScreenAllowed: await alarms.hasFullScreenPermission(),
           );
         },
         builder: (context, data, reload) => ListView(
           padding: EdgeInsets.zero,
           children: [
+            SectionCard(title: '알람 설정', child: Column(children: [
+              SwitchListTile(title: const Text('알람 사용'), value: alarms.prefs.enabled,
+                onChanged: _saving ? null : (v) { setState(() => alarms.prefs.enabled = v); _save(alarms, auth); }),
+              SwitchListTile(title: const Text('소리'), value: alarms.prefs.sound,
+                onChanged: _saving ? null : (v) { setState(() => alarms.prefs.sound = v); _save(alarms, auth); }),
+              SwitchListTile(title: const Text('진동'), value: alarms.prefs.vibrate,
+                onChanged: _saving ? null : (v) { setState(() => alarms.prefs.vibrate = v); _save(alarms, auth); }),
+              ListTile(title: Text('볼륨 ${(alarms.prefs.volume * 100).round()}%'),
+                subtitle: Slider(value: alarms.prefs.volume,
+                  onChanged: _saving || !alarms.prefs.sound ? null : (v) => setState(() => alarms.prefs.volume = v),
+                  onChangeEnd: (_) => _save(alarms, auth))),
+              ListTile(title: const Text('다시 울림'), trailing: DropdownButton<int>(
+                value: alarms.prefs.snoozeMinutes,
+                items: [1, 3, 5, 10].map((m) => DropdownMenuItem(value: m, child: Text('$m분'))).toList(),
+                onChanged: _saving ? null : (v) {
+                  if (v == null) return;
+                  setState(() => alarms.prefs.snoozeMinutes = v);
+                  _save(alarms, auth);
+                },
+              )),
+            ])),
+            const SizedBox(height: 12),
+            SectionCard(title: '권한 상태', child: Column(children: [
+              ListTile(title: const Text('알림'), trailing: Text(data.notificationAllowed ? '허용' : '꺼짐')),
+              ListTile(title: const Text('정확한 알람'), trailing: Text(data.exactAllowed ? '허용' : '꺼짐')),
+              ListTile(title: const Text('잠금화면 전면 표시'), trailing: Text(data.fullScreenAllowed ? '허용' : '꺼짐'),
+                subtitle: const Text('Android 14 이상: 설정 > 앱 > 특별한 앱 액세스 > 전체 화면 알림에서 허용해 주세요.')),
+              Wrap(spacing: 8, children: [
+                TextButton(onPressed: () async {
+                  await alarms.requestPermissions();
+                  await auth.syncAlarms();
+                  reload();
+                }, child: const Text('알림·정확한 알람 권한')),
+                TextButton(onPressed: () async {
+                  await alarms.requestFullScreenPermission();
+                  reload();
+                }, child: const Text('전면 표시 설정 열기')),
+              ]),
+            ])),
+            const SizedBox(height: 12),
             if (!data.exactAllowed) _ExactAlarmWarning(onFixed: reload),
 
             SectionCard(title: '알림 상태',
@@ -117,12 +199,17 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      await alarms.showTest();
-                      if (!context.mounted) return;
-                      AppSnack.show(context, '알림이 보이지 않으면 권한을 확인해 주세요.');
+                      try {
+                        await alarms.showTest();
+                        if (!context.mounted) return;
+                        AppSnack.show(context, '10초 뒤 테스트 알람이 울립니다. 화면을 잠가 확인해 보세요.');
+                        reload();
+                      } catch (e) {
+                        if (context.mounted) AppSnack.show(context, '$e');
+                      }
                     },
                     icon: const Icon(Icons.volume_up_outlined, size: 18),
-                    label: const Text('테스트 알림'),
+                    label: const Text('10초 뒤 테스트'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -140,8 +227,13 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
             ),
             const SizedBox(height: 18),
 
+            for (final alarm in data.pending)
+              ListTile(leading: const Icon(Icons.alarm),
+                title: Text(alarm.title ?? '일정 알람'),
+                subtitle: Text(alarm.body ?? '')),
+            const SizedBox(height: 12),
             Text(
-              '예정된 알림',
+              '서버의 예정된 알림',
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
@@ -222,7 +314,7 @@ class _ExactAlarmWarning extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '알림 시각이 밀릴 수 있습니다',
+                    '정확한 알람 권한이 필요합니다',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: scheme.onErrorContainer,
@@ -233,8 +325,8 @@ class _ExactAlarmWarning extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '"알람 및 리마인더" 권한이 꺼져 있어, 안드로이드가 알림을 '
-              '수 분에서 수십 분까지 미룰 수 있습니다.\n\n'
+              '"알람 및 리마인더" 권한이 꺼져 있어, 일정 알람을 '
+              '예약하지 못할 수 있습니다.\n\n'
               '설정 > 앱 > d-ddeck > 알람 및 리마인더 에서 켜주세요.',
               style: TextStyle(fontSize: 12, color: scheme.onErrorContainer),
             ),
