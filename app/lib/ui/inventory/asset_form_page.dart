@@ -96,16 +96,20 @@ class _AssetFormPageState extends State<AssetFormPage> {
           _modelId = _models.where((m) => m.parentId == v).firstOrNull?.id;
           _makerId = null;
         }), required: true),
+        const SizedBox(height: 12),
         inventoryChoice('품명', _modelId, {for (final m in _models.where((m) => m.parentId == _categoryId)) m.id: m.name},
           (v) => setState(() => _modelId = v)),
+        const SizedBox(height: 12),
         inventoryChoice('제조사', _makerId, {for (final m in _makers.where((m) => m.parentId == _categoryId)) m.id: m.name},
           (v) => setState(() => _makerId = v), required: _requiredMakers.contains(category?.name)),
+        const SizedBox(height: 12),
         TextFormField(controller: _serial, minLines: 3, maxLines: 8,
           decoration: const InputDecoration(labelText: 'S/N 여러 개 *', helperText: '줄 또는 쉼표로 구분합니다.'),
           validator: (v) => (v ?? '').split(RegExp(r'[\r\n,]+')).every((s) => s.trim().isEmpty) ? 'S/N을 입력해 주세요.' : null),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         AssetDestinationFields(value: _destination, statuses: _statuses, stores: _stores,
           locations: _locations, registration: true),
+        const SizedBox(height: 12),
         ListTile(contentPadding: EdgeInsets.zero, title: const Text('설치일'), subtitle: Text(Fmt.date(_installDate)),
           trailing: IconButton(onPressed: () => setState(() => _installDate = null), icon: const Icon(Icons.clear)),
           onTap: () async {
@@ -113,6 +117,7 @@ class _AssetFormPageState extends State<AssetFormPage> {
               firstDate: DateTime(2000), lastDate: DateTime(2100));
             if (date != null && mounted) setState(() => _installDate = date);
           }),
+        const SizedBox(height: 12),
         TextFormField(controller: _note, maxLines: 3, decoration: const InputDecoration(labelText: '비고')),
         const SizedBox(height: 24),
         FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '등록 중' : '등록')),

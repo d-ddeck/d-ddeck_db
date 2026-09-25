@@ -100,6 +100,7 @@ class _AssetDestinationFieldsState extends State<AssetDestinationFields> {
         d.storeId = null; d.brandId = null; d.setNo = null; d.locationId = null; d.clearStore = false;
         _sets = []; _request++;
       }), required: widget.registration, empty: '위치만 이동'),
+      const SizedBox(height: 12),
       if (status == null && !widget.registration)
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('매장으로 이동'),
           value: d.toStore, onChanged: (v) => setState(() {
@@ -112,15 +113,19 @@ class _AssetDestinationFieldsState extends State<AssetDestinationFields> {
         inventoryChoice('브랜드', d.brandId, {
           for (final s in widget.stores) if (s.brandId != null) s.brandId!: s.brandName,
         }, (v) => setState(() { d.brandId = v; d.storeId = null; d.setNo = null; _sets = []; _request++; }), empty: '전체 브랜드'),
+        const SizedBox(height: 12),
         inventoryChoice('매장', d.storeId, {
           for (final s in widget.stores.where((s) => d.brandId == null || s.brandId == d.brandId)) s.id: '${s.brandName} · ${s.name}',
         }, (v) {
           setState(() { d.storeId = v; d.setNo = null; _sets = []; _request++; });
           if (v != null) _loadSets(v);
         }, required: rule == 'store' || (status == null && d.toStore)),
-        if (d.storeId != null) inventoryChoice('세트 번호', d.setNo?.toString(), {
-          '0': '세트 미지정', for (final s in _sets) '${s.setNo}': s.label,
-        }, (v) => setState(() => d.setNo = v == null ? null : int.parse(v)), empty: '기존 세트 유지'),
+        if (d.storeId != null) ...[
+          const SizedBox(height: 12),
+          inventoryChoice('세트 번호', d.setNo?.toString(), {
+            '0': '세트 미지정', for (final s in _sets) '${s.setNo}': s.label,
+          }, (v) => setState(() => d.setNo = v == null ? null : int.parse(v)), empty: '기존 세트 유지'),
+        ],
       ],
       if (showLocation) ...[
         inventoryChoice('위치', d.locationId, {for (final l in widget.locations.where((l) => l.isActive)) l.id: l.display},
@@ -204,6 +209,7 @@ class _AssetMoveDialogState extends State<_AssetMoveDialog> {
     content: SizedBox(width: 480, child: _loading ? const Center(heightFactor: 2, child: CircularProgressIndicator())
       : SingleChildScrollView(child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, children: [
         AssetDestinationFields(value: _value, statuses: _statuses, stores: _stores, locations: _locations),
+        const SizedBox(height: 12),
         TextFormField(controller: _reason, decoration: const InputDecoration(labelText: '메모 (이동 사유)'), maxLines: 3),
       ])))),
     actions: [TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('취소')),

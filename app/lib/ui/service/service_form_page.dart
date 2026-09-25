@@ -287,7 +287,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 onChanged: (v) => _rentalSerials = v,
                 validator: (v) => v == null || v.trim().isEmpty ? '시리얼을 입력해 주세요.' : null),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
             _date('회수 예정일', _rentalDueDate, (v) => _rentalDueDate = v, required: true),
             SwitchListTile(title: const Text('회수 여부'), value: _rentalReturned, onChanged: (v) => setState(() => _rentalReturned = v)),
             if (_rentalReturned) _date('실제 회수일', _rentalReturnDate, (v) => _rentalReturnDate = v, required: true),
@@ -331,7 +331,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 controller: _address,
                 decoration: const InputDecoration(labelText: '현장 주소'),
               ),
-
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _product,
                 decoration: const InputDecoration(labelText: '제품명'),

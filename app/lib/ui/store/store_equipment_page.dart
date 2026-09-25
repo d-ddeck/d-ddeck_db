@@ -10,6 +10,7 @@ import '../../models/store.dart';
 import '../async_view.dart';
 import '../format.dart';
 import '../inventory/asset_destination.dart';
+import '../theme.dart';
 
 class StoreEquipmentPage extends StatefulWidget {
   const StoreEquipmentPage({super.key, required this.storeId});
@@ -121,6 +122,21 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
     if (mounted) setState(() => _saving = false);
   }
 
+  Widget _slot(_EquipmentDraft d, CodeItem k) {
+    final serial = Padding(padding: const EdgeInsets.only(bottom: 8), child: TextField(
+      controller: d.serials[k.id], decoration: InputDecoration(labelText: '${k.name} S/N',
+        helperText: k.name == '비전동 그리퍼' ? '비우면 관리 번호(NG-0001…)가 자동으로 부여됩니다.' : '비우면 건너뜁니다.')));
+    final model = inventoryChoice('${k.name} 품명', d.modelNames[k.id], {
+      if (d.modelNames[k.id] != null) d.modelNames[k.id]!: d.modelNames[k.id]!,
+      for (final m in _models.where((m) => m.parentId == k.id)) m.name: m.name,
+    }, (v) => setState(() => d.modelNames[k.id] = v));
+    return Padding(padding: const EdgeInsets.only(top: 16), child: AppTheme.isWide(context)
+      ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: serial), const SizedBox(width: 12), Expanded(child: model),
+      ])
+      : Column(children: [serial, const SizedBox(height: 12), model]));
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text('${_store?.name ?? '매장'} 장비 설정')),
@@ -140,19 +156,14 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
                 onPressed: () => _changeSet((repo) => repo.deleteSet(widget.storeId, d.setNo)))]),
             Row(children: [Expanded(child: TextField(controller: d.name, decoration: const InputDecoration(labelText: '세트 이름'))),
               TextButton(onPressed: () => _changeSet((repo) => repo.renameSet(widget.storeId, d.setNo, d.name.text.trim())), child: const Text('이름 저장'))]),
+            const SizedBox(height: 12),
             RadioGroup<String>(groupValue: d.gripper, onChanged: (v) => setState(() => d.gripper = v!), child: const Wrap(children: [
               SizedBox(width: 150, child: RadioListTile<String>(value: '전동', title: Text('전동'))),
               SizedBox(width: 150, child: RadioListTile<String>(value: '비전동', title: Text('비전동'))),
             ])),
+            const SizedBox(height: 12),
             TextField(controller: d.note, decoration: const InputDecoration(labelText: '세트 메모')),
-            for (final k in _kinds.where((k) => _visible(k, d))) Padding(padding: const EdgeInsets.only(top: 12), child: Column(children: [
-              TextField(controller: d.serials[k.id], decoration: InputDecoration(labelText: '${k.name} S/N',
-                helperText: k.name == '비전동 그리퍼' ? '비우면 관리 번호(NG-0001…)가 자동으로 부여됩니다.' : '비우면 건너뜁니다.')),
-              inventoryChoice('${k.name} 품명', d.modelNames[k.id], {
-                if (d.modelNames[k.id] != null) d.modelNames[k.id]!: d.modelNames[k.id]!,
-                for (final m in _models.where((m) => m.parentId == k.id)) m.name: m.name,
-              }, (v) => setState(() => d.modelNames[k.id] = v)),
-            ])),
+            for (final k in _kinds.where((k) => _visible(k, d))) _slot(d, k),
           ],
         ))),
         OutlinedButton.icon(onPressed: () => _changeSet((repo) => repo.addSet(widget.storeId)), icon: const Icon(Icons.add), label: const Text('세트 추가')),
