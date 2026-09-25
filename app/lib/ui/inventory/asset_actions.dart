@@ -12,9 +12,14 @@ import 'asset_destination.dart';
 
 enum AssetAction { move, warehouse, delete }
 
+const _deletePermissionMessage = '삭제는 팀장 이상만 할 수 있습니다';
+
 Future<bool> performAssetAction(BuildContext context, AssetAction action,
     {required String assetId, required String label}) async {
-  if (action == AssetAction.delete && !context.read<AuthState>().isManager) return false;
+  if (action == AssetAction.delete && !context.read<AuthState>().isManager) {
+    AppSnack.show(context, _deletePermissionMessage);
+    return false;
+  }
   final repo = context.read<InventoryRepository>();
   final admin = context.read<AdminRepository>();
   try {
@@ -27,7 +32,10 @@ Future<bool> performAssetAction(BuildContext context, AssetAction action,
           : '$label 을 창고로 옮깁니다', confirmLabel: action == AssetAction.delete ? '삭제' : '창고로 이동', destructive: true);
       if (confirmed != true || !context.mounted) return false;
       if (action == AssetAction.delete) {
-        if (!context.read<AuthState>().isManager) return false;
+        if (!context.read<AuthState>().isManager) {
+          AppSnack.show(context, _deletePermissionMessage);
+          return false;
+        }
         await repo.delete(assetId);
       } else {
         final statuses = await admin.codeGroup('ASSET_STATUS');
@@ -75,7 +83,17 @@ class _AssetActionsMenuState extends State<AssetActionsMenu> {
       itemBuilder: (_) => [
         const PopupMenuItem(value: AssetAction.move, child: Text('이동 / 상태 변경')),
         if (widget.atStore) const PopupMenuItem(value: AssetAction.warehouse, child: Text('매장에서 빼기 → 창고')),
-        if (isManager) const PopupMenuItem(value: AssetAction.delete, child: Text('삭제')),
+        // Keep taps available for the permission explanation; deletion stays guarded.
+        PopupMenuItem(value: AssetAction.delete,
+          child: isManager ? const Text('삭제') : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('삭제', style: TextStyle(color: Theme.of(context).disabledColor)),
+              Text(_deletePermissionMessage,
+                style: TextStyle(fontSize: 12, color: Theme.of(context).disabledColor)),
+            ],
+          )),
       ],
       onSelected: (action) async {
         if (_busy) return;
@@ -101,9 +119,15 @@ class _AssetDeleteButtonState extends State<AssetDeleteButton> {
   bool _busy = false;
   @override
   Widget build(BuildContext context) {
-    if (!context.watch<AuthState>().isManager) return const SizedBox.shrink();
-    return IconButton(tooltip: '삭제', icon: const Icon(Icons.delete_outline),
+    final isManager = context.watch<AuthState>().isManager;
+    return IconButton(tooltip: isManager ? '삭제' : _deletePermissionMessage,
+      icon: Icon(Icons.delete_outline,
+        color: isManager ? null : Theme.of(context).disabledColor),
       onPressed: _busy ? null : () async {
+        if (!isManager) {
+          AppSnack.show(context, _deletePermissionMessage);
+          return;
+        }
         setState(() => _busy = true);
         try {
           if (await performAssetAction(context, AssetAction.delete,

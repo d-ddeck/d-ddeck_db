@@ -102,6 +102,11 @@ class AuthRepository {
 
   Future<void> deleteUser(String id) => _api.delete('/users/$id');
 
+  Future<UserProfile> updateUser(String id, Map<String, dynamic> changes) async {
+    final res = await _api.patch('/users/$id', body: changes);
+    return UserProfile.fromJson(asMap(res));
+  }
+
   Future<UserProfile> approve(String userId, Role role,
       {String? departmentId}) async {
     final res = await _api.post('/users/$userId/approve', body: {

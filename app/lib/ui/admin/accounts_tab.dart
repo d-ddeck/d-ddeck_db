@@ -21,7 +21,7 @@ class AccountsTab extends StatefulWidget {
 class _AccountsTabState extends State<AccountsTab> {
   final _search = TextEditingController();
   final _users = <UserProfile>[];
-  final _deleting = <String>{};
+  final _busyUsers = <String>{};
   Timer? _debounce;
   String? _status;
   String _query = '';
@@ -91,9 +91,9 @@ class _AccountsTabState extends State<AccountsTab> {
   }
 
   Future<void> _delete(UserProfile user) async {
-    if (_deleting.contains(user.id) ||
+    if (_busyUsers.contains(user.id) ||
         user.id == context.read<AuthState>().user?.id) { return; }
-    setState(() => _deleting.add(user.id));
+    setState(() => _busyUsers.add(user.id));
     try {
       final confirmed = await ConfirmDialog.show(context, title: '계정 삭제',
         message: '${user.fullName} 계정을 삭제합니다. '
@@ -103,11 +103,104 @@ class _AccountsTabState extends State<AccountsTab> {
       final ok = await runGuarded(
         context,
         () => repo.deleteUser(user.id),
-        successMessage: '${user.fullName} 계정을 삭제했습니다.',
       );
-      if (ok && mounted) await _load();
+      if (ok && mounted) {
+        await _load();
+        if (mounted) AppSnack.show(context, '${user.fullName} 계정을 삭제했습니다.');
+      }
     } finally {
-      if (mounted) setState(() => _deleting.remove(user.id));
+      if (mounted) setState(() => _busyUsers.remove(user.id));
+    }
+  }
+
+  String _roleLabel(Role role) => switch (role) {
+    Role.member => '일반',
+    Role.manager => '팀장',
+    Role.admin => '관리자',
+    Role.superadmin => '최고 관리자',
+  };
+
+  Future<void> _edit(UserProfile user, String action) async {
+    if (_busyUsers.contains(user.id)) return;
+    if (action != 'position' && user.id == context.read<AuthState>().user?.id) return;
+    setState(() => _busyUsers.add(user.id));
+    try {
+      final changes = <String, dynamic>{};
+      late String title, message, success;
+      if (action == 'role') {
+        var selected = user.role;
+        final role = await showDialog<Role>(context: context, builder: (dialogContext) =>
+          StatefulBuilder(builder: (context, setDialogState) => ConfirmDialog.form(
+            title: Text('${user.fullName} 권한 변경'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('팀장 이상: 장비 삭제·위치 관리·자료 관리 / 관리자: 승인·설정·계정'),
+              for (final role in Role.values) RadioListTile<Role>(
+                title: Text(_roleLabel(role)),
+                value: role, groupValue: selected,
+                onChanged: role == Role.superadmin ? null : (value) {
+                  if (value != null) setDialogState(() => selected = value);
+                },
+              ),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('취소')),
+              FilledButton(
+                onPressed: selected == user.role || selected == Role.superadmin
+                    ? null : () => Navigator.pop(dialogContext, selected),
+                child: const Text('다음')),
+            ],
+          )));
+        if (role == null || !mounted) return;
+        changes['role'] = role.value;
+        title = '권한 변경';
+        message = '${user.fullName} 권한을 ${_roleLabel(user.role)} → ${_roleLabel(role)}(으)로 변경합니다.';
+        success = '${user.fullName} 권한을 변경했습니다.\n변경된 권한은 해당 사용자가 다시 로그인해야 반영됩니다.';
+      } else if (action == 'status') {
+        final suspended = user.status == UserStatus.suspended;
+        changes['status'] = suspended ? 'APPROVED' : 'SUSPENDED';
+        title = suspended ? '정지 해제' : '정지';
+        message = suspended ? '${user.fullName} 계정의 정지를 해제합니다.'
+            : '${user.fullName} 계정을 정지합니다. 이 계정의 모든 세션이 즉시 종료됩니다.';
+        success = '${user.fullName} 계정을 ${suspended ? '정지 해제' : '정지'}했습니다.';
+      } else if (action == 'position') {
+        var position = user.position ?? '';
+        final value = await showDialog<String>(context: context, builder: (dialogContext) =>
+          ConfirmDialog.form(
+            title: Text('${user.fullName} 직급 변경'),
+            content: TextFormField(
+              initialValue: position, autofocus: true, maxLength: 50,
+              decoration: const InputDecoration(labelText: '직급',
+                helperText: '근무일지에서 사용하는 직급과 같은 값을 입력하세요.'),
+              onChanged: (value) => position = value,
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('취소')),
+              FilledButton(onPressed: () => Navigator.pop(dialogContext, position.trim()),
+                child: const Text('다음')),
+            ],
+          ));
+        if (value == null || !mounted || value == (user.position ?? '')) return;
+        changes['position'] = value;
+        title = '직급 변경';
+        message = '${user.fullName} 직급을 ${value.isEmpty ? '미지정' : value}(으)로 변경합니다.';
+        success = '${user.fullName} 직급을 변경했습니다.';
+      } else {
+        return;
+      }
+      if (!mounted) return;
+      final confirmed = await ConfirmDialog.show(context, title: title,
+        message: message, confirmLabel: title,
+        destructive: changes['status'] == 'SUSPENDED');
+      if (!confirmed || !mounted) return;
+      final repo = context.read<AuthRepository>();
+      final ok = await runGuarded(context, () async {
+        await repo.updateUser(user.id, changes);
+      });
+      if (!ok || !mounted) return;
+      await _load();
+      if (mounted) AppSnack.show(context, success);
+    } finally {
+      if (mounted) setState(() => _busyUsers.remove(user.id));
     }
   }
 
@@ -185,8 +278,13 @@ class _AccountsTabState extends State<AccountsTab> {
                             ),
                             const SizedBox(width: 6),
                             StatusChip(
-                              label: user.role.label,
-                              color: Theme.of(context).colorScheme.primary,
+                              label: _roleLabel(user.role),
+                              color: switch (user.role) {
+                                Role.member => Colors.grey,
+                                Role.manager => Colors.blue,
+                                Role.admin => Colors.orange,
+                                Role.superadmin => Colors.red,
+                              },
                               dense: true,
                             ),
                           ],
@@ -205,15 +303,20 @@ class _AccountsTabState extends State<AccountsTab> {
                             ),
                           ],
                         ),
-                        trailing: user.id == selfId
-                            ? null
-                            : PopupMenuButton<String>(
+                        trailing: PopupMenuButton<String>(
                                 tooltip: '계정 메뉴',
-                                enabled: !_deleting.contains(user.id),
+                                enabled: !_busyUsers.contains(user.id),
                                 icon: const Icon(Icons.more_vert),
-                                onSelected: (_) => _delete(user),
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(value: 'delete', child: Text('삭제')),
+                                onSelected: (action) => action == 'delete' ? _delete(user) : _edit(user, action),
+                                itemBuilder: (_) => [
+                                  if (user.id != selfId) ...[
+                                    const PopupMenuItem(value: 'role', child: Text('권한 변경')),
+                                    PopupMenuItem(value: 'status',
+                                      child: Text(user.status == UserStatus.suspended ? '정지 해제' : '정지')),
+                                  ],
+                                  const PopupMenuItem(value: 'position', child: Text('직급 변경')),
+                                  if (user.id != selfId)
+                                    const PopupMenuItem(value: 'delete', child: Text('삭제')),
                                 ],
                               ),
                       );
