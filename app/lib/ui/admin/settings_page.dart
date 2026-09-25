@@ -294,6 +294,7 @@ class _CodeGroupCard extends StatefulWidget {
 }
 
 class _CodeGroupCardState extends State<_CodeGroupCard> {
+  static const _allParents = '*';
   // An empty ID represents the explicit "상위 미지정" filter.
   static const _unassigned = '';
   String? _selectedParentId;
@@ -318,8 +319,9 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
     if (parentGroup == null) return;
     final parents = parentGroup?.items ?? const <CodeItem>[];
     final hasUnassigned = group.items.any((i) => i.parentId == null);
-    if (!parents.any((p) => p.id == _selectedParentId) &&
-        !(_selectedParentId == _unassigned && hasUnassigned)) {
+    if (_selectedParentId != _allParents &&
+        _selectedParentId != _unassigned &&
+        !parents.any((p) => p.id == _selectedParentId)) {
       _selectedParentId = parents.where((p) =>
           group.items.any((i) => i.parentId == p.id)).firstOrNull?.id ??
           parents.firstOrNull?.id ?? (hasUnassigned ? _unassigned : null);
@@ -348,8 +350,42 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
   }
 
   Widget? _subtitle(BuildContext context, CodeItem item) {
+    final details = _subtitleDetails(context, item);
+    if (parentGroup == null) return details;
+    final parent = parentGroup!.items.where((p) => p.id == item.parentId).firstOrNull;
+    final colors = Theme.of(context).colorScheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 20,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: parent == null ? colors.errorContainer : colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (parent?.color != null) ...[
+              Container(width: 6, height: 6,
+                decoration: BoxDecoration(color: parseHexColor(parent!.color!),
+                  shape: BoxShape.circle)),
+              const SizedBox(width: 4),
+            ],
+            Flexible(child: Text(parent?.name ?? '상위 미지정',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12,
+                color: parent == null ? colors.onErrorContainer : colors.onSurfaceVariant))),
+          ]),
+        ),
+        if (details != null) ...[
+          const SizedBox(height: 4),
+          details,
+        ],
+      ]);
+  }
+
+  Widget? _subtitleDetails(BuildContext context, CodeItem item) {
     if (parentGroup != null && item.parentId == null) {
-      return Text('상위 분류가 없어 접수 화면에 나오지 않습니다 · 이름·색 수정에서 상위를 지정하세요',
+      return Text('상위 분류가 없어 접수 화면에 나오지 않습니다 · ⋮ › 상위 변경에서 상위를 지정하세요',
         style: TextStyle(color: Theme.of(context).colorScheme.error));
     }
     final children = <String>[];
@@ -367,7 +403,14 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
 
   @override
   Widget build(BuildContext context) {
-    final items = parentGroup == null ? group.items : group.items.where(
+    final parentIds = parentGroup?.items.map((p) => p.id).toSet() ?? <String>{};
+    final items = parentGroup == null ? group.items : _selectedParentId == _allParents
+        ? <CodeItem>[
+            for (final parent in parentGroup!.items)
+              ...group.items.where((i) => i.parentId == parent.id),
+            ...group.items.where((i) => !parentIds.contains(i.parentId)),
+          ]
+        : group.items.where(
         (i) => _selectedParentId == _unassigned
             ? i.parentId == null
             : _selectedParentId != null && i.parentId == _selectedParentId).toList();
@@ -386,11 +429,13 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
               isExpanded: true,
               decoration: InputDecoration(labelText: parentGroup!.name),
               items: [
+                DropdownMenuItem(value: _allParents,
+                  child: Text('전체 (${group.items.length})')),
                 for (final parent in parentGroup!.items)
                   DropdownMenuItem(value: parent.id, child: Text(
                     '${parent.name} (하위 ${group.items.where((i) => i.parentId == parent.id).length}개)${parent.isActive ? '' : ' (비활성)'}',
                     overflow: TextOverflow.ellipsis)),
-                if (unassignedCount > 0)
+                if (unassignedCount > 0 || _selectedParentId == _unassigned)
                   DropdownMenuItem(value: _unassigned,
                     child: Text('상위 미지정 ($unassignedCount)')),
               ],
@@ -420,6 +465,9 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
               case 'edit':
                 await _editItem(context, item);
                 break;
+              case 'parent':
+                await _changeParent(context, item);
+                break;
               case 'active':
                 await _setActive(context, item);
                 break;
@@ -430,6 +478,12 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
           },
           itemBuilder: (context) => [
             const PopupMenuItem(value: 'edit', child: Text('이름·색 수정')),
+            if (parentGroup != null)
+              const PopupMenuItem(value: 'parent', child: Row(children: [
+                Icon(Icons.move_up),
+                SizedBox(width: 8),
+                Text('상위 변경'),
+              ])),
             PopupMenuItem(value: 'active', child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -460,6 +514,45 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
         ),
       ),
     ]));
+  }
+
+  Future<void> _changeParent(BuildContext context, CodeItem item) async {
+    if (parentGroup == null) return;
+    final formKey = GlobalKey<FormState>();
+    var parentId = parentGroup!.items.where((p) => p.id == item.parentId).firstOrNull?.id;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => ConfirmDialog.form(
+        title: Text("'${item.name}' 상위 변경"),
+        content: Form(key: formKey, child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _parentField(parentId, (id) => parentId = id),
+            const SizedBox(height: 10),
+            const Text('이 항목을 쓰는 기존 기록은 그대로 두고, 새로 등록할 때의 선택지만 바뀝니다.'),
+          ],
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
+          FilledButton(onPressed: () {
+            if (formKey.currentState!.validate()) Navigator.of(ctx).pop(true);
+          }, child: const Text('저장')),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted ||
+        parentId == null || parentId == item.parentId) return;
+    final parentName = parentGroup!.items.where((p) => p.id == parentId).first.name;
+    final ok = await runGuarded(context, () async {
+      await context.read<AdminRepository>().updateCodeItem(
+        item.id, {'parent_id': parentId});
+    });
+    if (!ok || !context.mounted) return;
+    onChanged();
+    if (!context.mounted) return;
+    if (_selectedParentId != _allParents) _selectParent(parentId);
+    AppSnack.show(context, "'${item.name}' 을(를) '$parentName' 아래로 옮겼습니다");
   }
 
   Future<void> _addItem(BuildContext context) async {
