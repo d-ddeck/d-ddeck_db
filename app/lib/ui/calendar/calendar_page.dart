@@ -252,9 +252,9 @@ class _CalendarPageState extends State<CalendarPage> {
                         ),
                       );
             if (constraints.maxHeight < 90 + minHeight * data.weeks.length) {
-              return ListView(children: [calendar, dayList]);
+              return ListView(children: [calendar, const SizedBox(height: AppSpace.md), dayList]);
             }
-            return Column(children: [calendar,
+            return Column(children: [calendar, const SizedBox(height: AppSpace.md),
               Expanded(child: SingleChildScrollView(child: dayList)),
             ]);
           });

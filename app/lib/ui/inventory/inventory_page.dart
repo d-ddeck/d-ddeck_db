@@ -27,9 +27,9 @@ class InventoryOverviewTab extends StatelessWidget {
     load: () => inventoryLoad(context, context.read<InventoryRepository>().overview),
     builder: (context, data, reload) => PageBody(child: ListView(padding: EdgeInsets.zero, children: [
       _table(context, '상태 × 종류', data.byStatus, data.kinds, 'status_item_id'),
-      const SizedBox(height: AppSpace.lg),
+      const SizedBox(height: AppSpace.md),
       _table(context, '브랜드 × 종류 (매장에 있는 것)', data.byBrand, data.kinds, 'brand_id'),
-      const SizedBox(height: AppSpace.lg),
+      const SizedBox(height: AppSpace.md),
       _table(context, '장소 × 종류 (미설치)', data.byPlace, data.kinds, 'location_id'),
       const SizedBox(height: 16),
       Text('확인 필요 (${data.attention.length}대)', style: Theme.of(context).textTheme.titleMedium),
@@ -163,7 +163,7 @@ class InventoryListTabState extends State<InventoryListTab> {
       (filters['location_id'] != '-' || a.locationId == null) &&
       (filters['brand_id'] != '-' || _stores.where((s) => s.id == a.storeId).firstOrNull?.brandId == null)).toList();
     if (all) { total = result.length; pages = 1; }
-    if (request == _request) { _total = total; _pages = pages; }
+    if (mounted && request == _request) setState(() { _total = total; _pages = pages; });
     return result;
   });
 
@@ -219,8 +219,10 @@ class InventoryListTabState extends State<InventoryListTab> {
       return _choicesLoading ? const LoadingState()
         : ErrorState(message: '검색 조건을 불러오지 못했습니다', onRetry: _loadChoices);
     }
-    return PageBody(child: Column(children: [
-      Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+    return PageBody(padding: EdgeInsets.fromLTRB(
+      AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg, AppSpace.lg,
+      AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg, AppSpace.lg), child: Column(children: [
+      Padding(padding: const EdgeInsets.only(bottom: AppSpace.md), child: Column(children: [
         TextField(controller: _search,
           decoration: const InputDecoration(hintText: 'S/N · 품명 · 매장 · 메모 검색', prefixIcon: Icon(Icons.search)),
           onSubmitted: (v) => _set('q', v.trim().isEmpty ? null : v.trim())),
@@ -238,14 +240,15 @@ class InventoryListTabState extends State<InventoryListTab> {
           _filter('위치', 'location_id', {for (final l in _places) l.id: l.display}),
           for (final option in <(String, bool?)>[('전체 위치', null), ('매장', true), ('미설치', false)])
             ChoiceChip(label: Text(option.$1), selected: _filters['at_store'] == option.$2, onSelected: (_) => _set('at_store', option.$2)),
+        ], trailing: [
           SizedBox(width: 150, child: inventoryChoice('정렬', _sort, const {'created_desc': '최근 등록', 'serial_asc': 'S/N', 'kind_serial': '종류 · S/N', 'updated_desc': '최근 수정'},
             (v) { _sort = v ?? 'kind_serial'; _set('sort', _sort); })),
+          Padding(padding: const EdgeInsets.symmetric(vertical: AppSpace.md), child: Text('${Fmt.number(_total)}대')),
         ]),
       ])),
       Expanded(child: AsyncView<List<Asset>>(key: _viewKey, load: _load,
         builder: (context, assets, reload) => Column(children: [
-          Text('${Fmt.number(_total)}대'),
-          Expanded(child: assets.isEmpty ? const EmptyState(message: '아직 등록된 자산이 없습니다') : ListView(children: [ResponsiveTable<Asset>(
+          Expanded(child: assets.isEmpty ? const EmptyState(message: '아직 등록된 자산이 없습니다') : ListView(padding: EdgeInsets.zero, children: [ResponsiveTable<Asset>(
               rows: assets, onTap: (a) => _detail(a, reload),
               columns: [
                 TableColumn(label: 'S/N', cell: (a) => Row(mainAxisSize: MainAxisSize.min, children: [
@@ -328,7 +331,7 @@ class AssetDetailPage extends StatelessWidget {
             const SizedBox(height: 16),
             ])),
 
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
             SectionCard(title: '현재 위치', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('${a.statusLabel} · ${a.placeLabel} · 세트 ${a.setNo}'),
             if (a.storeId != null) TextButton.icon(icon: const Icon(Icons.store_outlined),
@@ -337,7 +340,7 @@ class AssetDetailPage extends StatelessWidget {
                 if (context.mounted) reload();
               }),
             ])),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
             SectionCard(title: '이동 이력 (${Fmt.number(movements.length)}건)',
               child: ResponsiveTable<AssetMovement>(columns: [
                 TableColumn(label: '이동', cell: (m) => Text(m.movementType.label)),

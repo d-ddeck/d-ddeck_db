@@ -160,7 +160,7 @@ class DashboardPage extends StatelessWidget {
                 },
               ),
             ])),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
             SectionCard(title: '렌탈 미회수', actions: [
               TextButton(onPressed: () => viewAll(const ServiceListTab(initialFilters: {'is_rental': true, 'rental_unreturned': true})), child: const Text('전체 보기')),
             ], child: Column(children: [
@@ -179,7 +179,7 @@ class DashboardPage extends StatelessWidget {
                 },
               ),
             ])),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
             SectionCard(
               title: '오늘 일정 · ${Fmt.number(data.todayEvents.length)}건',
               actions: [TextButton(onPressed: () => viewAll(const CalendarPage()), child: const Text('전체 보기'))],
@@ -193,7 +193,7 @@ class DashboardPage extends StatelessWidget {
                       ],
                     ),
             ),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
 
             SectionCard(title: '최근 기록', actions: [
               TextButton(onPressed: () => viewAll(const ServiceListTab()), child: const Text('전체 보기')),
@@ -201,7 +201,7 @@ class DashboardPage extends StatelessWidget {
               if (data.service.recent.isEmpty) const _EmptyRow(text: '아직 등록된 대응 기록이 없습니다'),
               for (final t in data.service.recent.take(10)) _TicketRow(ticket: t, onChanged: reload),
             ])),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
             SectionCard(title: '연도별 건수', child: Column(children: [
               if (data.service.byYear.isEmpty) const _EmptyRow(text: '아직 등록된 집계 기록이 없습니다'),
               for (final y in data.service.byYear) Padding(
@@ -212,7 +212,7 @@ class DashboardPage extends StatelessWidget {
                   SizedBox(width: 70, child: Text('${Fmt.number(y.count)}건', textAlign: TextAlign.right)),
                 ])),
             ])),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
 
             SectionCard(
               title: '내 진행중 AS · ${Fmt.number(data.myOpen.total)}건',
@@ -225,7 +225,7 @@ class DashboardPage extends StatelessWidget {
                       ],
                     ),
             ),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
 
             if (data.summary.byStatus.isNotEmpty)
               SectionCard(
@@ -240,7 +240,7 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ),
               ),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
           ]))],
         );
       },

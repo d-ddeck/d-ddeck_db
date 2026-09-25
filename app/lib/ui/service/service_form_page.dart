@@ -289,7 +289,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
           const FormGap(),
           FormSection(title: '대응', children: [
           const Text('대응인원'),
-          Wrap(spacing: 8, children: [for (final r in options.items('SERVICE_RESPONDER').where((r) => r.isActive || _responders.contains(r.id)))
+          Wrap(spacing: 8, runSpacing: AppSpace.md, children: [for (final r in options.items('SERVICE_RESPONDER').where((r) => r.isActive || _responders.contains(r.id)))
             FilterChip(label: Text(r.name), selected: _responders.contains(r.id),
               onSelected: (v) => setState(() { v ? _responders.add(r.id) : _responders.remove(r.id); }))]),
           ]),

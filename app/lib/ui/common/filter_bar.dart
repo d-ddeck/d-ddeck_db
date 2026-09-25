@@ -5,8 +5,9 @@ import '../theme.dart';
 /// Explicit applied labels avoid guessing values from controllers or widgets.
 class FilterBar extends StatelessWidget {
   const FilterBar({super.key, required this.children, this.onReset,
-    this.horizontalOnPhone = false, this.appliedFilters = const []});
+    this.horizontalOnPhone = false, this.appliedFilters = const [], this.trailing = const []});
   final List<Widget> children;
+  final List<Widget> trailing;
   final bool horizontalOnPhone;
   final VoidCallback? onReset;
   final List<String> appliedFilters;
@@ -19,13 +20,24 @@ class FilterBar extends StatelessWidget {
       return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: Wrap(spacing: AppSpace.md, runSpacing: AppSpace.md,
           crossAxisAlignment: WrapCrossAlignment.center, children: children)),
+        for (final child in trailing) Padding(
+          padding: const EdgeInsets.only(left: AppSpace.md), child: child),
         if (reset != null) reset,
       ]);
     }
     if (horizontalOnPhone) {
-      return SingleChildScrollView(scrollDirection: Axis.horizontal,
-      child: Row(children: [for (final child in children) Padding(
-        padding: const EdgeInsets.only(right: AppSpace.sm), child: child), if (reset != null) reset]));
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SingleChildScrollView(scrollDirection: Axis.horizontal,
+          child: Row(children: [for (final child in children) Padding(
+            padding: const EdgeInsets.only(right: AppSpace.sm), child: child),
+            if (trailing.isEmpty && reset != null) reset])),
+        if (trailing.isNotEmpty) ...[
+          const SizedBox(height: AppSpace.md),
+          Wrap(alignment: WrapAlignment.end, spacing: AppSpace.md, runSpacing: AppSpace.md,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [...trailing, if (reset != null) reset]),
+        ],
+      ]);
     }
     return Card(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ExpansionTile(
@@ -34,7 +46,7 @@ class FilterBar extends StatelessWidget {
         children: [ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
           child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [for (final child in children) Padding(
+            children: [for (final child in [...children, ...trailing]) Padding(
               padding: const EdgeInsets.only(bottom: AppSpace.md), child: child),
               if (reset != null) Align(alignment: Alignment.centerRight, child: reset)],
           )),

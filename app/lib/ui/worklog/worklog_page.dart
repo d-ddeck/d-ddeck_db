@@ -9,6 +9,7 @@ import '../../models/worklog.dart';
 import '../../models/common.dart';
 import '../../state/auth_state.dart';
 import '../common/common.dart';
+import '../theme.dart';
 import '../common/download.dart';
 import 'worklog_detail_page.dart';
 import 'worklog_form_page.dart';
@@ -165,6 +166,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
           child: ListTile(textColor: Colors.black87, iconColor: Colors.black87,
             leading: const Icon(Icons.edit_note), title: const Text('임시 저장'),
             subtitle: const Text('누르면 이어서 작성합니다'), onTap: () => _open())),
+        if (_lookups?.draft != null) const FormGap(),
         if (_loading) const LinearProgressIndicator(),
         if (_error != null) ErrorState(message: _error!, onRetry: () => _load(refreshLookups: true))
         else ResponsiveTable<WorkLog>(rows: _rows, onTap: (row) => _open(id: row.id), columns: [
@@ -179,6 +181,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
           ])),
           TableColumn(label: '첨부', cell: (w) => Text('${w.attachmentCount}')),
         ]),
+        if (_more && _error == null) const SizedBox(height: AppSpace.lg),
         if (_more && _error == null) TextButton(onPressed: _loading ? null : () => _load(more: true), child: const Text('더 보기')),
       ]))),
     );

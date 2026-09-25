@@ -460,7 +460,7 @@ class _HealthTab extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.md),
             GridView.count(
               crossAxisCount: wide ? 4 : 2,
               shrinkWrap: true,
@@ -497,7 +497,7 @@ class _HealthTab extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.lg),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(14),

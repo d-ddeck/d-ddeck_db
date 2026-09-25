@@ -95,11 +95,11 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.md),
               for (final group in data.codeGroups)
                 Padding(
                   key: ValueKey(group.id),
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: AppSpace.md),
                   child: _CodeGroupCard(
                     group: group,
                     parentGroup: data.codeGroups.where(
@@ -532,7 +532,7 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _parentField(parentId, (id) => parentId = id),
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.md),
             const Text('이 항목을 쓰는 기존 기록은 그대로 두고, 새로 등록할 때의 선택지만 바뀝니다.'),
           ],
         )),
@@ -577,7 +577,7 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
               ),
               textCapitalization: TextCapitalization.characters,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.md),
             TextFormField(
               controller: name,
               decoration: const InputDecoration(labelText: '표시 이름 *'),
@@ -641,7 +641,7 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
           children: [
             if (parentGroup != null) ...[
               _parentField(parentId, (id) => setState(() => parentId = id)),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.md),
             ],
             TextFormField(
               initialValue: name,
@@ -650,10 +650,10 @@ class _CodeGroupCardState extends State<_CodeGroupCard> {
                   ? '이름을 입력해 주세요' : null,
               onChanged: (value) => name = value,
             ),
-            const SizedBox(height: 16),
+            const FormGap(),
             const Text('표시 색 (선택)'),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: [
+            const FormGap(),
+            Wrap(spacing: 8, runSpacing: AppSpace.md, children: [
               ChoiceChip(label: const Text('없음'), selected: color == null,
                 onSelected: (_) => setState(() => color = null)),
               for (final (label, hex) in palette)

@@ -184,7 +184,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
             final date = await pickDate(context, _date ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
             if (date != null && mounted) setState(() => _date = date);
           }),
-        for (final d in _drafts) SectionCard(key: ValueKey(d), title: '세트 ${d.setNo}', actions: [IconButton(tooltip: '세트 삭제', icon: const Icon(Icons.delete_outline),
+        CardStack(children: [for (final d in _drafts) SectionCard(key: ValueKey(d), title: '세트 ${d.setNo}', actions: [IconButton(tooltip: '세트 삭제', icon: const Icon(Icons.delete_outline),
                 onPressed: () async {
                   if (await ConfirmDialog.show(context, title: '세트 삭제', message: '세트 ${d.setNo}을 삭제하시겠습니까?', confirmLabel: '삭제', destructive: true) && mounted) {
                     _changeSet((repo) => repo.deleteSet(widget.storeId, d.setNo));
@@ -203,6 +203,8 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
             for (final k in _kinds.where((k) => _visible(k, d))) _slot(d, k),
           ],
         )),
+        ]),
+        const SizedBox(height: AppSpace.lg),
         OutlinedButton.icon(onPressed: () => _changeSet((repo) => repo.addSet(widget.storeId)), icon: const Icon(Icons.add), label: const Text('세트 추가')),
 
         const FormGap(), Text('현재 설치 장비', style: Theme.of(context).textTheme.titleMedium),

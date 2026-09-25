@@ -2,6 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
+/// A vertical card group with spacing only between its children.
+class CardStack extends StatelessWidget {
+  const CardStack({super.key, required this.children, this.spacing = AppSpace.md});
+  final List<Widget> children;
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [for (var i = 0; i < children.length; i++) ...[
+      if (i > 0) SizedBox(height: spacing),
+      children[i],
+    ]],
+  );
+}
+
 class SectionCard extends StatelessWidget {
   const SectionCard({super.key, required this.title, this.actions = const [],
     required this.child, this.padding = const EdgeInsets.all(AppSpace.lg)});
@@ -34,8 +51,9 @@ class SectionCard extends StatelessWidget {
 
 /// Place inside a scroll view, or wrap a bounded list/table with this widget.
 class PageBody extends StatelessWidget {
-  const PageBody({super.key, required this.child});
+  const PageBody({super.key, required this.child, this.padding});
   final Widget child;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) => Align(
@@ -43,7 +61,7 @@ class PageBody extends StatelessWidget {
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 1200),
       child: Padding(
-        padding: EdgeInsets.all(AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg),
+        padding: padding ?? EdgeInsets.all(AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg),
         child: SizedBox(width: double.infinity, child: child),
       ),
     ),
@@ -61,7 +79,7 @@ class FormActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SafeArea(top: false, child: Padding(
-    padding: const EdgeInsets.only(top: AppSpace.md, bottom: AppSpace.lg),
+    padding: const EdgeInsets.only(top: AppSpace.lg, bottom: AppSpace.lg),
     child: SizedBox(width: double.infinity, child: child),
   ));
 }

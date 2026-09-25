@@ -40,15 +40,16 @@ Future<bool> runGuarded(BuildContext context, Future<void> Function() action,
 
 class ConfirmDialog extends StatelessWidget {
   const ConfirmDialog.form({super.key, required this.title, required this.content,
-    required this.actions, this.destructive = false});
+    required this.actions, this.destructive = false, this.constraints});
   final Widget title;
   final Widget content;
   final List<Widget> actions;
   final bool destructive;
+  final BoxConstraints? constraints;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    scrollable: true,
+    scrollable: true, constraints: constraints,
     title: title, content: content,
     actions: [for (final action in actions) destructive ? Theme(
       data: Theme.of(context).copyWith(filledButtonTheme: FilledButtonThemeData(

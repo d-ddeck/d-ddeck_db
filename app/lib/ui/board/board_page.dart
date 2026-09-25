@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../common/common.dart';
+import '../theme.dart';
 
 import '../../data/file_repository.dart';
 import '../../data/board_repository.dart';
@@ -235,12 +236,12 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   const Divider(height: 24),
                   SectionCard(title: '본문', child: SelectableText(post.content,
                       style: const TextStyle(fontSize: 14, height: 1.6))),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpace.md),
                   AttachmentSection(
                     entityType: FileRepository.post,
                     entityId: post.id,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpace.md),
                   if (widget.board.allowComment) ...[
                     Text('댓글 ${Fmt.number(post.comments.length)}',
                         style: const TextStyle(fontWeight: FontWeight.w700)),

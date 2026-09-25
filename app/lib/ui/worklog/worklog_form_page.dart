@@ -280,6 +280,7 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                   Text('${Fmt.time(_restoredAt)} 에 임시 저장한 내용을 불러왔습니다', style: const TextStyle(color: Colors.black87)),
                   TextButton(onPressed: _discard, child: const Text('버리고 새로 쓰기')),
                 ]))),
+              if (_restoredAt != null) const FormGap(),
               FormSection(title: '기본 정보', children: [
                 InputDecorator(decoration: const InputDecoration(labelText: '작성자'),
                   child: Text(_original?.authorName ?? lookup!.authorName)),

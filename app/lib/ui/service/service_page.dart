@@ -290,6 +290,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
     appBar: AppBar(title: const Text('대응 기록'), actions: [
       FilledButton.icon(onPressed: _create, icon: const Icon(Icons.add), label: const Text('접수')),
       TextButton.icon(onPressed: _exporting ? null : _export, icon: const Icon(Icons.download), label: Text(_exporting ? '저장 중' : '엑셀')),
+      const SizedBox(width: AppSpace.lg),
     ]),
     body: PageBody(child: Column(children: [
 
@@ -299,6 +300,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
             _set('status', entry.$1 == 1 ? 'COMPLETED' : null); _set('only_open', entry.$1 == 2 ? true : null); _refresh();
           })),
       ])),
+      const FormGap(),
       FilterBar(
         appliedFilters: [for (final e in _filters.entries) _filterLabel(e.key, e.value)],
         onReset: () { _filters.clear(); _searchController.clear(); _sort = 'received_desc'; _loadLookups(); _refresh(); },
@@ -314,6 +316,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
             DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) { if (v != null) { _sort = v; _refresh(); } }),
         ],
       ),
+      const FormGap(),
       Expanded(child: _loading ? const LoadingState() : RefreshIndicator(
         onRefresh: _refresh,
         child: ListView.builder(controller: _scroll, physics: const AlwaysScrollableScrollPhysics(),
@@ -325,7 +328,8 @@ class _ServiceListTabState extends State<ServiceListTab> {
                 : _rows.length < _total ? TextButton(onPressed: _loadMore, child: Text('더 보기 (${_rows.length} / $_total)'))
                 : _total == 0 ? EmptyState(message: '아직 등록된 대응 기록이 없습니다', action: OutlinedButton(onPressed: _create, child: const Text('접수하기'))) : Text('전체 ${Fmt.number(_total)}건'),
             )); }
-            return _TicketTile(ticket: _rows[i], onChanged: _refresh);
+            return Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : AppSpace.sm),
+              child: _TicketTile(ticket: _rows[i], onChanged: _refresh));
           }),
       )),
     ])),

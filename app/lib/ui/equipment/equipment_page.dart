@@ -80,7 +80,7 @@ class EquipmentPageState extends State<EquipmentPage> with SingleTickerProviderS
 
   @override
   Widget build(BuildContext context) => Builder(builder: (context) => Column(children: [
-    AppBar(primary: false, automaticallyImplyLeading: false, titleSpacing: 0, actions: [
+    AppBar(primary: false, automaticallyImplyLeading: false, titleSpacing: AppSpace.lg, actions: [
       TextButton.icon(icon: const Icon(Icons.add), label: const Text('장비 등록'), onPressed: () async {
         final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const AssetFormPage()));
         if (saved == true && mounted) _changed();
@@ -88,6 +88,7 @@ class EquipmentPageState extends State<EquipmentPage> with SingleTickerProviderS
       TextButton.icon(icon: const Icon(Icons.download), label: const Text('엑셀'), onPressed: () => _list.currentState?.export(all: _tabs.index != EquipmentTab.assets.index)),
       PopupMenuButton<String>(tooltip: '더보기', onSelected: (_) => _changed(),
         itemBuilder: (_) => [const PopupMenuItem(value: 'refresh', child: Text('새로고침'))]),
+      const SizedBox(width: AppSpace.lg),
     ]),
     TabBar(controller: _tabs, isScrollable: true, tabs: const [
       Tab(icon: Icon(Icons.dashboard_outlined), text: '현황'),
@@ -115,7 +116,9 @@ class _EquipmentSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AsyncView<InventoryOverview>(
     load: context.read<InventoryRepository>().overview,
-    builder: (context, data, reload) => PageBody(child: LayoutBuilder(
+    builder: (context, data, reload) => PageBody(padding: EdgeInsets.fromLTRB(
+      AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg, AppSpace.lg,
+      AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg, 0), child: LayoutBuilder(
       builder: (context, constraints) => Row(children: [
         for (final item in <(String, int, Widget)>[
           ('전체 대수', data.total, const Icon(Icons.inventory_2_outlined)),

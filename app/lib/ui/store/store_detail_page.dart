@@ -79,7 +79,7 @@ class _StoreBody extends StatelessWidget {
     final left = <Widget>[
           _InfoCard(store: store),
 
-          const SizedBox(height: AppSpace.lg),
+          const SizedBox(height: AppSpace.md),
           SectionCard(title: '보유 장비 (세트)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           OutlinedButton.icon(icon: const Icon(Icons.settings), label: const Text('장비 설정'),
             onPressed: () async {
@@ -112,12 +112,15 @@ class _StoreBody extends StatelessWidget {
           else
             for (final number in (store.assetGroups.expand((g) => g.assets).map((a) => a.setNo).toSet().toList()..sort())) ...[
               Text(store.sets.where((s) => s.setNo == number).firstOrNull?.label ?? (number == 0 ? '세트 미지정' : '세트 $number'), style: theme.textTheme.titleSmall),
-              for (final group in store.assetGroups)
+              const FormGap(),
+              CardStack(children: [for (final group in store.assetGroups)
                 if (group.assets.any((a) => a.setNo == number)) _AssetGroupCard(group: StoreAssetGroup(
                   categoryId: group.categoryId, categoryName: group.categoryName, color: group.color,
                   count: group.assets.where((a) => a.setNo == number).length,
                   assets: group.assets.where((a) => a.setNo == number).toList(),
                 ), onRefresh: onRefresh),
+              ]),
+              const FormGap(),
             ],
           const SizedBox(height: AppSpace.lg),
           ])),
@@ -133,7 +136,7 @@ class _StoreBody extends StatelessWidget {
             ],
           )),
           ])),
-          const SizedBox(height: AppSpace.lg), SectionCard(title: '미회수 렌탈', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: AppSpace.md), SectionCard(title: '미회수 렌탈', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (store.unreturnedRentals.isEmpty) const EmptyState(message: '아직 등록된 미회수 렌탈이 없습니다'),
           for (final rental in store.unreturnedRentals) ListTile(contentPadding: EdgeInsets.zero, trailing: const Icon(Icons.chevron_right),
             title: Text('${rental.ticketNo} · ${rental.serials ?? '-'}'),
@@ -143,7 +146,7 @@ class _StoreBody extends StatelessWidget {
               if (context.mounted) onRefresh();
             }),
           ])),
-          const SizedBox(height: AppSpace.lg), SectionCard(title: '대응 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: AppSpace.md), SectionCard(title: '대응 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (store.recentTickets.isEmpty) const EmptyState(message: '아직 등록된 대응 이력이 없습니다'),
           for (final ticket in store.recentTickets) ListTile(contentPadding: EdgeInsets.zero, trailing: const Icon(Icons.chevron_right),
             title: Text('${ticket.ticketNo} · ${ServiceStatus.parse(ticket.status).label}'),
@@ -153,7 +156,7 @@ class _StoreBody extends StatelessWidget {
               if (context.mounted) onRefresh();
             }),
           ])),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.lg),
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton.icon(
@@ -184,8 +187,8 @@ class _StoreBody extends StatelessWidget {
             const SizedBox(width: AppSpace.lg),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: right)),
           ])
-        else ...[...left, const SizedBox(height: AppSpace.lg), ...right],
-        const SizedBox(height: AppSpace.lg),
+        else ...[...left, const SizedBox(height: AppSpace.md), ...right],
+        const SizedBox(height: AppSpace.md),
         AttachmentSection(entityType: FileRepository.store, entityId: store.id),
       ],
     ));

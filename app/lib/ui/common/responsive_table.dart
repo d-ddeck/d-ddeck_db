@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'states.dart';
+import 'layout.dart';
 
 class TableColumn<T> {
   const TableColumn({required this.label, required this.cell,
@@ -50,6 +51,8 @@ class ResponsiveTable<T> extends StatelessWidget {
           constraints: BoxConstraints(minWidth: constraints.hasBoundedWidth ? constraints.maxWidth : 0),
           child: DataTable(
             showCheckboxColumn: false,
+            headingRowHeight: 56,
+            headingRowColor: WidgetStatePropertyAll(Theme.of(context).colorScheme.surfaceContainerLow),
             border: TableBorder(horizontalInside: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
             columns: [for (final column in columns) DataColumn(
               label: column.header ?? Text(column.label), numeric: column.numeric,
@@ -63,10 +66,8 @@ class ResponsiveTable<T> extends StatelessWidget {
         ),
       )));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final row in rows) Padding(
-        padding: const EdgeInsets.only(bottom: AppSpace.md),
-        child: Card(child: InkWell(
+    return CardStack(spacing: AppSpace.sm, children: [
+      for (final row in rows) Card(child: InkWell(
           onTap: onTap == null ? null : () => onTap!(row),
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: Padding(padding: const EdgeInsets.all(AppSpace.lg), child: Column(
@@ -89,7 +90,6 @@ class ResponsiveTable<T> extends StatelessWidget {
             ],
           )),
         )),
-      ),
     ]);
   }
 }

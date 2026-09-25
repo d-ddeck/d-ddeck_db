@@ -193,6 +193,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                         child: Text(_error!),
                       ),
                     ),
+                  if (_error != null) const FormGap(),
                   FormSection(title: '기본 정보', children: [
                   TextFormField(
                     controller: _name,

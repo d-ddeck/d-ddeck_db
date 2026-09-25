@@ -9,6 +9,7 @@ import '../../models/common.dart';
 import '../store/store_detail_page.dart';
 import '../../data/service_repository.dart';
 import '../../models/service.dart';
+import '../../state/auth_state.dart';
 import '../async_view.dart';
 import '../common/attachment_section.dart';
 import '../format.dart';
@@ -27,6 +28,7 @@ class ServiceDetailPage extends StatefulWidget {
 class _ServiceDetailPageState extends State<ServiceDetailPage> {
   final _viewKey = GlobalKey<AsyncViewState<ServiceTicket>>();
   bool _changed = false;
+  bool _deleting = false;
 
   /// 앱바의 수정 버튼이 집어 갈 현재 건. builder 안에서만 알 수 있어 들고 있는다.
   ServiceTicket? _current;
@@ -40,6 +42,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<ServiceRepository>();
+    final isManager = context.watch<AuthState>().isManager;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -65,6 +68,20 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                   _viewKey.currentState?.reload();
                 }
               },
+            ),
+            PopupMenuButton<String>(
+              tooltip: '더보기', enabled: !_deleting, icon: const Icon(Icons.more_vert),
+              itemBuilder: (_) => [PopupMenuItem(
+                value: 'delete', enabled: isManager,
+                child: ListTile(enabled: isManager, contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_outline,
+                    color: isManager ? AppColors.danger(context) : Theme.of(context).disabledColor),
+                  title: Text('삭제', style: TextStyle(
+                    color: isManager ? AppColors.danger(context) : Theme.of(context).disabledColor)),
+                  subtitle: isManager ? null : const Text('삭제는 팀장 이상만 할 수 있습니다'),
+                ),
+              )],
+              onSelected: (_) => _delete(),
             ),
           ],
         ),
@@ -118,11 +135,14 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 onTap: t.storeId == null ? null : () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => StoreDetailPage(storeId: t.storeId!))),
               )),
+              const SizedBox(height: AppSpace.md),
               _TextCard(title: '원인 · 서비스구분 · 세부분류 · 제조사', body: t.causes.isEmpty
                 ? (t.causeLabels.isEmpty ? '-' : t.causeLabels.join('\n'))
                 : t.causes.map((c) => '${c.category?.name ?? '-'}${c.symptom == null ? '' : ' > ${c.symptom!.name}'}${c.maker == null ? '' : ' (${c.maker!.name})'}').join('\n')),
+              const SizedBox(height: AppSpace.md),
               SectionCard(title: '대응인원', child: Wrap(spacing: 8, children: [for (final r in t.responders) Chip(label: Text(r.name))])),
               if (t.isRental) ...[
+                const SizedBox(height: AppSpace.md),
                 _InfoCard(title: '렌탈', rows: [
                   ('종류', t.rentalType?.name ?? '-'), ('시리얼', t.rentalSerials ?? '-'),
                   ('회수 예정일', Fmt.date(t.rentalDueDate)), ('회수 여부', t.rentalReturned ? '회수 완료' : '미회수'),
@@ -178,7 +198,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               ],
 
               if (t.parts.isNotEmpty) ...[
-                const SizedBox(height: AppSpace.lg),
+                const SizedBox(height: AppSpace.md),
                 SectionCard(title: '사용 부품', child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -205,7 +225,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                     )),
               ],
 
-              const SizedBox(height: AppSpace.lg),
+              const SizedBox(height: AppSpace.md),
               SectionCard(title: '처리 이력', child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -217,7 +237,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                     ],
                   )),
 
-              const SizedBox(height: AppSpace.lg),
+              const SizedBox(height: AppSpace.md),
               AttachmentSection(
                 entityType: FileRepository.serviceTicket,
                 entityId: t.id,
@@ -254,6 +274,28 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     );
   }
 
+  Future<void> _delete() async {
+    final ticket = _current;
+    if (ticket == null || _deleting || !context.read<AuthState>().isManager) return;
+    setState(() => _deleting = true);
+    try {
+      final confirmed = await ConfirmDialog.show(context,
+        title: '${ticket.displayNo} 삭제',
+        message: '이 기록이 목록·통계에서 사라지고 첨부·이력도 함께 숨겨집니다. 계속할까요?',
+        confirmLabel: '삭제', destructive: true);
+      if (!confirmed || !mounted || !context.read<AuthState>().isManager) return;
+      final messenger = ScaffoldMessenger.of(context);
+      final deleted = await runGuarded(context,
+        () => context.read<ServiceRepository>().delete(ticket.id));
+      if (!deleted || !mounted) return;
+      _changed = true;
+      Navigator.pop(context, true);
+      messenger.showSnackBar(const SnackBar(content: Text('삭제되었습니다')));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   Future<void> _changeStatus(
     ServiceTicket ticket,
     ServiceStatus next,
@@ -276,9 +318,11 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     var completedAt = DateTime.now();
     final dialog = DialogRoute<bool>(context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, update) => ConfirmDialog.form(
+        constraints: AppTheme.isWide(ctx) ? const BoxConstraints.tightFor(width: 560) : null,
         title: Text(requiresResult ? '종결 처리' : ticket.status == ServiceStatus.completed ? '다시 열기' : '${next.label}(으)로 변경'),
-        content: SizedBox(width: AppTheme.isWide(ctx) ? 520 : double.maxFinite,
-          child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        content: ConstrainedBox(
+          constraints: BoxConstraints.tightFor(width: AppTheme.isWide(ctx) ? 560 : MediaQuery.sizeOf(ctx).width),
+          child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (requiresResult) ...[
               TextFormField(controller: resultController, maxLines: 4,
                 decoration: const InputDecoration(labelText: '대응 내용 *'),
@@ -287,20 +331,23 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               FormField<bool>(validator: (_) => responderIds.isEmpty ? '대응인원을 선택해 주세요.' : null,
                 builder: (field) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('대응인원 *'),
-                  Wrap(spacing: 8, children: [for (final r in responders)
+                  const FormGap(),
+                  Wrap(spacing: 8, runSpacing: AppSpace.md, children: [for (final r in responders)
                     FilterChip(label: Text(r.name), selected: responderIds.contains(r.id), onSelected: (v) => update(() {
                       v ? responderIds.add(r.id) : responderIds.remove(r.id);
                     }))]),
                   if (field.hasError) Text(field.errorText!, style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                 ])),
-              OutlinedButton.icon(icon: const Icon(Icons.calendar_today), label: Text('대응일: ${Fmt.date(completedAt)}'),
+              const FormGap(),
+              Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(icon: const Icon(Icons.calendar_today), label: Text('대응일: ${Fmt.date(completedAt)}'),
                 onPressed: () async {
                   final date = await pickDate(ctx, completedAt, firstDate: DateTime(1900), lastDate: DateTime(2100, 12, 31));
                   if (date != null && ctx.mounted) update(() => completedAt = date);
-                }),
+                })),
+              const FormGap(),
             ],
             TextFormField(controller: noteController, decoration: const InputDecoration(labelText: '변경 메모')),
-            const SizedBox(height: 10),
+            const FormGap(),
             TextFormField(controller: minutesController, decoration: const InputDecoration(labelText: '작업 시간 (분)'), keyboardType: TextInputType.number),
           ]))),
         ),
@@ -356,7 +403,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               decoration: const InputDecoration(labelText: '내용 *'),
               maxLines: 3,
             ),
-            const SizedBox(height: 10),
+            const FormGap(),
             TextField(
               controller: minutes,
               decoration: const InputDecoration(labelText: '작업 시간 (분)'),

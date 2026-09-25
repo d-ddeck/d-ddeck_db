@@ -115,16 +115,17 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                 onTap: (i) { setState(() => _category = i == 0 ? null : data.categories[i - 1]); _refresh(); },
               ),
             ),
-            const SizedBox(height: 12),
-
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.md),
             for (var i = 0; i < data.crosses.length; i++) ...[
               _crossTable(data.tables[i].$1, data.crosses[i], frequency: i == 0),
-              if (i == 2) _storeBars(data.crosses[i]),
-              const SizedBox(height: 14),
+              if (i == 2) ...[
+                const SizedBox(height: AppSpace.lg),
+                _storeBars(data.crosses[i]),
+              ],
+              const SizedBox(height: AppSpace.md),
             ],
             const Text('기존 집계 · 전 기간', style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.md),
             GridView.count(
               crossAxisCount: wide ? 4 : 2,
               shrinkWrap: true,
@@ -165,7 +166,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: AppSpace.lg),
 
             _ChartCard(
               title: '분류별 집계',
@@ -218,7 +219,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.md),
 
             _ChartCard(
               title: '접수 / 완료 추이',
@@ -245,7 +246,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                       child: _TrendChart(points: data.trend.points),
                     ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.md),
 
             _ChartCard(
               title: '상태별 분포',
@@ -258,7 +259,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                       ],
                     ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.md),
 
             _ChartCard(
               title: '우선순위별 분포',
@@ -318,7 +319,8 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
       }), child: const Text('엑셀')),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('원인 수 기준 · 대응 건수는 괄호', style: TextStyle(fontSize: 12)),
-        ResponsiveTable.fromDataRows(
+        const FormGap(),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
           columns: [
             DataColumn(label: Text(frequency ? '연도' : switch (data.rowsAxis) {
               'brand' => '브랜드', 'store' => '매장', 'maker' => '제조사', _ => data.rowsAxis,
@@ -347,7 +349,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               DataCell(Text(data.totalCauses == 0 ? '0%' : '100%')),
             ]),
           ],
-        ),
+        )),
       ]),
     );
   }
@@ -383,10 +385,11 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
   );
 
   List<Widget> _storeTables(StoreYears data) => [
-    const SizedBox(height: 14),
+    const SizedBox(height: AppSpace.md),
     Text('운영 매장 · 전체 브랜드 기준 · 총 ${data.totalStores} / 폐점 ${data.closedStores}'),
     const Text('개점일이 없으면 첫 대응·장비 설치일로 추정합니다.', style: TextStyle(fontSize: 12)),
     if (data.unknownOpen.isNotEmpty) Text('개점 연도 미상: ${data.unknownOpen.join(', ')}'),
+    const SizedBox(height: AppSpace.md),
     _ChartCard(title: '연도별 운영 매장', trailing: _storeExport('연도별 운영 매장', [
       ['연도', '운영', '개점', '폐점', '연말 운영', '대응 매장', '대응 건수', '매장당 건수'],
       for (final r in data.rows) [r.year, r.operating, r.opened, r.closed, r.yearEnd, r.active, r.tickets, r.perStore],
@@ -402,6 +405,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
           DataCell(Text(r.perStore?.toStringAsFixed(1) ?? '-')),
         ])],
       )),
+    const SizedBox(height: AppSpace.md),
     _ChartCard(title: '브랜드별 운영 매장', trailing: _storeExport('브랜드별 운영 매장', [
       ['브랜드', ...data.years],
       for (final b in data.byBrand) [b.brand, for (final y in data.years) b.counts[y] ?? 0],
@@ -446,7 +450,7 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(title: title,
+    return SectionCard(title: title, padding: const EdgeInsets.all(AppSpace.lg),
       actions: [if (trailing != null) trailing!], child: child);
   }
 }

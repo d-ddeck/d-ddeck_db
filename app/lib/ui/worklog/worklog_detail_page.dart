@@ -82,14 +82,14 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
             const FormGap(), SelectableText(log.detail),
             if (log.overtime) ...[const FormGap(), const Text('연장 근무 내용'), SelectableText(log.overtimeNote)],
           ])),
-          const SizedBox(height: AppSpace.lg),
+          const SizedBox(height: AppSpace.md),
           SectionCard(title: '예정·요청', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const Text('예정 업무'), SelectableText(log.plan.isEmpty ? '-' : log.plan),
             const FormGap(), const Text('필요/요청사항'), SelectableText(log.needs.isEmpty ? '-' : log.needs),
           ])),
-          const SizedBox(height: AppSpace.lg),
+          const SizedBox(height: AppSpace.md),
           AttachmentSection(entityType: FileRepository.worklog, entityId: log.id, canEdit: log.canEdit),
-          const SizedBox(height: AppSpace.lg),
+          const SizedBox(height: AppSpace.md),
           SectionCard(title: '등록/수정 정보', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('작성자: ${log.author?.display ?? '${log.authorName} ${log.position}'}'),
             Text('등록: ${log.createdBy?.display ?? '-'} · ${Fmt.dateTime(log.createdAt)}'),
