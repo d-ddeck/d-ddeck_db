@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../common/common.dart';
 
 import '../../core/api_exception.dart';
+import '../../data/admin_repository.dart';
 import '../../data/calendar_repository.dart';
+import '../../models/common.dart' show CodeItem;
 import '../../models/calendar.dart';
 import '../../state/auth_state.dart';
 import '../async_view.dart';
@@ -15,11 +17,96 @@ import 'event_form_page.dart';
 
 export 'event_form_page.dart' show EventFormPage;
 
+DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+DateTime _dayAfter(DateTime date, int days) =>
+    DateTime(date.year, date.month, date.day + days);
+
+class _WeekSegment {
+  const _WeekSegment(this.event, this.start, this.end, this.lane,
+      this.continuesLeft, this.continuesRight);
+  final CalendarEvent event;
+  final int start, end, lane;
+  final bool continuesLeft, continuesRight;
+}
+
+class _WeekData {
+  _WeekData(this.days, this.segments, this.lanesByDay);
+  final List<DateTime> days;
+  final List<_WeekSegment> segments;
+  // Sorted lane indices let each day count hidden events without scanning events.
+  final List<List<int>> lanesByDay;
+}
+
 class _MonthData {
-  const _MonthData({required this.calendars, required this.events, required this.holidays});
-  final List<AppCalendar> calendars;
-  final List<CalendarEvent> events;
-  final List<Holiday> holidays;
+  _MonthData({required DateTime month, required List<AppCalendar> calendars,
+    required List<CalendarEvent> events, required List<Holiday> holidays,
+    required List<CodeItem> categories}) {
+    calendarColors = {for (final c in calendars) c.id: c.color};
+    categoryColors = {for (final c in categories)
+      if (c.color?.trim().isNotEmpty == true) c.id: c.color!};
+    for (final holiday in holidays) {
+      final day = _dateOnly(holiday.date);
+      holidayNames.update(day, (name) => '$name · ${holiday.name}',
+          ifAbsent: () => holiday.name);
+    }
+    final first = DateTime(month.year, month.month);
+    final start = _dayAfter(first, 1 - first.weekday);
+    final count = ((first.weekday - 1 + DateTime(month.year, month.month + 1, 0).day) / 7).ceil();
+    final sorted = List<CalendarEvent>.of(events)..sort((a, b) {
+      final byDate = _dateOnly(a.startsAt).compareTo(_dateOnly(b.startsAt));
+      if (byDate != 0) return byDate;
+      final byDuration = b.endsAt.difference(b.startsAt).compareTo(a.endsAt.difference(a.startsAt));
+      if (byDuration != 0) return byDuration;
+      final byTime = a.startsAt.compareTo(b.startsAt);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
+    for (var week = 0; week < count; week++) {
+      final days = List.generate(7, (day) => _dayAfter(start, week * 7 + day));
+      final occupied = <int>[];
+      final segments = <_WeekSegment>[];
+      final lanesByDay = List.generate(7, (_) => <int>[]);
+      for (final event in sorted) {
+        final covered = <int>[for (var day = 0; day < 7; day++)
+          if (event.occursOn(days[day])) day];
+        if (covered.isEmpty) continue;
+        final from = covered.first, to = covered.last;
+        final mask = ((1 << (to - from + 1)) - 1) << from;
+        var lane = 0;
+        while (lane < occupied.length && (occupied[lane] & mask) != 0) {
+          lane++;
+        }
+        if (lane == occupied.length) occupied.add(0);
+        occupied[lane] |= mask;
+        segments.add(_WeekSegment(event, from, to, lane,
+            event.startsAt.isBefore(days.first),
+            event.endsAt.isAfter(_dayAfter(days.last, 1))));
+        for (final day in covered) {
+          lanesByDay[day].add(lane);
+          eventsByDay.putIfAbsent(days[day], () => []).add(event);
+        }
+      }
+      for (final lanes in lanesByDay) { lanes.sort(); }
+      weeks.add(_WeekData(days, segments, lanesByDay));
+    }
+    for (final events in eventsByDay.values) {
+      events.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    }
+  }
+
+  late final Map<String, String> calendarColors, categoryColors;
+  final Map<DateTime, String> holidayNames = {};
+  final Map<DateTime, List<CalendarEvent>> eventsByDay = {};
+  final List<_WeekData> weeks = [];
+
+  Color colorFor(CalendarEvent event, Color primary) {
+    if (event.status == EventStatus.canceled) return Colors.grey;
+    var color = primary;
+    for (final value in [categoryColors[event.categoryId], event.calendar?.color,
+      calendarColors[event.calendarId], event.color]) {
+      if (value?.trim().isNotEmpty == true) color = parseHexColor(value!, color);
+    }
+    return color;
+  }
 }
 
 /// 캘린더. A month grid plus the selected day's list.
@@ -56,33 +143,62 @@ class _CalendarPageState extends State<CalendarPage> {
         _refresh();
       });
 
+  Future<void> _createEvent(DateTime date) async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EventFormPage(initialDate: date)),
+    );
+    if (mounted && created == true) _refresh();
+  }
+
+  void _showDay(BuildContext hostContext, DateTime date, _MonthData data) {
+    setState(() => _selected = date);
+    showModalBottomSheet<void>(context: context, isScrollControlled: true,
+      builder: (context) => SafeArea(child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.65,
+        child: Column(children: [
+          Padding(padding: const EdgeInsets.all(AppSpace.lg),
+            child: Text('${date.month}월 ${date.day}일 일정',
+              style: Theme.of(context).textTheme.titleMedium)),
+          Expanded(child: ListView(children: [
+            for (final event in data.eventsByDay[_dateOnly(date)] ?? <CalendarEvent>[])
+              _EventTile(event: event,
+                calendarColor: data.colorFor(event, Theme.of(context).colorScheme.primary),
+                onChanged: _refresh,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  EventDetailSheet.show(hostContext, event, onChanged: _refresh);
+                }),
+          ])),
+        ]),
+      )),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = context.read<CalendarRepository>();
     return Scaffold(
       appBar: AppBar(title: const Text('캘린더'), actions: [FilledButton.icon(
-        onPressed: () async {
-          final created = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => EventFormPage(initialDate: _selected),
-            ),
-          );
-          if (mounted && created == true) _refresh();
-        }, icon: const Icon(Icons.add), label: const Text('일정 등록'))]),
+        onPressed: () => _createEvent(_selected), icon: const Icon(Icons.add), label: const Text('일정 등록'))]),
       body: PageBody(child: AsyncView<_MonthData>(
         key: _viewKey,
         load: () async {
           try {
+            final month = _month;
             final results = await Future.wait([
               repo.calendars(),
               repo.events(from: _windowStart, to: _windowEnd),
+              context.read<AdminRepository>().codeGroup('EVENT_CATEGORY')
+                  .then((group) => group.items),
               for (var y = _windowStart.year; y <= _windowEnd.year; y++)
                 if (y >= 2000 && y <= 2100) _loadHolidays(repo, y),
             ]);
             return _MonthData(
+              month: month,
+              categories: results[2] as List<CodeItem>,
               calendars: results[0] as List<AppCalendar>,
               events: results[1] as List<CalendarEvent>,
-              holidays: results.skip(2).expand((v) => (v as List<Holiday>)).toList(),
+              holidays: results.skip(3).expand((v) => (v as List<Holiday>)).toList(),
             );
           } on ApiException catch (e) {
             if (context.mounted) AppSnack.show(context, e.message, error: true);
@@ -90,16 +206,13 @@ class _CalendarPageState extends State<CalendarPage> {
           }
         },
         builder: (context, data, reload) {
-          final colorsById = {
-            for (final c in data.calendars) c.id: c.displayColor
-          };
-          final dayEvents = data.events
-              .where((e) => e.occursOn(_selected))
-              .toList()
-            ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-
-          return ListView(
-            children: [
+          final dayEvents = data.eventsByDay[_dateOnly(_selected)] ?? <CalendarEvent>[];
+          return LayoutBuilder(builder: (context, constraints) {
+            final desktop = constraints.maxWidth >= 600;
+            final minHeight = desktop ? 124.0 : 80.0;
+            final rowHeight = ((constraints.maxHeight - 230) / data.weeks.length)
+                .clamp(minHeight, double.infinity).toDouble();
+            final calendar = Column(children: [
               _MonthHeader(
                 month: _month,
                 onPrev: () => _shiftMonth(-1),
@@ -114,13 +227,17 @@ class _CalendarPageState extends State<CalendarPage> {
               _MonthGrid(
                 month: _month,
                 selected: _selected,
-                events: data.events,
-                holidays: data.holidays,
-                colorsById: colorsById,
+                data: data,
+                rowHeight: rowHeight,
+                desktop: desktop,
+                onChanged: _refresh,
+                onCreate: _createEvent,
+                onOverflow: (date) => _showDay(context, date, data),
                 onSelect: (d) => setState(() => _selected = d),
               ),
               const Divider(height: 1),
-              dayEvents.isEmpty
+            ]);
+            final dayList = dayEvents.isEmpty
                     ? StatePlaceholder(
                         icon: Icons.event_available,
                         message: '아직 등록된 일정이 없습니다',
@@ -130,12 +247,17 @@ class _CalendarPageState extends State<CalendarPage> {
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, i) => _EventTile(
                           event: dayEvents[i],
-                          calendarColor: colorsById[dayEvents[i].calendarId],
+                          calendarColor: data.colorFor(dayEvents[i], Theme.of(context).colorScheme.primary),
                           onChanged: _refresh,
                         ),
-                      ),
-            ],
-          );
+                      );
+            if (constraints.maxHeight < 90 + minHeight * data.weeks.length) {
+              return ListView(children: [calendar, dayList]);
+            }
+            return Column(children: [calendar,
+              Expanded(child: SingleChildScrollView(child: dayList)),
+            ]);
+          });
         },
       )),
 
@@ -184,173 +306,167 @@ class _MonthHeader extends StatelessWidget {
 }
 
 class _MonthGrid extends StatelessWidget {
-  const _MonthGrid({
-    required this.month,
-    required this.selected,
-    required this.events,
-    required this.holidays,
-    required this.colorsById,
-    required this.onSelect,
-  });
+  const _MonthGrid({required this.month, required this.selected,
+    required this.data, required this.rowHeight, required this.desktop,
+    required this.onSelect, required this.onCreate, required this.onOverflow,
+    required this.onChanged});
 
-  final DateTime month;
-  final DateTime selected;
-  final List<CalendarEvent> events;
-  final List<Holiday> holidays;
-  final Map<String, Color> colorsById;
-  final ValueChanged<DateTime> onSelect;
+  final DateTime month, selected;
+  final _MonthData data;
+  final double rowHeight;
+  final bool desktop;
+  final ValueChanged<DateTime> onSelect, onCreate, onOverflow;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final first = DateTime(month.year, month.month, 1);
-    // Monday-first grid: weekday is 1..7 with Monday == 1.
-    final leading = first.weekday - 1;
-    final gridStart = first.subtract(Duration(days: leading));
-    final today = DateTime.now();
+    final today = _dateOnly(DateTime.now());
+    final fontSize = desktop ? 12.0 : 11.0;
+    final textHeight = MediaQuery.textScalerOf(context).scale(fontSize);
+    final laneHeight = (textHeight + 5).clamp(18.0, double.infinity).toDouble();
+    const headerHeight = 26.0;
+    final overflowHeight = (textHeight + 4).clamp(18.0, double.infinity).toDouble();
+    final visibleLanes = ((rowHeight - headerHeight - overflowHeight) / laneHeight)
+        .floor().clamp(0, desktop ? 5 : 3).toInt();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              for (final (i, label) in ['월', '화', '수', '목', '금', '토', '일']
-                  .indexed)
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: switch (i) {
-                          5 => AppColors.info(context),
-                          6 => AppColors.danger(context),
-                          _ => scheme.outline,
-                        },
-                      ),
-                    ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.xs),
+      child: Column(children: [
+        SizedBox(height: 22, child: Row(children: [
+          for (final (i, label) in ['월', '화', '수', '목', '금', '토', '일'].indexed)
+            Expanded(child: Center(child: Text(label,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                color: i == 5 ? AppColors.info(context)
+                    : i == 6 ? AppColors.danger(context) : scheme.outline)))),
+        ])),
+        for (final week in data.weeks)
+          SizedBox(height: rowHeight, child: LayoutBuilder(builder: (context, constraints) {
+            final cellWidth = constraints.maxWidth / 7;
+            return Stack(children: [
+              Positioned.fill(child: Row(children: [
+                for (final date in week.days)
+                  Expanded(child: _DayCell(date: date, month: month,
+                    selected: selected, today: today,
+                    holiday: data.holidayNames[date] ?? '',
+                    onTap: onSelect, onLongPress: onCreate)),
+              ])),
+              for (final segment in week.segments)
+                if (segment.lane < visibleLanes)
+                  Positioned(
+                    left: segment.start * cellWidth + 1,
+                    width: (segment.end - segment.start + 1) * cellWidth - 2,
+                    top: headerHeight + segment.lane * laneHeight,
+                    height: laneHeight - 2,
+                    child: _EventBar(segment: segment, fontSize: fontSize,
+                      color: data.colorFor(segment.event, scheme.primary),
+                      onTap: () => EventDetailSheet.show(context, segment.event,
+                        onChanged: onChanged),
+                      onLongPress: (offset) {
+                        final day = (segment.start + (offset / cellWidth).floor())
+                            .clamp(segment.start, segment.end).toInt();
+                        onCreate(week.days[day]);
+                      }),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          for (var week = 0; week < 6; week++)
-            Row(
-              children: [
-                for (var day = 0; day < 7; day++)
-                  Expanded(
-                    child: _DayCell(
-                      date: gridStart.add(Duration(days: week * 7 + day)),
-                      month: month,
-                      selected: selected,
-                      today: today,
-                      events: events,
-                      holidays: holidays,
-                      colorsById: colorsById,
-                      onTap: onSelect,
-                    ),
-                  ),
-              ],
+              for (var day = 0; day < 7; day++)
+                if (week.lanesByDay[day].any((lane) => lane >= visibleLanes))
+                  Positioned(left: day * cellWidth, width: cellWidth,
+                    bottom: 0, height: overflowHeight,
+                    child: InkWell(onTap: () => onOverflow(week.days[day]),
+                      onLongPress: () => onCreate(week.days[day]),
+                      child: Center(child: Text(
+                        '+${week.lanesByDay[day].where((lane) => lane >= visibleLanes).length}',
+                        style: TextStyle(fontSize: fontSize, color: scheme.onSurfaceVariant))),
+                    )),
+            ]);
+          })),
+        const SizedBox(height: AppSpace.xs),
+      ]),
+    );
+  }
+}
+
+class _EventBar extends StatelessWidget {
+  const _EventBar({required this.segment, required this.color,
+    required this.fontSize, required this.onTap, required this.onLongPress});
+  final _WeekSegment segment;
+  final Color color;
+  final double fontSize;
+  final VoidCallback onTap;
+  final ValueChanged<double> onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final event = segment.event;
+    final lastDay = _dateOnly(event.endsAt.subtract(const Duration(microseconds: 1)));
+    final solid = event.allDay || lastDay.isAfter(_dateOnly(event.startsAt));
+    final surface = Theme.of(context).colorScheme.surface;
+    final background = Color.alphaBlend(solid ? color : color.withValues(alpha: 0.16), surface);
+    final foreground = background.computeLuminance() > 0.179 ? Colors.black : Colors.white;
+    final title = solid ? event.title
+        : '${event.startsAt.hour.toString().padLeft(2, '0')}:'
+          '${event.startsAt.minute.toString().padLeft(2, '0')} ${event.title}';
+    final radius = BorderRadius.horizontal(
+      left: Radius.circular(segment.continuesLeft ? 0 : 6),
+      right: Radius.circular(segment.continuesRight ? 0 : 6));
+    return Semantics(button: true, label: title,
+      child: Tooltip(message: title, child: GestureDetector(
+        onLongPressStart: (details) => onLongPress(details.localPosition.dx),
+        child: Material(color: background, borderRadius: radius,
+          child: InkWell(onTap: onTap, borderRadius: radius,
+            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: Align(alignment: Alignment.centerLeft,
+                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: fontSize, height: 1, color: foreground,
+                    decoration: event.status == EventStatus.canceled
+                        ? TextDecoration.lineThrough : null,
+                    decorationColor: foreground)),
+              ),
             ),
-          const SizedBox(height: 6),
-        ],
-      ),
+          ),
+        ),
+      )),
     );
   }
 }
 
 class _DayCell extends StatelessWidget {
-  const _DayCell({
-    required this.date,
-    required this.month,
-    required this.selected,
-    required this.today,
-    required this.events,
-    required this.holidays,
-    required this.colorsById,
-    required this.onTap,
-  });
-
-  final DateTime date;
-  final DateTime month;
-  final DateTime selected;
-  final DateTime today;
-  final List<CalendarEvent> events;
-  final List<Holiday> holidays;
-  final Map<String, Color> colorsById;
-  final ValueChanged<DateTime> onTap;
-
-  static bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  const _DayCell({required this.date, required this.month,
+    required this.selected, required this.today, required this.holiday,
+    required this.onTap, required this.onLongPress});
+  final DateTime date, month, selected, today;
+  final String holiday;
+  final ValueChanged<DateTime> onTap, onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final inMonth = date.month == month.month;
-    final isSelected = _sameDay(date, selected);
-    final isToday = _sameDay(date, today);
-    final holiday = holidays.where((h) => _sameDay(h.date, date)).map((h) => h.name).join(' · ');
-    final dayEvents = events.where((e) => e.occursOn(date)).toList();
-
-    return InkWell(
-      onTap: () => onTap(date),
+    final isSelected = date == _dateOnly(selected);
+    final isToday = date == today;
+    final color = holiday.isNotEmpty ? AppColors.danger(context)
+        : date.month != month.month ? scheme.onSurfaceVariant
+        : date.weekday == 6 ? AppColors.info(context)
+        : date.weekday == 7 ? AppColors.danger(context) : scheme.onSurface;
+    return InkWell(onTap: () => onTap(date),
+      onLongPress: () => onLongPress(date),
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 52, minWidth: 44),
         margin: const EdgeInsets.all(1),
         decoration: BoxDecoration(
           color: isSelected ? scheme.primaryContainer : null,
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: isToday && !isSelected
-              ? Border.all(color: scheme.primary, width: 1.2)
-              : null,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '${date.day}',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
-                color: holiday.isNotEmpty ? AppColors.danger(context) : !inMonth
-                    ? scheme.onSurfaceVariant
-                    : switch (date.weekday) {
-                        6 => AppColors.info(context),
-                        7 => AppColors.danger(context),
-                        _ => null,
-                      },
-              ),
-            ),
-            if (holiday.isNotEmpty) Tooltip(message: holiday, child: Text(holiday,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 8, color: AppColors.danger(context)))),
-            const SizedBox(height: 3),
-            // Up to three dots, then a "+N" marker, so a busy day stays legible.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (final e in dayEvents.take(3))
-                  Container(
-                    width: 5,
-                    height: 5,
-                    margin: const EdgeInsets.symmetric(horizontal: 1),
-                    decoration: BoxDecoration(
-                      color: e.displayColor(colorsById[e.calendarId]),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                if (dayEvents.length > 3)
-                  Text(
-                    '+${dayEvents.length - 3}',
-                    style: TextStyle(fontSize: 8, color: scheme.onSurfaceVariant),
-                  ),
-              ],
-            ),
-          ],
-        ),
+          border: isToday ? Border.all(color: scheme.primary, width: 1.2) : null),
+        alignment: Alignment.topLeft,
+        child: SizedBox(height: 24, child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Row(children: [
+            Text('${date.day}', style: TextStyle(fontSize: 12, color: color,
+              fontWeight: isToday ? FontWeight.w700 : FontWeight.w400)),
+            if (holiday.isNotEmpty) Expanded(child: Tooltip(message: holiday,
+              child: Text(' $holiday', maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 8, color: AppColors.danger(context))))),
+          ]),
+        )),
       ),
     );
   }
@@ -361,11 +477,13 @@ class _EventTile extends StatelessWidget {
     required this.event,
     required this.calendarColor,
     required this.onChanged,
+    this.onTap,
   });
 
   final CalendarEvent event;
   final Color? calendarColor;
   final VoidCallback onChanged;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -379,13 +497,15 @@ class _EventTile extends StatelessWidget {
         width: 4,
         height: 38,
         decoration: BoxDecoration(
-          color: event.displayColor(calendarColor),
+          color: calendarColor ?? event.displayColor(),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
       title: Text(
         event.title,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500,
+          color: event.status == EventStatus.canceled ? Theme.of(context).colorScheme.onSurfaceVariant : null,
+          decoration: event.status == EventStatus.canceled ? TextDecoration.lineThrough : null),
       ),
       subtitle: Text(
         '${Fmt.range(event.startsAt, event.endsAt, allDay: event.allDay)}'
@@ -419,7 +539,7 @@ class _EventTile extends StatelessWidget {
                 if (ok) onChanged();
               },
             ),
-      onTap: () => EventDetailSheet.show(context, event, onChanged: onChanged),
+      onTap: onTap ?? () => EventDetailSheet.show(context, event, onChanged: onChanged),
     );
   }
 }
