@@ -39,6 +39,7 @@ class ModuleKey(StrEnum):
     BOARD = "BOARD"
     CALENDAR = "CALENDAR"
     STORE = "STORE"          # 매장 - 브랜드/폐점/납품 장비 세트
+    WORKLOG = "WORKLOG"      # 근무일지 - 작성자·일자마다 한 장
 
 
 # ---------------- Service (AS) ----------------
@@ -175,3 +176,9 @@ class DevicePlatform(StrEnum):
     LINUX = "LINUX"
     WEB = "WEB"
     IOS = "IOS"
+
+
+# ---------------- 근무일지 ----------------
+class WorkLogVisibility(StrEnum):
+    PRIVATE = "PRIVATE"      # 나와 관리자만
+    TEAM = "TEAM"            # 로그인한 모두 (보기만)

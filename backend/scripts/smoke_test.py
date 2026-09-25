@@ -597,6 +597,65 @@ with TestClient(app) as c:
     )
     check("전체 공지 발송", r.status_code == 200 and "2명" in r.json()["message"], r.text)
 
+    # ============================================================ worklog
+    print("\n[6b] 근무일지: 규칙 · 임시 저장 · 공개 범위 · 엑셀")
+
+    r = c.get("/api/v1/worklogs/lookups", headers=bearer(user_token))
+    check("근무일지 기본값", r.status_code == 200 and r.json()["default_work_start"] == "09:00" and "대리" in r.json()["positions"], r.text)
+    check("계정 직급 없음 → 폼에서 고름", r.json()["fixed_position"] is None)
+
+    r = c.put("/api/v1/worklogs/draft", headers=bearer(user_token), json={"data": {"summary": "쓰다 만 것", "work_date": "2026-09-25"}})
+    check("임시 저장", r.status_code == 200 and r.json()["data"]["summary"] == "쓰다 만 것", r.text)
+    r = c.get("/api/v1/worklogs/lookups", headers=bearer(user_token))
+    check("기본값에 임시 저장 동봉", r.json()["draft"]["data"]["summary"] == "쓰다 만 것", r.json()["draft"])
+
+    body = {"work_date": "2026-09-25", "work_start": "09:00", "work_end": "18:00",
+            "summary": "강남역점 점검\n- 신규 매장 설치 준비\n\n3) 창고 정리", "detail": "시간 순서대로 한 일",
+            "overtime": False, "overtime_note": "지워져야 함", "plan": "내일 할 일", "visibility": "PRIVATE"}
+    r = c.post("/api/v1/worklogs", headers=bearer(user_token), json=body)
+    check("직급 없으면 거절", r.status_code == 400 and r.json()["error"]["code"] == "POSITION_REQUIRED", r.text)
+    r = c.post("/api/v1/worklogs", headers=bearer(user_token), json={**body, "position": "대리"})
+    check("근무일지 등록", r.status_code == 201, r.text)
+    wl = r.json()
+    check("요약 자동 번호", wl["summary"] == "1. 강남역점 점검\n2. 신규 매장 설치 준비\n3. 창고 정리", wl["summary"])
+    check("연장 근무 X 면 내용 비움", wl["overtime_note"] is None)
+    check("작성자 = 로그인 사용자", wl["author_name"] == "김테스트" and wl["can_edit"] is True, wl)
+    r = c.get("/api/v1/worklogs/draft", headers=bearer(user_token))
+    check("등록하면 임시 저장 삭제", r.json() is None, r.text)
+
+    r = c.post("/api/v1/worklogs", headers=bearer(user_token), json={**body, "position": "대리"})
+    check("같은 날 두 장 거절 + 기존 id", r.status_code == 409 and r.json()["error"]["details"]["id"] == wl["id"], r.text)
+    r = c.post("/api/v1/worklogs", headers=bearer(user_token), json={**body, "position": "대리", "work_start": "9:00"})
+    check("근무시간 형식", r.status_code == 422 or (r.status_code == 400 and r.json()["error"]["code"] == "BAD_TIME"), r.text)
+
+    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(admin_token))
+    check("관리자는 비공개도 봄", r.status_code == 200, r.text)
+    # 다른 일반 사용자: 비공개는 못 보고, 팀 공개면 봄
+    r = c.post("/api/v1/auth/signup", json={"email": "peer@ddeck.local", "password": "peerpass1", "full_name": "동료"})
+    peer_id = r.json().get("id") or next(u["id"] for u in c.get("/api/v1/users/pending", headers=bearer(admin_token)).json()["items"] if u["email"] == "peer@ddeck.local")
+    c.post(f"/api/v1/users/{peer_id}/approve", headers=bearer(admin_token), json={"role": "MEMBER"})
+    peer_token = c.post("/api/v1/auth/login", json={"email": "peer@ddeck.local", "password": "peerpass1"}).json()["access_token"]
+    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
+    check("다른 사용자는 비공개 못 봄", r.status_code == 403, r.status_code)
+    r = c.get("/api/v1/worklogs?scope=team", headers=bearer(peer_token))
+    check("팀 공개 목록에 비공개 없음", r.json()["total"] == 0, r.json())
+    r = c.patch(f"/api/v1/worklogs/{wl['id']}", headers=bearer(user_token), json={"visibility": "TEAM", "overtime": True, "overtime_note": "18:00~20:00 출동"})
+    check("팀 공개로 수정 + 연장 근무", r.status_code == 200 and r.json()["visibility"] == "TEAM" and r.json()["overtime_note"] == "18:00~20:00 출동", r.text)
+    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
+    check("팀 공개는 다른 사용자도 봄 (수정 불가)", r.status_code == 200 and r.json()["can_edit"] is False, r.text)
+    r = c.patch(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token), json={"detail": "가로채기"})
+    check("남의 일지 수정 차단", r.status_code == 403, r.status_code)
+    r = c.get("/api/v1/worklogs?scope=team", headers=bearer(peer_token))
+    check("팀 공개 목록에 보임", r.json()["total"] == 1 and r.json()["items"][0]["attachment_count"] == 0, r.json())
+    r = c.get("/api/v1/worklogs?year=2026&month=9&overtime=true&q=강남", headers=bearer(user_token))
+    check("근무일지 검색 조건", r.json()["total"] == 1, r.json())
+    r = c.get("/api/v1/worklogs/export.xlsx?scope=mine", headers=bearer(user_token))
+    check("근무일지 엑셀", r.status_code == 200 and "spreadsheetml" in r.headers["content-type"], r.headers)
+    r = c.delete(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
+    check("남의 일지 삭제 차단", r.status_code == 403, r.status_code)
+    r = c.delete(f"/api/v1/worklogs/{wl['id']}", headers=bearer(admin_token))
+    check("관리자 삭제", r.status_code == 200, r.text)
+
     # ============================================================ admin ops
     print("\n[7] 관리기능: 상태 / 통계 / 감사로그")
 
@@ -607,10 +666,10 @@ with TestClient(app) as c:
     r = c.get("/api/v1/admin/stats", headers=bearer(admin_token))
     st = r.json()
     check("시스템 통계", r.status_code == 200, r.text)
-    check("계정 수", st["users_active"] == 2, st["users_active"])
+    check("계정 수 (관리자·김테스트·동료)", st["users_active"] == 3, st["users_active"])
     check("AS 건수", st["tickets_total"] == 4, st["tickets_total"])
     check("자산 건수", st["assets_total"] == 2, st["assets_total"])
-    check("테이블 목록", len(st["tables"]) == 28, len(st["tables"]))
+    check("테이블 목록", len(st["tables"]) == 30, len(st["tables"]))
 
     r = c.get("/api/v1/admin/audit-logs?size=100", headers=bearer(admin_token))
     logs = r.json()
@@ -621,7 +680,7 @@ with TestClient(app) as c:
     check("설정변경 기록", "SETTING_CHANGE" in actions, actions)
 
     r = c.get("/api/v1/admin/audit-logs?action=APPROVE", headers=bearer(admin_token))
-    check("감사로그 필터", len(r.json()) == 1 and "가입 승인" in r.json()[0]["summary"], r.json())
+    check("감사로그 필터 (승인 2건: 김테스트·동료)", len(r.json()) == 2 and all("가입 승인" in x["summary"] for x in r.json()), r.json())
 
     r = c.get("/api/v1/admin/audit-logs", headers=bearer(user_token))
     check("감사로그 관리자 전용", r.status_code == 403, r.status_code)

@@ -263,7 +263,7 @@ Future<void> main() async {
       expect(health.uptimeLabel, isNotEmpty);
 
       final stats = await adminRepo.stats();
-      expect(stats.tables.length, 28, reason: 'the schema has 28 tables');
+      expect(stats.tables.length, 30, reason: 'the schema has 30 tables');
       expect(stats.usersActive, greaterThan(0));
     });
 

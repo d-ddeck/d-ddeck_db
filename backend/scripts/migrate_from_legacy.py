@@ -66,7 +66,9 @@ from app.models.service import (  # noqa: E402
     ServiceTicketCause,
     ServiceTicketResponder,
 )
-from app.models.store import Store, StoreSet  # noqa: E402
+from app.models.store import Store, StoreSet
+from app.models.worklog import WorkLog
+from app.models.enums import WorkLogVisibility  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.services import bootstrap  # noqa: E402
 
@@ -829,6 +831,87 @@ def migrate_files(
         st.add("  원본 없음", missing, 0)
 
 
+def migrate_worklogs(
+    db: Session,
+    src: sqlite3.Connection,
+    st: Stats,
+    users: dict[str, User],
+    source_root: Path,
+    dry_run: bool,
+) -> None:
+    """근무일지(worklogs) + 첨부(worklog_files → Attachment entity worklog).
+
+    작성자 이름을 계정에 맞춘다(구 서버는 로그인 아이디 = 이름). 못 맞추면 이름만 남긴다.
+    """
+    created = reused = files_created = files_missing = 0
+    by_name = {u.full_name: u for u in users.values()}
+    for row in src.execute(
+        "SELECT id, author, position, date, work_start, work_end, summary, detail, overtime, overtime_note,"
+        " plan, needs, visibility, created_at, created_by, updated_at, updated_by FROM worklogs ORDER BY id"
+    ):
+        (wid, author, position, wdate, ws, we, summary, detail, overtime, note,
+         plan, needs, visibility, created_at, created_by, updated_at, updated_by) = row
+        log = db.scalar(select(WorkLog).where(WorkLog.legacy_id == wid))
+        if log is not None:
+            reused += 1
+        else:
+            user = users.get(author) or by_name.get(author)
+            log = WorkLog(
+                legacy_id=wid,
+                author_id=user.id if user else None,
+                author_name=author,
+                position=position or None,
+                work_date=to_date(wdate) or date.today(),
+                work_start=ws or "09:00",
+                work_end=we or "18:00",
+                summary=summary or "-",
+                detail=detail or "-",
+                overtime=(overtime == "O"),
+                overtime_note=note or None,
+                plan=plan or None,
+                needs=needs or None,
+                visibility=WorkLogVisibility.TEAM if visibility == "team" else WorkLogVisibility.PRIVATE,
+                created_by_id=(users.get(created_by) or by_name.get(created_by)).id if (users.get(created_by) or by_name.get(created_by)) else None,
+                updated_by_id=(users.get(updated_by) or by_name.get(updated_by)).id if (users.get(updated_by) or by_name.get(updated_by)) else None,
+            )
+            db.add(log)
+            db.flush()
+            log.created_at = to_utc(created_at) or log.created_at
+            log.updated_at = to_utc(updated_at) or log.created_at
+            created += 1
+        # 첨부: data/worklogs/<작성자>/<년>/<월>/<stored>
+        for filename, stored, uploaded_by in src.execute(
+            "SELECT filename, stored, uploaded_by FROM worklog_files WHERE worklog_id=? AND stored<>''", (wid,)
+        ):
+            exists = db.scalar(select(Attachment).where(
+                Attachment.entity_type == "worklog", Attachment.entity_id == log.id,
+                Attachment.original_name == filename, Attachment.deleted_at.is_(None)))
+            if exists is not None:
+                continue
+            path = source_root / "worklogs" / author / wdate[:4] / wdate[5:7] / stored
+            if not path.exists():
+                print(f"  ! 파일 없음: {path}")
+                files_missing += 1
+                continue
+            dest_dir = settings.storage_path / "worklog" / str(log.id)
+            dest = dest_dir / f"{uuid.uuid4().hex}_{path.name}"
+            if not dry_run:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, dest)
+            up = users.get(uploaded_by) or by_name.get(uploaded_by)
+            db.add(Attachment(
+                entity_type="worklog", entity_id=log.id, original_name=filename,
+                stored_path=str(dest.relative_to(settings.storage_path)).replace("\\", "/"),
+                content_type=mimetypes.guess_type(filename)[0], size_bytes=path.stat().st_size,
+                uploaded_by_id=up.id if up else None,
+            ))
+            files_created += 1
+    st.add("근무일지", created, reused)
+    st.add("  근무일지 첨부", files_created, 0)
+    if files_missing:
+        st.add("  근무일지 첨부 원본 없음", files_missing, 0)
+
+
 # --------------------------------------------------------------- 진입점
 
 
@@ -837,6 +920,7 @@ def main() -> int:
     ap.add_argument("--source", required=True, help="구 서버 백업 폴더 (cs.db 가 있는 곳)")
     ap.add_argument("--password", default="ddeck1234", help="새로 만드는 계정의 임시 비밀번호")
     ap.add_argument("--dry-run", action="store_true", help="실제로 쓰지 않고 건수만 센다")
+    ap.add_argument("--only", default="", help="쉼표로 나눈 단계 이름만 실행 (예: worklogs). 계정 매핑은 항상 읽는다")
     args = ap.parse_args()
 
     source_root = Path(args.source).expanduser().resolve()
@@ -866,16 +950,20 @@ def main() -> int:
             print("*** DRY RUN - 마지막에 되돌립니다 ***")
         print()
 
+        only = {x.strip() for x in args.only.split(",") if x.strip()}
         users = migrate_users(db, src, st, args.password)
-        codes = migrate_codes(db, src, st, users)
-        stores = migrate_stores(db, src, st, codes)
-        places = migrate_places(db, src, st)
-        migrate_assets(db, src, st, codes, stores, places)
-        deactivate_unused_categories(db, st)
-        tickets = migrate_tickets(db, src, st, codes, stores, users)
-        posts = migrate_board(db, src, st, users)
-        migrate_events(db, src, st, users)
-        migrate_files(db, src, st, source_root, tickets, posts, args.dry_run)
+        if not only:
+            codes = migrate_codes(db, src, st, users)
+            stores = migrate_stores(db, src, st, codes)
+            places = migrate_places(db, src, st)
+            migrate_assets(db, src, st, codes, stores, places)
+            deactivate_unused_categories(db, st)
+            tickets = migrate_tickets(db, src, st, codes, stores, users)
+            posts = migrate_board(db, src, st, users)
+            migrate_events(db, src, st, users)
+            migrate_files(db, src, st, source_root, tickets, posts, args.dry_run)
+        if not only or "worklogs" in only:
+            migrate_worklogs(db, src, st, users, source_root, args.dry_run)
 
         if args.dry_run:
             db.rollback()

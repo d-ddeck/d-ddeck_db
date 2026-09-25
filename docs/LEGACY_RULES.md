@@ -80,16 +80,29 @@
 
 한국 공휴일·대체공휴일(2024~2050 음력표) → `GET /calendar/holidays?year=`. 추가 휴일은 설정 `CALENDAR.extra_holidays` (`05-01:노동절, 2028-04-12:선거`).
 
+## 5b. 근무일지 (구 `worklogs` → `worklogs` · `worklog_drafts`, 2026-09-25 추가)
+
+| 구 서버 | 신 서버 |
+|---|---|
+| 작성자·일자마다 한 장, 같은 날 두 장이면 먼저 쓴 장으로 | `POST /worklogs` → 409 `WORKLOG_EXISTS` + `details.id` |
+| 직급은 계정(관리 › 사용자)의 것을 그대로, 없으면 목록에서 | `User.position` 우선, 없으면 `WORKLOG_POSITION` 코드에서 (`POSITION_REQUIRED`) |
+| 요약 줄마다 1. 2. 번호 | 서버 `numbered()` 가 다시 매김 |
+| 연장 근무 X 면 내용 비움, 공개 범위 기본 비공개 | 같음 (`visibility` PRIVATE/TEAM) |
+| 보기: 본인·관리자, 팀 공개면 모두. 고치기·지우기: 본인·관리자 | `can_edit`, 403 |
+| 임시 저장 계정당 한 장, 등록하면 삭제 | `GET/PUT/DELETE /worklogs/draft` |
+| 첨부, 엑셀, 검색(연도·달·작성자·연장·내용) | `/files` entity `worklog`, `GET /worklogs/export.xlsx`, `GET /worklogs?…` |
+| 글 파일(.txt) 폴더 저장 | 옮기지 않음 (첨부는 서버 저장소) |
+
 ## 6. 아직 옮기지 않은 것
 
 - 출고 대조(게시판의 제조사 출고 엑셀 ↔ 재고) — `dddeckservercode/code/docs/디떽_출고이력.xlsx` 참고
-- 근무일지, 매장 사진 5항목 분류(첨부는 매장 단위로만), 변경 이력 한 줄 삭제 권한(localhost 관리자), 한 계정 한 곳 로그인, 관리 › 서버 화면(백업·전원)
+- 매장 사진 5항목 분류(첨부는 매장 단위로만), 변경 이력 한 줄 삭제 권한(localhost 관리자), 한 계정 한 곳 로그인, 관리 › 서버 화면(백업·전원)
 
 ## 7. 동작 확인
 
 ```bash
 cd backend
-.venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (151)
+.venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (185)
 .venv-linux/bin/python scripts/smoke_test_legacy.py   # 구 서버 규칙 (143)
 ```
 

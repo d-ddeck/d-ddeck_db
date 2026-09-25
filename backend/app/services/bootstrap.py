@@ -139,6 +139,13 @@ DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]
         "STORE_BRAND", "매장 브랜드", ModuleKey.STORE, [],
     ),
     (
+        # 근무일지 직급 (구 서버 position 목록). 계정에 직급이 없을 때 고르는 칸.
+        "WORKLOG_POSITION", "직급", ModuleKey.WORKLOG,
+        [("STAFF", "사원", None), ("JUNIOR", "주임", None), ("ASSISTANT_MANAGER", "대리", None),
+         ("MANAGER", "과장", None), ("DEPUTY_GM", "차장", None), ("GM", "부장", None),
+         ("DIRECTOR", "이사", None), ("VICE_PRESIDENT", "부대표", None), ("PRESIDENT", "대표", None)],
+    ),
+    (
         "EVENT_CATEGORY", "일정 유형", ModuleKey.CALENDAR,
         [
             ("MEETING", "회의", "#3B82F6"),
@@ -206,6 +213,10 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
 
     (ModuleKey.STORE, "default_gripper_type", "전동", "string", "기본 그리퍼 종류", True),
     (ModuleKey.STORE, "show_closed_stores", False, "bool", "폐점 매장 목록에 표시", True),
+
+    (ModuleKey.WORKLOG, "default_work_start", "09:00", "string", "근무 시작 기본값", True),
+    (ModuleKey.WORKLOG, "default_work_end", "18:00", "string", "근무 종료 기본값", True),
+    (ModuleKey.WORKLOG, "autosave_seconds", 5, "int", "입력 멈춘 뒤 임시 저장까지(초)", True),
 ]
 
 DEFAULT_BOARDS: list[tuple[str, str, BoardType, Role, int]] = [

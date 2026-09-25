@@ -26,9 +26,13 @@ from app.models.service import (
 )
 from app.models.store import Store, StoreSet
 from app.models.user import Department, Device, RefreshToken, User
+from app.models.worklog import WorkLog, WorkLogDraft
 
 __all__ = [
     "Base",
+    # worklog
+    "WorkLog",
+    "WorkLogDraft",
     # auth
     "User",
     "Department",
