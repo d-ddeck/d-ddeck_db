@@ -178,7 +178,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               ],
 
               if (t.parts.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpace.lg),
                 SectionCard(title: '사용 부품', child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -205,7 +205,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                     )),
               ],
 
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.lg),
               SectionCard(title: '처리 이력', child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -217,12 +217,12 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                     ],
                   )),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.lg),
               AttachmentSection(
                 entityType: FileRepository.serviceTicket,
                 entityId: t.id,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpace.lg),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,

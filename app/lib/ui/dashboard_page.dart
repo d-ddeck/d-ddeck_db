@@ -144,7 +144,7 @@ class DashboardPage extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpace.xl),
+            const SizedBox(height: AppSpace.lg),
 
             SectionCard(title: '미종결 ${Fmt.number(data.service.openCount)}건', actions: [
               TextButton(onPressed: () => viewAll(const ServiceListTab(initialOnlyOpen: true)), child: const Text('전체 보기')),
@@ -240,7 +240,7 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ),
               ),
-            const SizedBox(height: AppSpace.xl),
+            const SizedBox(height: AppSpace.lg),
           ]))],
         );
       },

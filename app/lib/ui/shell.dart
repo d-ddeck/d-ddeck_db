@@ -52,7 +52,8 @@ class _HomeShellState extends State<HomeShell> {
     }, child: IndexedStack(
       key: _pagesKey,
       index: index,
-      children: destinations.map((d) => d.page).toList(),
+      children: [for (final d in destinations) d.label == '장비·매장'
+        ? EquipmentPage(key: _equipmentKey, tab: widget.equipmentTab ?? EquipmentTab.overview) : d.page],
     ));
 
     return Scaffold(
@@ -77,7 +78,7 @@ class _HomeShellState extends State<HomeShell> {
                     Align(alignment: Alignment.centerRight, child: IconButton(
                       tooltip: _railExpanded ? '메뉴 접기' : '메뉴 펼치기',
                       onPressed: () => setState(() => _railExpanded = !_railExpanded),
-                      icon: Icon(_railExpanded ? Icons.menu_open : Icons.menu),
+                      icon: _railExpanded ? const Icon(Icons.menu_open) : const Icon(Icons.menu),
                     )),
                     Expanded(child: NavigationRail(
                       extended: _railExpanded,
@@ -167,16 +168,16 @@ class _HomeShellState extends State<HomeShell> {
           selectedIcon: Icons.build,
           page: ServicePage(),
         ),
-        _Destination(
+        const _Destination(
           label: '장비·매장',
-          icon: Icons.precision_manufacturing_outlined,
-          selectedIcon: Icons.precision_manufacturing,
-          page: EquipmentPage(key: _equipmentKey, tab: widget.equipmentTab ?? EquipmentTab.overview),
+          icon: Icons.inventory_2_outlined,
+          selectedIcon: Icons.inventory_2,
+          page: EquipmentPage(),
         ),
         const _Destination(
           label: '근무일지',
-          icon: Icons.edit_calendar_outlined,
-          selectedIcon: Icons.edit_calendar,
+          icon: Icons.assignment_outlined,
+          selectedIcon: Icons.assignment,
           page: WorkLogPage(),
         ),
         const _Destination(

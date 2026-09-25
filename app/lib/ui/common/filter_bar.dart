@@ -5,8 +5,9 @@ import '../theme.dart';
 /// Explicit applied labels avoid guessing values from controllers or widgets.
 class FilterBar extends StatelessWidget {
   const FilterBar({super.key, required this.children, this.onReset,
-    this.appliedFilters = const []});
+    this.horizontalOnPhone = false, this.appliedFilters = const []});
   final List<Widget> children;
+  final bool horizontalOnPhone;
   final VoidCallback? onReset;
   final List<String> appliedFilters;
 
@@ -20,6 +21,11 @@ class FilterBar extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center, children: children)),
         if (reset != null) reset,
       ]);
+    }
+    if (horizontalOnPhone) {
+      return SingleChildScrollView(scrollDirection: Axis.horizontal,
+      child: Row(children: [for (final child in children) Padding(
+        padding: const EdgeInsets.only(right: AppSpace.sm), child: child), if (reset != null) reset]));
     }
     return Card(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ExpansionTile(

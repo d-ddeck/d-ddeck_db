@@ -76,57 +76,18 @@ class _StoreBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return RefreshIndicator(
-      onRefresh: () async => onRefresh(),
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  store.name,
-                  style: theme.textTheme.headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              if (store.isClosed)
-                const StatusChip(label: '폐점', color: Color(0xFF94A3B8)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(store.brandName, style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: StatTile(
-                  label: '보유 장비',
-                  value: '${Fmt.number(store.assetCount)}대',
-                  icon: Icons.precision_manufacturing,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: StatTile(
-                  label: 'AS 이력',
-                  value: '${Fmt.number(store.ticketCount)}건',
-                  icon: Icons.build_circle_outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+    final left = <Widget>[
           _InfoCard(store: store),
-          if (store.rentalCount > 0) Text('렌탈 중 ${Fmt.number(store.rentalCount)}대는 대응 기록에서 회수 처리'),
+
+          const SizedBox(height: AppSpace.lg),
+          SectionCard(title: '보유 장비 (세트)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           OutlinedButton.icon(icon: const Icon(Icons.settings), label: const Text('장비 설정'),
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => StoreEquipmentPage(storeId: store.id)));
               if (context.mounted) onRefresh();
             }),
           if (store.sets.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             Text('납품 세트', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Wrap(
@@ -141,13 +102,7 @@ class _StoreBody extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 20),
-          AttachmentSection(
-            entityType: FileRepository.store,
-            entityId: store.id,
-          ),
-          const SizedBox(height: 20),
-          SectionCard(title: '보유 장비', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+
           const SizedBox(height: 8),
           if (store.assetGroups.isEmpty)
             const StatePlaceholder(
@@ -164,8 +119,10 @@ class _StoreBody extends StatelessWidget {
                   assets: group.assets.where((a) => a.setNo == number).toList(),
                 ), onRefresh: onRefresh),
             ],
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpace.lg),
           ])),
+    ];
+    final right = <Widget>[
           SectionCard(title: '구분별 발생', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (store.categoryCounts.isEmpty) const EmptyState(message: '아직 등록된 발생 기록이 없습니다'),
           for (final c in store.categoryCounts) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Column(
@@ -176,7 +133,7 @@ class _StoreBody extends StatelessWidget {
             ],
           )),
           ])),
-          const SizedBox(height: 20), SectionCard(title: '미회수 렌탈', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: AppSpace.lg), SectionCard(title: '미회수 렌탈', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (store.unreturnedRentals.isEmpty) const EmptyState(message: '아직 등록된 미회수 렌탈이 없습니다'),
           for (final rental in store.unreturnedRentals) ListTile(contentPadding: EdgeInsets.zero, trailing: const Icon(Icons.chevron_right),
             title: Text('${rental.ticketNo} · ${rental.serials ?? '-'}'),
@@ -186,7 +143,7 @@ class _StoreBody extends StatelessWidget {
               if (context.mounted) onRefresh();
             }),
           ])),
-          const SizedBox(height: 20), SectionCard(title: '대응 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: AppSpace.lg), SectionCard(title: '대응 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (store.recentTickets.isEmpty) const EmptyState(message: '아직 등록된 대응 이력이 없습니다'),
           for (final ticket in store.recentTickets) ListTile(contentPadding: EdgeInsets.zero, trailing: const Icon(Icons.chevron_right),
             title: Text('${ticket.ticketNo} · ${ServiceStatus.parse(ticket.status).label}'),
@@ -213,9 +170,25 @@ class _StoreBody extends StatelessWidget {
               },
             ),
           ),
-        ],
-      ),
-    );
+    ];
+    return RefreshIndicator(onRefresh: () async => onRefresh(), child: ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        Text(store.name, style: theme.textTheme.headlineSmall),
+        Text(store.brandName, style: theme.textTheme.titleMedium),
+        if (store.isClosed) const StatusChip(label: '폐점', color: Color(0xFF94A3B8)),
+        const SizedBox(height: AppSpace.lg),
+        if (MediaQuery.sizeOf(context).width >= 1100)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: left)),
+            const SizedBox(width: AppSpace.lg),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: right)),
+          ])
+        else ...[...left, const SizedBox(height: AppSpace.lg), ...right],
+        const SizedBox(height: AppSpace.lg),
+        AttachmentSection(entityType: FileRepository.store, entityId: store.id),
+      ],
+    ));
   }
 }
 

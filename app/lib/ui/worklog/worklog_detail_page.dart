@@ -8,6 +8,7 @@ import '../../models/worklog.dart';
 import '../common/attachment_section.dart';
 import '../common/common.dart';
 import '../format.dart';
+import '../theme.dart';
 import 'worklog_form_page.dart';
 
 class WorkLogDetailPage extends StatefulWidget {
@@ -75,20 +76,20 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
             if (log.overtime) const Chip(label: Text('연장')),
             if (log.visibility == 'TEAM') const Chip(label: Text('팀 공개')),
           ]),
-          const FormGap(),
+          const SizedBox(height: AppSpace.lg),
           SectionCard(title: '금일 업무', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             SelectableText(log.summary, style: const TextStyle(fontWeight: FontWeight.bold)),
             const FormGap(), SelectableText(log.detail),
             if (log.overtime) ...[const FormGap(), const Text('연장 근무 내용'), SelectableText(log.overtimeNote)],
           ])),
-          const FormGap(),
+          const SizedBox(height: AppSpace.lg),
           SectionCard(title: '예정·요청', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const Text('예정 업무'), SelectableText(log.plan.isEmpty ? '-' : log.plan),
             const FormGap(), const Text('필요/요청사항'), SelectableText(log.needs.isEmpty ? '-' : log.needs),
           ])),
-          const FormGap(),
+          const SizedBox(height: AppSpace.lg),
           AttachmentSection(entityType: FileRepository.worklog, entityId: log.id, canEdit: log.canEdit),
-          const FormGap(),
+          const SizedBox(height: AppSpace.lg),
           SectionCard(title: '등록/수정 정보', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('작성자: ${log.author?.display ?? '${log.authorName} ${log.position}'}'),
             Text('등록: ${log.createdBy?.display ?? '-'} · ${Fmt.dateTime(log.createdAt)}'),

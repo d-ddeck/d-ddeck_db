@@ -208,6 +208,8 @@ class StatTile extends StatelessWidget {
     this.hint,
     this.color,
     this.icon,
+    this.iconWidget,
+    this.compact = false,
     this.onTap,
   });
 
@@ -216,6 +218,8 @@ class StatTile extends StatelessWidget {
   final String? hint;
   final Color? color;
   final IconData? icon;
+  final Widget? iconWidget;
+  final bool compact;
   final VoidCallback? onTap;
 
   @override
@@ -227,15 +231,15 @@ class StatTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpace.lg),
+          padding: EdgeInsets.all(compact ? AppSpace.sm : AppSpace.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 15, color: accent),
+                  if (icon != null || iconWidget != null) ...[
+                    IconTheme(data: IconThemeData(size: 15, color: accent), child: iconWidget ?? Icon(icon)),
                     const SizedBox(width: 6),
                   ],
                   Flexible(
@@ -255,7 +259,7 @@ class StatTile extends StatelessWidget {
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                style: (compact ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.headlineSmall)?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: accent,
                     ),

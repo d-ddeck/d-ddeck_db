@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../data/inventory_repository.dart';
+import '../async_view.dart';
+import '../common/common.dart';
+import '../format.dart';
+import '../theme.dart';
 import '../inventory/asset_form_page.dart';
 import '../../models/inventory.dart';
 import '../inventory/inventory_page.dart';
@@ -84,8 +90,12 @@ class EquipmentPageState extends State<EquipmentPage> with SingleTickerProviderS
         itemBuilder: (_) => [const PopupMenuItem(value: 'refresh', child: Text('새로고침'))]),
     ]),
     TabBar(controller: _tabs, isScrollable: true, tabs: const [
-      Tab(text: '현황'), Tab(text: '매장'), Tab(text: '장비 목록'), Tab(text: '위치'),
+      Tab(icon: Icon(Icons.dashboard_outlined), text: '현황'),
+      Tab(icon: Icon(Icons.store_outlined), text: '매장'),
+      Tab(icon: Icon(Icons.inventory_2_outlined), text: '장비 목록'),
+      Tab(icon: Icon(Icons.place_outlined), text: '위치'),
     ]),
+    _EquipmentSummary(key: ValueKey('summary:$_revision')),
     Expanded(child: IndexedStack(index: _tabs.index, children: [
       InventoryOverviewTab(key: ValueKey('overview:$_revision'), onChanged: _changed, onDrill: (filters) {
         EquipmentPage.open(context, tab: filters.containsKey('brand_id') ? EquipmentTab.stores : EquipmentTab.assets,
@@ -97,4 +107,26 @@ class EquipmentPageState extends State<EquipmentPage> with SingleTickerProviderS
       LocationPage(embedded: true, onChanged: _changed),
     ])),
   ]));
+}
+
+
+class _EquipmentSummary extends StatelessWidget {
+  const _EquipmentSummary({super.key});
+  @override
+  Widget build(BuildContext context) => AsyncView<InventoryOverview>(
+    load: context.read<InventoryRepository>().overview,
+    builder: (context, data, reload) => PageBody(child: LayoutBuilder(
+      builder: (context, constraints) => Row(children: [
+        for (final item in <(String, int, Widget)>[
+          ('전체 대수', data.total, const Icon(Icons.inventory_2_outlined)),
+          ('매장 설치', data.byBrand.fold<int>(0, (sum, row) => sum + row.total), const Icon(Icons.store_outlined)),
+          ('창고/사무실', data.byPlace.fold<int>(0, (sum, row) => sum + row.total), const Icon(Icons.place_outlined)),
+        ]) ...[
+          if (item.$1 != '전체 대수') const SizedBox(width: AppSpace.sm),
+          Expanded(child: StatTile(label: item.$1, value: '${Fmt.number(item.$2)}대',
+            iconWidget: item.$3, compact: !AppTheme.isWide(context))),
+        ],
+      ]),
+    )),
+  );
 }

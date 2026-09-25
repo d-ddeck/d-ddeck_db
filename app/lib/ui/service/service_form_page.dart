@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../common/common.dart';
+import '../common/inventory_serial_field.dart';
 
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/auth_repository.dart';
-import '../../data/inventory_repository.dart';
 import '../../data/service_repository.dart';
 import '../../data/store_repository.dart';
 import '../../models/admin.dart';
@@ -57,7 +57,10 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   final _model = TextEditingController();
   final _serial = TextEditingController();
   final _description = TextEditingController();
-  String _rentalSerials = '';
+  final _rentalController = TextEditingController();
+  final _rentalField = GlobalKey<InventorySerialFieldState>();
+  String get _rentalSerials => _rentalController.text;
+  set _rentalSerials(String value) => _rentalController.text = value;
   String? _customerId, _assigneeId, _brandId, _storeId, _faultId, _rentalTypeId;
   DateTime _receivedAt = DateTime.now();
   DateTime? _rentalDueDate, _rentalReturnDate;
@@ -111,6 +114,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
 
   @override
   void dispose() {
+    _rentalController.dispose();
     for (final c in [_customerName, _phone, _address, _product, _model, _serial, _description]) {
       c.dispose();
     }
@@ -234,7 +238,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       load: () => serviceLoad(context, _loadOptions),
       builder: (context, options, reload) => Form(
         key: _formKey,
-        child: Column(children: [Expanded(child: ListView(padding: EdgeInsets.zero, children: [
+        child: Column(children: [Expanded(child: SingleChildScrollView(child: AbsorbPointer(absorbing: _busy, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           FormSection(title: '매장', children: [
           DropdownButtonFormField<String>(
             key: ValueKey('brand:$_brandId'), initialValue: options.brands.any((b) => b.brandId == _brandId) ? _brandId : null, isExpanded: true,
@@ -281,26 +285,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
           SwitchListTile(title: const Text('렌탈'), value: _isRental, onChanged: (v) => setState(() => _isRental = v)),
           if (_isRental) ...[
             _code('렌탈 장비 종류', _rentalTypeId, options.items('SERVICE_RENTAL_TYPE'), (v) => setState(() => _rentalTypeId = v), required: true),
-            Autocomplete<String>(
-              initialValue: TextEditingValue(text: _rentalSerials),
-              optionsBuilder: (value) async {
-                final query = value.text.split(',').last.trim();
-                if (query.isEmpty) return const Iterable<String>.empty();
-                var serials = <String>[];
-                await runGuarded(context, () async {
-                  final page = await context.read<InventoryRepository>().list(query: query);
-                  final prefix = value.text.contains(',') ? "${value.text.substring(0, value.text.lastIndexOf(',') + 1).trimRight()} " : '';
-                  serials = page.items.map((a) => a.serialNo).whereType<String>().where((s) => s.isNotEmpty).map((s) => '$prefix$s').toSet().toList();
-                });
-                return serials;
-              },
-              onSelected: (v) => _rentalSerials = v,
-              fieldViewBuilder: (context, controller, focusNode, onSubmitted) => TextFormField(
-                controller: controller, focusNode: focusNode,
-                decoration: const InputDecoration(labelText: '렌탈 장비 시리얼 *', helperText: '시리얼은 재고에 등록된 S/N 만'),
-                onChanged: (v) => _rentalSerials = v,
-                validator: (v) => v == null || v.trim().isEmpty ? '시리얼을 입력해 주세요.' : null),
-            ),
+            InventorySerialField(key: _rentalField, controller: _rentalController,
+              label: '렌탈 장비 시리얼 *', optional: false, multiple: true),
             const FormGap(),
             _date('회수 예정일', _rentalDueDate, (v) => _rentalDueDate = v, required: true),
             SwitchListTile(title: const Text('회수 여부'), value: _rentalReturned, onChanged: (v) async {
@@ -428,18 +414,24 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
               ),
           ]),
           const FormGap(),
-        ])), FormActions(child: FilledButton(onPressed: _busy || _storesLoading ? null : _submit,
+        ])))), FormActions(child: FilledButton(onPressed: _busy || _storesLoading ? null : _submit,
             child: Text(_busy ? '저장 중…' : '저장')))]),
       ),
     )),
   );
 
   Future<void> _submit() async {
+    if (_busy) return;
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     final repo = context.read<ServiceRepository>();
     final causes = _causes.map((c) => c.toJson()).toList();
+    bool submitted = false;
     final ok = await runGuarded(context, () async {
+      if (_isRental && await _rentalField.currentState?.validate() != true) return;
+      if (!mounted) return;
+      try {
       final ServiceTicket saved;
       if (_isEdit) {
         saved = await repo.update(widget.ticket!.id, {
@@ -471,10 +463,16 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       }
       if (!mounted) return;
       AppSnack.show(context, saved.notices.isEmpty ? '저장되었습니다.' : saved.notices.join('\n'));
+      submitted = true;
+      } on ApiException catch (error) {
+        if (error.code != 'RENTAL_SERIAL_UNKNOWN') rethrow;
+        _rentalField.currentState?.markUnknown();
+        _rentalField.currentState?.showRegistrationHint();
+      }
     });
     if (!mounted) return;
     setState(() => _busy = false);
-    if (ok) Navigator.of(context).pop(true);
+    if (ok && submitted) Navigator.of(context).pop(true);
   }
 
   static String? _nullIfBlank(String v) => v.trim().isEmpty ? null : v.trim();

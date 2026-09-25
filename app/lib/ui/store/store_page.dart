@@ -208,8 +208,6 @@ class _BrandGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = AppTheme.isWide(context);
-    final totalStores = brands.fold<int>(0, (a, b) => a + b.storeCount);
-    final totalAssets = brands.fold<int>(0, (a, b) => a + b.assetCount);
 
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
@@ -217,42 +215,17 @@ class _BrandGrid extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           searchField,
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: StatTile(
-                    label: '전체 매장',
-                    value: '${Fmt.number(totalStores)}곳',
-                    icon: Icons.storefront,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: StatTile(
-                    label: '매장 보유 장비',
-                    value: '${Fmt.number(totalAssets)}대',
-                    icon: Icons.precision_manufacturing,
-                  ),
-                ),
-              ],
-            ),
-          ),
           if (brands.isEmpty) const EmptyState(message: '아직 등록된 매장이 없습니다'),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-            crossAxisCount: wide ? 4 : 2,
-            mainAxisExtent: 220 * MediaQuery.textScalerOf(context).scale(14) / 14,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            children: [
-              for (final brand in brands)
-                _BrandCard(brand: brand, breakdown: [for (final row in overview.byBrand.where((r) => r.key == (brand.brandId ?? '-'))) for (final kind in overview.kinds) if ((row.counts[kind.id] ?? 0) > 0) '${kind.name} ${row.counts[kind.id]}'].join(' · '), onTap: () => onPick(brand)),
-            ],
-          ),
+          LayoutBuilder(builder: (context, constraints) => Wrap(
+            spacing: AppSpace.md, runSpacing: AppSpace.md,
+            children: [for (final brand in brands) SizedBox(
+              width: (constraints.maxWidth - AppSpace.md * (wide ? 3 : 1)) / (wide ? 4 : 2),
+              child: _BrandCard(brand: brand, breakdown: [
+                for (final row in overview.byBrand.where((r) => r.key == (brand.brandId ?? '-')))
+                  for (final kind in overview.kinds) if ((row.counts[kind.id] ?? 0) > 0) '${kind.name} ${row.counts[kind.id]}',
+              ], onTap: () => onPick(brand)),
+            )],
+          )),
         ],
       ),
     );
@@ -263,7 +236,7 @@ class _BrandCard extends StatelessWidget {
   const _BrandCard({required this.brand, required this.breakdown, required this.onTap});
 
   final BrandSummary brand;
-  final String breakdown;
+  final List<String> breakdown;
   final VoidCallback onTap;
 
   @override
@@ -301,7 +274,7 @@ class _BrandCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const Spacer(),
+              const SizedBox(height: AppSpace.md),
               Text(
                 '${Fmt.number(brand.storeCount)}곳',
                 style: theme.textTheme.headlineSmall
@@ -315,11 +288,14 @@ class _BrandCard extends StatelessWidget {
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 6),
-              Text(breakdown.isEmpty ? '설치 장비 없음' : breakdown, maxLines: 3, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+              if (breakdown.isEmpty) const Text('설치 장비 없음')
+              else Wrap(spacing: AppSpace.xs, runSpacing: AppSpace.xs, children: [
+                for (final label in breakdown) Chip(label: Text(label, style: theme.textTheme.bodySmall),
+                  visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+              ]),
               Row(
                 children: [
-                  Icon(Icons.precision_manufacturing,
-                      size: 14, color: theme.colorScheme.outline),
+                  const Icon(Icons.store_outlined, size: 14),
                   const SizedBox(width: 4),
                   Text('장비 ${Fmt.number(brand.assetCount)}대',
                       style: theme.textTheme.bodySmall),
@@ -367,7 +343,7 @@ class _StoreList extends StatelessWidget {
               children: [
                 Flexible(
                   child: Text(
-                    store.name,
+                    '${store.name} · ${store.brandName}',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -378,23 +354,8 @@ class _StoreList extends StatelessWidget {
                 ],
               ],
             ),
-            subtitle: Text(
-              [
-                store.brandName,
-                if (store.openDate != null) '개점 ${Fmt.date(store.openDate)}',
-              ].join(' · '),
-            ),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('장비 ${Fmt.number(store.assetCount)}대',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-                Text('미종결 ${Fmt.number(store.openTicketCount)}건',
-                    style: theme.textTheme.bodySmall),
-              ],
-            ), const SizedBox(width: AppSpace.sm), const Icon(Icons.chevron_right)]),
+            subtitle: Text('설치 ${Fmt.number(store.assetCount)}대 · 미종결 ${Fmt.number(store.openTicketCount)}건'),
+            trailing: const Icon(Icons.chevron_right),
             onTap: () async { await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => StoreDetailPage(storeId: store.id),

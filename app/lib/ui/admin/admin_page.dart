@@ -300,14 +300,15 @@ class _SettingsHubTab extends StatelessWidget {
     );
   }
 
-  static IconData _iconFor(SettingsModule m) => switch (m) {
-        SettingsModule.system => Icons.settings,
-        SettingsModule.auth => Icons.verified_user_outlined,
-        SettingsModule.service => Icons.build_outlined,
-        SettingsModule.inventory => Icons.inventory_2_outlined,
-        SettingsModule.board => Icons.forum_outlined,
-        SettingsModule.calendar => Icons.calendar_month_outlined,
-      };
+  static const _icons = <SettingsModule, IconData>{
+    SettingsModule.system: Icons.settings,
+    SettingsModule.auth: Icons.verified_user_outlined,
+    SettingsModule.service: Icons.build_outlined,
+    SettingsModule.inventory: Icons.inventory_2_outlined,
+    SettingsModule.board: Icons.forum_outlined,
+    SettingsModule.calendar: Icons.calendar_month_outlined,
+  };
+  static IconData _iconFor(SettingsModule m) => _icons[m]!;
 
   static String _descriptionFor(SettingsModule m) => switch (m) {
         SettingsModule.system => '회사명, 시간대, 점검 모드',

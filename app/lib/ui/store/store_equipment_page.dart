@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../common/common.dart';
+import '../common/inventory_serial_field.dart';
+import '../../core/api_exception.dart';
 
 import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
@@ -26,6 +28,7 @@ class _EquipmentDraft {
       List<AssetInStore> assets) : name = TextEditingController(text: label), note = TextEditingController() {
     for (final k in kinds) {
       final asset = assets.where((a) => a.category?.id == k.id).firstOrNull;
+      fields[k.id] = GlobalKey<InventorySerialFieldState>();
       serials[k.id] = TextEditingController(text: asset?.serialNo);
       modelNames[k.id] = asset?.modelName ?? models.where((m) => m.parentId == k.id).firstOrNull?.name;
       makers[k.id] = null;
@@ -35,6 +38,7 @@ class _EquipmentDraft {
   final TextEditingController name, note;
   String gripper;
   final serials = <String, TextEditingController>{};
+  final fields = <String, GlobalKey<InventorySerialFieldState>>{};
   final modelNames = <String, String?>{};
   final makers = <String, String?>{};
   void dispose() { name.dispose(); note.dispose(); for (final c in serials.values) { c.dispose(); } }
@@ -94,8 +98,18 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
       k.name != (d.gripper == '전동' ? '비전동 그리퍼' : '전동 그리퍼');
 
   Future<void> _save() async {
+    if (_saving) return;
+    FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     await runGuarded(context, () async {
+      bool valid = true;
+      for (final d in _drafts) {
+        for (final k in _kinds.where((k) => _visible(k, d))) {
+          if (await d.fields[k.id]!.currentState?.validate() != true) valid = false;
+        }
+      }
+      if (!valid || !mounted) return;
+      try {
       final result = await context.read<StoreRepository>().setupEquipment(widget.storeId,
         installDate: _date, sets: [for (final d in _drafts) {
           'set_no': d.setNo, 'name': d.name.text.trim(), 'gripper_type': d.gripper, 'note': d.note.text.trim(),
@@ -108,6 +122,23 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
       await inventoryResult(context, '장비 설정 결과',
         '추가 ${result.added.length}대 · 이동 ${result.moved.length}대 · 유지 ${result.kept.length}대\n\n${[...result.added, ...result.moved, ...result.kept].join('\n')}');
       if (mounted) setState(() { _sync(result.store, reset: true); _date = result.store.installDate; });
+      } on ApiException catch (error) {
+        if (error.code != 'SERIAL_UNKNOWN') rethrow;
+        if (!mounted) return;
+        final unknown = error.details is Map ? error.details['unknown'] as List? ?? [] : [];
+        InventorySerialFieldState? first;
+        for (final d in _drafts) {
+          for (final k in _kinds.where((k) => _visible(k, d))) {
+            final serial = d.serials[k.id]!.text.trim().toLowerCase();
+            if (serial.isNotEmpty && unknown.any((v) => v.toString().toLowerCase() == serial ||
+                v.toString().toLowerCase() == '${k.name} $serial'.toLowerCase())) {
+              final field = d.fields[k.id]!.currentState;
+              field?.markUnknown(); first ??= field;
+            }
+          }
+        }
+        first?.showRegistrationHint();
+      }
     });
     if (mounted) setState(() => _saving = false);
   }
@@ -125,9 +156,10 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
   }
 
   Widget _slot(_EquipmentDraft d, CodeItem k) {
-    final serial = Padding(padding: const EdgeInsets.only(bottom: 8), child: TextField(
-      controller: d.serials[k.id], decoration: InputDecoration(labelText: '${k.name} S/N',
-        helperText: k.name == '비전동 그리퍼' ? '비우면 관리 번호(NG-0001…)가 자동으로 부여됩니다.' : '비우면 건너뜁니다.')));
+    final serial = Padding(padding: const EdgeInsets.only(bottom: AppSpace.sm), child: InventorySerialField(
+      key: d.fields[k.id], controller: d.serials[k.id]!, categoryId: k.id, label: '${k.name} S/N',
+      helperText: '재고에 있는 S/N 만 · 다른 매장에 있던 장비는 이 매장으로 옮겨집니다'
+        '${k.name == '비전동 그리퍼' ? '\n비우면 관리 번호가 자동으로 부여됩니다.' : '\n비우면 건너뜁니다.'}'));
     final model = inventoryChoice('${k.name} 품명', d.modelNames[k.id], {
       if (d.modelNames[k.id] != null) d.modelNames[k.id]!: d.modelNames[k.id]!,
       for (final m in _models.where((m) => m.parentId == k.id)) m.name: m.name,
@@ -145,7 +177,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
     body: _loading ? const LoadingState()
       : _store == null ? ErrorState(message: '장비 설정을 불러오지 못했습니다', onRetry: _load)
       : PageBody(child: Column(children: [
-          Expanded(child: AbsorbPointer(absorbing: _saving, child: ListView(padding: EdgeInsets.zero, children: [
+          Expanded(child: AbsorbPointer(absorbing: _saving, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ListTile(contentPadding: EdgeInsets.zero, title: const Text('설치일'), subtitle: Text(Fmt.date(_date)),
           trailing: IconButton(onPressed: () => setState(() => _date = null), icon: const Icon(Icons.clear)),
           onTap: () async {
@@ -187,7 +219,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
               label: '${a.name} S/N ${a.serialNo ?? a.assetNo}', atStore: true, onChanged: _load)),
           ])],
         ),
-      ]))),
+      ])))),
           FormActions(child: FilledButton(onPressed: _saving || _drafts.isEmpty ? null : _save, child: Text(_saving ? '저장 중' : '장비 설정 저장'))),
         ])),
   );

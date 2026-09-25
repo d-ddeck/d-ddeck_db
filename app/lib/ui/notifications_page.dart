@@ -133,15 +133,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
-  static IconData _iconFor(String type) => switch (type) {
-        'EVENT_REMINDER' => Icons.alarm,
-        'EVENT_INVITED' => Icons.event_available,
-        'EVENT_UPDATED' => Icons.edit_calendar,
-        'EVENT_CANCELED' => Icons.event_busy,
-        'SERVICE_ASSIGNED' => Icons.build,
-        'BOARD_COMMENT' => Icons.comment,
-        'ACCOUNT_APPROVED' => Icons.verified_user,
-        'ACCOUNT_REJECTED' => Icons.person_off,
-        _ => Icons.notifications,
-      };
+  static const _icons = <String, IconData>{
+    'EVENT_REMINDER': Icons.alarm,
+    'EVENT_INVITED': Icons.event_available,
+    'EVENT_UPDATED': Icons.edit_calendar,
+    'EVENT_CANCELED': Icons.event_busy,
+    'SERVICE_ASSIGNED': Icons.build,
+    'BOARD_COMMENT': Icons.comment,
+    'ACCOUNT_APPROVED': Icons.verified_user,
+    'ACCOUNT_REJECTED': Icons.person_off,
+  };
+  static IconData _iconFor(String type) => _icons[type] ?? Icons.notifications;
 }

@@ -26,16 +26,10 @@ class InventoryOverviewTab extends StatelessWidget {
   Widget build(BuildContext context) => AsyncView<InventoryOverview>(
     load: () => inventoryLoad(context, context.read<InventoryRepository>().overview),
     builder: (context, data, reload) => PageBody(child: ListView(padding: EdgeInsets.zero, children: [
-      LayoutBuilder(builder: (context, constraints) => Wrap(spacing: AppSpace.sm, runSpacing: AppSpace.sm, children: [
-        for (final item in <(String, int, IconData)>[
-          ('전체 대수', data.total, Icons.precision_manufacturing),
-          ('매장 설치', data.byBrand.fold<int>(0, (sum, row) => sum + row.total), Icons.store),
-          ('창고/사무실', data.byPlace.fold<int>(0, (sum, row) => sum + row.total), Icons.warehouse_outlined),
-        ]) SizedBox(width: constraints.maxWidth < 500 ? constraints.maxWidth : (constraints.maxWidth - AppSpace.sm * 2) / 3,
-          child: StatTile(label: item.$1, value: '${Fmt.number(item.$2)}대', icon: item.$3)),
-      ])),
       _table(context, '상태 × 종류', data.byStatus, data.kinds, 'status_item_id'),
+      const SizedBox(height: AppSpace.lg),
       _table(context, '브랜드 × 종류 (매장에 있는 것)', data.byBrand, data.kinds, 'brand_id'),
+      const SizedBox(height: AppSpace.lg),
       _table(context, '장소 × 종류 (미설치)', data.byPlace, data.kinds, 'location_id'),
       const SizedBox(height: 16),
       Text('확인 필요 (${data.attention.length}대)', style: Theme.of(context).textTheme.titleMedium),
@@ -232,6 +226,7 @@ class InventoryListTabState extends State<InventoryListTab> {
           onSubmitted: (v) => _set('q', v.trim().isEmpty ? null : v.trim())),
         const SizedBox(height: 8),
         FilterBar(
+          horizontalOnPhone: true,
           appliedFilters: _appliedFilters,
           onReset: () { _filters.clear(); _search.clear(); _set('q', null); },
           children: [
@@ -301,9 +296,13 @@ class AssetDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<InventoryRepository>();
+    final viewKey = GlobalKey<AsyncViewState<(Asset, List<AssetMovement>, List<CodeItem>, List<Store>)>>();
     return Scaffold(appBar: AppBar(title: const Text('자산 상세'),
-      actions: [AssetDeleteButton(assetId: assetId)]),
+      actions: [IconButton(tooltip: '이동 / 상태 변경', icon: const Icon(Icons.swap_horiz), onPressed: () async {
+        if (await showAssetMoveDialog(context, [assetId]) && context.mounted) viewKey.currentState?.reload();
+      }), AssetDeleteButton(assetId: assetId)]),
       body: PageBody(child: AsyncView<(Asset, List<AssetMovement>, List<CodeItem>, List<Store>)>(
+        key: viewKey,
         load: () => inventoryLoad(context, () async {
           final data = await Future.wait([repo.get(assetId),
             context.read<AdminRepository>().codeGroup('ASSET_STATUS'), context.read<StoreRepository>().all(includeClosed: true)]);
@@ -324,18 +323,21 @@ class AssetDetailPage extends StatelessWidget {
             SectionCard(title: '기본 정보', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(a.name, style: Theme.of(context).textTheme.titleLarge),
             Text('${a.assetNo} · ${a.serialNo ?? '-'}'),
+            Text('품명 ${a.modelName ?? '-'} · 제조사 ${a.manufacturer ?? '-'}'),
+            Text('설치일 ${Fmt.date(a.purchaseDate)}'), if (a.note != null) Text(a.note!),
+            const SizedBox(height: 16),
+            ])),
+
+            const SizedBox(height: AppSpace.lg),
+            SectionCard(title: '현재 위치', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('${a.statusLabel} · ${a.placeLabel} · 세트 ${a.setNo}'),
             if (a.storeId != null) TextButton.icon(icon: const Icon(Icons.store_outlined),
               label: Text(store(a.storeId)), onPressed: () async {
                 await EquipmentPage.open(context, tab: EquipmentTab.stores, storeId: a.storeId);
                 if (context.mounted) reload();
               }),
-            Text('품명 ${a.modelName ?? '-'} · 제조사 ${a.manufacturer ?? '-'}'),
-            Text('설치일 ${Fmt.date(a.purchaseDate)}'), if (a.note != null) Text(a.note!),
-            const SizedBox(height: 16),
             ])),
-
-            const FormGap(),
+            const SizedBox(height: AppSpace.lg),
             SectionCard(title: '이동 이력 (${Fmt.number(movements.length)}건)',
               child: ResponsiveTable<AssetMovement>(columns: [
                 TableColumn(label: '이동', cell: (m) => Text(m.movementType.label)),
@@ -344,12 +346,7 @@ class AssetDetailPage extends StatelessWidget {
                 TableColumn(label: '일시', cell: (m) => Text(Fmt.dateTime(m.movedAt))),
                 TableColumn(label: '메모', cell: (m) => Text(m.reason ?? '-')),
               ], rows: movements)),
-          ])), FormActions(child: FilledButton.icon(icon: const Icon(Icons.swap_horiz), label: const Text('이동 / 상태 변경'), onPressed: () async {
-              if (await performAssetAction(context, AssetAction.move,
-                  assetId: a.id, label: '${a.name} S/N ${a.serialNo ?? a.assetNo}') && context.mounted) {
-                reload();
-              }
-            }))]);
+          ]))]);
         },
       )));
   }
