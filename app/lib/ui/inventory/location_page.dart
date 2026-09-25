@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../format.dart';
 import 'package:provider/provider.dart';
+
+import '../common/common.dart';
 
 import '../../data/inventory_repository.dart';
 import '../../models/inventory.dart';
@@ -25,13 +28,8 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   Future<void> _delete(StorageLocation location) async {
-    final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('위치 삭제'), content: Text('${location.name} 위치를 삭제하시겠습니까?'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('삭제')),
-      ],
-    ));
+    final confirmed = await ConfirmDialog.show(context, title: '위치 삭제',
+        message: '${location.name} 위치를 삭제하시겠습니까?', confirmLabel: '삭제', destructive: true);
     if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
     final ok = await runGuarded(context, () => context.read<InventoryRepository>().deleteLocation(location.id));
@@ -45,12 +43,12 @@ class _LocationPageState extends State<LocationPage> {
     final admin = context.watch<AuthState>().isAdmin;
     return Scaffold(
       appBar: AppBar(title: const Text('위치 관리')),
-      body: AsyncView<List<StorageLocation>>(
+      body: PageBody(child: AsyncView<List<StorageLocation>>(
         key: _key,
         load: () => inventoryLoad(context, context.read<InventoryRepository>().tree),
         builder: (context, nodes, reload) {
           final rows = _flatten(nodes).toList();
-          return ListView(padding: const EdgeInsets.all(16), children: [
+          return ListView(padding: EdgeInsets.zero, children: [
             if (admin) Align(alignment: Alignment.centerRight, child: FilledButton.icon(
               icon: const Icon(Icons.add), label: const Text('위치 추가'),
               onPressed: _busy ? null : () async {
@@ -60,21 +58,21 @@ class _LocationPageState extends State<LocationPage> {
                 if (added == true && mounted) reload();
               },
             )),
-            if (rows.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('등록된 위치가 없습니다.')),
+            if (rows.isEmpty) const EmptyState(message: '아직 등록된 위치가 없습니다'),
             for (final row in rows) Padding(
               // Keep labels usable on phones even for very deep trees.
               padding: EdgeInsets.only(left: (row.$2 * 16.0).clamp(0.0, 96.0)),
               child: ListTile(
                 leading: Icon(row.$1.type.icon),
                 title: Text(row.$1.name),
-                subtitle: Text('${row.$1.code} · ${row.$1.type.label} · 자산 ${row.$1.assetCount}개'),
+                subtitle: Text('${row.$1.code} · ${row.$1.type.label} · 자산 ${Fmt.number(row.$1.assetCount)}개'),
                 trailing: admin ? IconButton(tooltip: '삭제', icon: const Icon(Icons.delete_outline),
                   onPressed: _busy ? null : () => _delete(row.$1)) : null,
               ),
             ),
           ]);
         },
-      ),
+      )),
     );
   }
 }
@@ -111,25 +109,25 @@ class _LocationFormState extends State<_LocationForm> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('위치 추가')),
-    body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560),
-      child: Form(key: _form, child: ListView(padding: const EdgeInsets.all(16), children: [
-        TextFormField(controller: _code, decoration: const InputDecoration(labelText: '코드'),
+    body: PageBody(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560),
+      child: Form(key: _form, child: ListView(padding: EdgeInsets.zero, children: [
+        TextFormField(controller: _code, decoration: const InputDecoration(labelText: '코드 *'),
           validator: (v) => v == null || v.trim().isEmpty ? '코드를 입력해 주세요.' : null),
-        const SizedBox(height: 12),
-        TextFormField(controller: _name, decoration: const InputDecoration(labelText: '이름'),
+        const FormGap(),
+        TextFormField(controller: _name, decoration: const InputDecoration(labelText: '이름 *'),
           validator: (v) => v == null || v.trim().isEmpty ? '이름을 입력해 주세요.' : null),
-        const SizedBox(height: 12),
+        const FormGap(),
         DropdownButtonFormField<LocationType>(initialValue: _type,
           decoration: const InputDecoration(labelText: '종류'),
           items: [for (final t in LocationType.values) DropdownMenuItem(value: t, child: Text(t.label))],
           onChanged: (v) => setState(() => _type = v ?? _type)),
-        const SizedBox(height: 12),
+        const FormGap(),
         inventoryChoice('상위 위치', _parentId, {for (final l in widget.locations) l.id: l.display},
           (v) => setState(() => _parentId = v), empty: '없음 (최상위)'),
         const SizedBox(height: 20),
-        if (context.watch<AuthState>().isAdmin) FilledButton(
-          onPressed: _busy ? null : _save, child: Text(_busy ? '저장 중…' : '추가')),
+        if (context.watch<AuthState>().isAdmin) FormActions(child: FilledButton(
+          onPressed: _busy ? null : _save, child: Text(_busy ? '저장 중…' : '추가'))),
       ])),
-    )),
+    ))),
   );
 }

@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'common.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 
@@ -60,34 +61,20 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
     final repo = context.read<FileRepository>();
     final auth = context.watch<AuthState>();
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '첨부파일',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                IconButton(
+    return SectionCard(title: '첨부', actions: [IconButton(
                   tooltip: '새로고침',
                   onPressed: _busy
                       ? null
                       : () => _viewKey.currentState?.reload(),
                   icon: const Icon(Icons.refresh),
-                ),
-                OutlinedButton.icon(
+                ), OutlinedButton.icon(
                   onPressed: _busy ? null : _add,
                   icon: const Icon(Icons.attach_file, size: 18),
                   label: const Text('추가'),
-                ),
-              ],
-            ),
+                )], child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
             if (_adding) ...[
               const SizedBox(height: 8),
               if (_uploadName != null) ...[
@@ -118,10 +105,8 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
               builder: (context, attachments, reload) {
                 // 상세 화면의 스크롤 안에 있으므로 빈 목록도 높이가 정해진 ListView를 쓰지 않는다.
                 if (attachments.isEmpty) {
-                  return const StatePlaceholder(
-                    icon: Icons.attach_file,
-                    message: '첨부된 파일이 없습니다.',
-                  );
+                  return EmptyState(icon: Icons.attach_file, message: '아직 등록된 첨부파일이 없습니다',
+                    action: OutlinedButton(onPressed: _busy ? null : _add, child: const Text('파일 추가')));
                 }
                 return Column(
                   children: [
@@ -164,9 +149,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
               },
             ),
           ],
-        ),
-      ),
-    );
+        ));
   }
 
   Future<void> _add() async {
@@ -251,23 +234,8 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
     final repo = context.read<FileRepository>();
     setState(() => _busyId = attachment.id);
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('첨부파일 삭제'),
-          content: Text('${attachment.originalName}\n파일을 삭제하시겠습니까?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('삭제'),
-            ),
-          ],
-        ),
-      );
+      final confirmed = await ConfirmDialog.show(context, title: '첨부파일 삭제',
+        message: '${attachment.originalName}\n파일을 삭제하시겠습니까?', confirmLabel: '삭제', destructive: true);
       if (!mounted || confirmed != true) return;
       final ok = await runGuarded(
         context,

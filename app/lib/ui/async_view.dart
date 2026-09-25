@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
-import 'theme.dart';
 import 'common/states.dart';
 
 export 'common/feedback.dart' show runGuarded;
@@ -71,10 +70,10 @@ class AsyncViewState<T> extends State<AsyncView<T>> {
               children: [
                 SizedBox(
                   height: MediaQuery.sizeOf(context).height * 0.5,
-                  child: StatePlaceholder(
+                  child: EmptyState(
                     icon: widget.emptyIcon,
-                    message: widget.emptyMessage ?? '표시할 내용이 없습니다.',
-                    onRetry: reload,
+                    message: widget.emptyMessage ?? '아직 등록된 항목이 없습니다',
+                    action: OutlinedButton.icon(onPressed: reload, icon: const Icon(Icons.refresh), label: const Text('새로고침')),
                   ),
                 ),
               ],

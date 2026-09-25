@@ -3,11 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/auth_repository.dart';
 import '../../models/user.dart';
 import '../../state/auth_state.dart';
-import '../async_view.dart';
 import '../theme.dart';
 
 class AccountsTab extends StatefulWidget {
@@ -75,9 +76,7 @@ class _AccountsTabState extends State<AccountsTab> {
           ? e.message
           : '계정 목록을 불러오지 못했습니다.';
       setState(() => _error = message);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      AppSnack.show(context, message);
     } finally {
       if (mounted && request == _request) {
         setState(() => _loading = false);
@@ -93,31 +92,12 @@ class _AccountsTabState extends State<AccountsTab> {
 
   Future<void> _delete(UserProfile user) async {
     if (_deleting.contains(user.id) ||
-        user.id == context.read<AuthState>().user?.id) return;
+        user.id == context.read<AuthState>().user?.id) { return; }
     setState(() => _deleting.add(user.id));
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('계정 삭제'),
-          content: Text('${user.fullName} 계정을 삭제합니다. '
-              '이 사람이 남긴 기록·이력은 그대로 남습니다.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-                foregroundColor: Theme.of(ctx).colorScheme.onError,
-              ),
-              child: const Text('삭제'),
-            ),
-          ],
-        ),
-      );
+      final confirmed = await ConfirmDialog.show(context, title: '계정 삭제',
+        message: '${user.fullName} 계정을 삭제합니다. '
+              '이 사람이 남긴 기록·이력은 그대로 남습니다.', confirmLabel: '삭제', destructive: true);
       if (confirmed != true || !mounted) return;
       final repo = context.read<AuthRepository>();
       final ok = await runGuarded(
@@ -136,9 +116,11 @@ class _AccountsTabState extends State<AccountsTab> {
     final selfId = context.watch<AuthState>().user?.id;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-          child: TextField(
+        FilterBar(
+          appliedFilters: [if (_query.isNotEmpty) '검색: $_query', if (_status != null)
+            const {'APPROVED': '승인', 'SUSPENDED': '정지', 'PENDING': '대기'}[_status]!],
+          onReset: () { _search.clear(); _status = null; _searchNow(); },
+          children: [SizedBox(width: 360, child: TextField(
             controller: _search,
             decoration: InputDecoration(
               labelText: '이름·이메일 검색',
@@ -155,13 +137,7 @@ class _AccountsTabState extends State<AccountsTab> {
               _debounce?.cancel();
               _debounce = Timer(const Duration(milliseconds: 350), _searchNow);
             },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+          )), Wrap(spacing: 6, runSpacing: 6,
               children: [
                 for (final entry in const {
                   '': '전체',
@@ -181,13 +157,12 @@ class _AccountsTabState extends State<AccountsTab> {
                     ),
                   ),
               ],
-            ),
-          ),
+            )],
         ),
         const Divider(height: 1),
         Expanded(
           child: _loading && _users.isEmpty
-              ? const Center(child: CircularProgressIndicator())
+              ? const LoadingState()
               : RefreshIndicator(
                   onRefresh: () => _load(),
                   child: ListView.separated(
@@ -252,14 +227,10 @@ class _AccountsTabState extends State<AccountsTab> {
 
   Widget _footer() {
     if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const LoadingState();
     }
     if (_error != null) {
-      return StatePlaceholder(
-        icon: Icons.cloud_off,
+      return ErrorState(
         message: _error!,
         onRetry: () => _load(more: _users.isNotEmpty),
       );
@@ -267,7 +238,7 @@ class _AccountsTabState extends State<AccountsTab> {
     if (_users.isEmpty) {
       return const StatePlaceholder(
         icon: Icons.people_outline,
-        message: '조건에 맞는 계정이 없습니다.',
+        message: '아직 등록된 계정이 없습니다',
       );
     }
     if (!_hasMore) return const SizedBox(height: 16);

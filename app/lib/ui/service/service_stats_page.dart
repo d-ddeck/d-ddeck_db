@@ -4,6 +4,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/service_repository.dart';
@@ -56,7 +58,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
   Widget build(BuildContext context) {
     final repo = context.read<ServiceRepository>();
 
-    return AsyncView<_StatsData>(
+    return PageBody(child: AsyncView<_StatsData>(
       key: _viewKey,
       load: () async {
         try {
@@ -83,15 +85,28 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
             stores: results.length > 6 ? results[6] as StoreYears : null,
           );
         } on ApiException catch (e) {
-          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+          if (context.mounted) AppSnack.show(context, e.message, error: true);
           rethrow;
         }
       },
       builder: (context, data, reload) {
         final wide = AppTheme.isWide(context);
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           children: [
+            FilterBar(
+              appliedFilters: [if (_brandId != null) data.brands.where((b) => b.id == _brandId).firstOrNull?.name ?? '브랜드',
+                if (_category != null) _category!.name],
+              onReset: () { setState(() { _brandId = null; _category = null; }); _refresh(); },
+              children: [SizedBox(width: wide ? 280 : double.infinity, child: DropdownButtonFormField<String>(
+              key: ValueKey(_brandId), initialValue: _brandId ?? '', isExpanded: true,
+              decoration: const InputDecoration(labelText: '브랜드 · 전 기간'),
+              items: [const DropdownMenuItem(value: '', child: Text('전체 브랜드')),
+                for (final b in data.brands) DropdownMenuItem(value: b.id, child: Text(b.name))],
+              onChanged: (v) { setState(() => _brandId = v == '' ? null : v); _refresh(); },
+            ))],
+            ),
+            const FormGap(),
             DefaultTabController(
               length: data.categories.length + 1,
               initialIndex: _category == null ? 0 : data.categories.indexWhere((c) => c.id == _category!.id) + 1,
@@ -101,13 +116,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               ),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey(_brandId), initialValue: _brandId ?? '', isExpanded: true,
-              decoration: const InputDecoration(labelText: '브랜드 · 전 기간'),
-              items: [const DropdownMenuItem(value: '', child: Text('전체 브랜드')),
-                for (final b in data.brands) DropdownMenuItem(value: b.id, child: Text(b.name))],
-              onChanged: (v) { setState(() => _brandId = v == '' ? null : v); _refresh(); },
-            ),
+
             const SizedBox(height: 14),
             for (var i = 0; i < data.crosses.length; i++) ...[
               _crossTable(data.tables[i].$1, data.crosses[i], frequency: i == 0),
@@ -122,7 +131,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
-              childAspectRatio: wide ? 1.9 : 1.5,
+              mainAxisExtent: 160 * MediaQuery.textScalerOf(context).scale(14) / 14,
               children: [
                 StatTile(
                   label: '총 접수',
@@ -190,7 +199,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                       '한 대응에 여러 원인이 포함될 수 있으며, 차트와 비율은 전체 원인 수 기준입니다.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).colorScheme.outline,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -267,13 +276,12 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
           ],
         );
       },
-    );
+    ));
   }
   void _drill(Map<String, dynamic> axes) {
     // '-' is a display bucket, not a UUID accepted by the list API.
     if (axes.values.contains('-')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('미분류·미상 항목의 목록 필터는 서버에서 지원하지 않습니다.')));
+      AppSnack.show(context, '미분류·미상 항목의 목록 필터는 서버에서 지원하지 않습니다.');
       return;
     }
     final filters = {..._filters, ...axes};
@@ -310,8 +318,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
       }), child: const Text('엑셀')),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('원인 수 기준 · 대응 건수는 괄호', style: TextStyle(fontSize: 12)),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
-          columnSpacing: 16,
+        ResponsiveTable.fromDataRows(
           columns: [
             DataColumn(label: Text(frequency ? '연도' : switch (data.rowsAxis) {
               'brand' => '브랜드', 'store' => '매장', 'maker' => '제조사', _ => data.rowsAxis,
@@ -327,7 +334,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               if (!frequency) for (final c in data.cols) DataCell(_number(r.cells[c.key] ?? 0,
                 {_filterKey(data.rowsAxis): r.key, _filterKey(data.colsAxis): c.key})),
               DataCell(_number(r.total, {_filterKey(data.rowsAxis): r.key})),
-              DataCell(_number(r.ticketCount, {_filterKey(data.rowsAxis): r.key}, label: '(${r.ticketCount})')),
+              DataCell(_number(r.ticketCount, {_filterKey(data.rowsAxis): r.key}, label: '(${Fmt.number(r.ticketCount)})')),
               DataCell(InkWell(onTap: () => _drill({_filterKey(data.rowsAxis): r.key}),
                 child: Text(Fmt.percent(r.ratio, digits: 1)))),
             ]),
@@ -336,11 +343,11 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               if (!frequency) for (final c in data.cols) DataCell(_number(data.colTotals[c.key] ?? 0,
                 {_filterKey(data.colsAxis): c.key})),
               DataCell(_number(data.totalCauses, {})),
-              DataCell(_number(data.totalTickets, {}, label: '(${data.totalTickets})')),
+              DataCell(_number(data.totalTickets, {}, label: '(${Fmt.number(data.totalTickets)})')),
               DataCell(Text(data.totalCauses == 0 ? '0%' : '100%')),
             ]),
           ],
-        )),
+        ),
       ]),
     );
   }
@@ -383,30 +390,27 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
     _ChartCard(title: '연도별 운영 매장', trailing: _storeExport('연도별 운영 매장', [
       ['연도', '운영', '개점', '폐점', '연말 운영', '대응 매장', '대응 건수', '매장당 건수'],
       for (final r in data.rows) [r.year, r.operating, r.opened, r.closed, r.yearEnd, r.active, r.tickets, r.perStore],
-    ]), child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal, child: DataTable(
+    ]), child: ResponsiveTable.fromDataRows(
         columns: [for (final h in ['연도', '운영', '개점', '폐점', '연말 운영', '대응 매장', '대응 건수', '매장당 건수']) DataColumn(label: Text(h))],
         rows: [for (final r in data.rows) DataRow(cells: [
-          for (final v in [r.year, r.operating, r.opened, r.closed, r.yearEnd, r.active]) DataCell(Text('$v')),
+          DataCell(Text(r.year)),
+          for (final v in [r.operating, r.opened, r.closed, r.yearEnd, r.active]) DataCell(Text(Fmt.number(v))),
           DataCell(InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
             appBar: AppBar(title: Text('${r.year}년 접수 목록')),
             body: ServiceListTab(initialFilters: {'year': r.year}),
-          ))), child: Text('(${r.tickets})'))),
+          ))), child: Text('(${Fmt.number(r.tickets)})'))),
           DataCell(Text(r.perStore?.toStringAsFixed(1) ?? '-')),
         ])],
-      ),
-    )),
+      )),
     _ChartCard(title: '브랜드별 운영 매장', trailing: _storeExport('브랜드별 운영 매장', [
       ['브랜드', ...data.years],
       for (final b in data.byBrand) [b.brand, for (final y in data.years) b.counts[y] ?? 0],
-    ]), child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal, child: DataTable(
+    ]), child: ResponsiveTable.fromDataRows(
         columns: [const DataColumn(label: Text('브랜드')), for (final y in data.years) DataColumn(label: Text(y), numeric: true)],
         rows: [for (final b in data.byBrand) DataRow(cells: [
-          DataCell(Text(b.brand)), for (final y in data.years) DataCell(Text('${b.counts[y] ?? 0}')),
+          DataCell(Text(b.brand)), for (final y in data.years) DataCell(Text(Fmt.number(b.counts[y] ?? 0))),
         ])],
-      ),
-    )),
+      )),
   ];
 
 }
@@ -442,33 +446,8 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Flexible(
-                  child: Text(
-                    title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                if (trailing != null) trailing!,
-              ],
-            ),
-            const SizedBox(height: 10),
-            child,
-          ],
-        ),
-      ),
-    );
+    return SectionCard(title: title,
+      actions: [if (trailing != null) trailing!], child: child);
   }
 }
 
@@ -476,18 +455,7 @@ class _NoData extends StatelessWidget {
   const _NoData();
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 28),
-        child: Center(
-          child: Text(
-            '해당 기간에 데이터가 없습니다.',
-            style: TextStyle(
-              fontSize: 13,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => EmptyState(message: '아직 등록된 통계 기록이 없습니다');
 }
 
 /// Uses each bucket's server-provided colour, falling back to a generated hue
@@ -573,7 +541,7 @@ class _TrendChart extends StatelessWidget {
                 }
                 return Text(
                   value.toInt().toString(),
-                  style: TextStyle(fontSize: 10, color: scheme.outline),
+                  style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
                 );
               },
             ),
@@ -594,7 +562,7 @@ class _TrendChart extends StatelessWidget {
                   child: Text(
                     // Trim "2026-" so the labels fit on a phone.
                     label.length > 7 ? label.substring(5) : label,
-                    style: TextStyle(fontSize: 9, color: scheme.outline),
+                    style: TextStyle(fontSize: 9, color: scheme.onSurfaceVariant),
                   ),
                 );
               },
@@ -697,7 +665,7 @@ class _BucketRow extends StatelessWidget {
                 child: Text(
                   Fmt.percent(bucket.ratio, digits: 0),
                   textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                 ),
               ),
               SizedBox(
@@ -705,7 +673,7 @@ class _BucketRow extends StatelessWidget {
                 child: Text(
                   Fmt.duration(bucket.avgResolutionMinutes),
                   textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                 ),
               ),
             ],

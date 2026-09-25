@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
@@ -19,15 +21,10 @@ Future<bool> performAssetAction(BuildContext context, AssetAction action,
     if (action == AssetAction.move) {
       if (!await showAssetMoveDialog(context, [assetId])) return false;
     } else {
-      final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-        title: Text(action == AssetAction.delete ? '장비 삭제' : '매장에서 빼기 → 창고'),
-        content: SingleChildScrollView(child: Text(action == AssetAction.delete
+      final confirmed = await ConfirmDialog.show(context, title: action == AssetAction.delete ? '장비 삭제' : '매장에서 빼기 → 창고',
+        message: action == AssetAction.delete
           ? '$label\n\n재고에서 완전히 지웁니다. 이력도 함께 사라집니다'
-          : '$label 을 창고로 옮깁니다')),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true),
-            child: Text(action == AssetAction.delete ? '삭제' : '창고로 이동'))],
-      ));
+          : '$label 을 창고로 옮깁니다', confirmLabel: action == AssetAction.delete ? '삭제' : '창고로 이동', destructive: true);
       if (confirmed != true || !context.mounted) return false;
       if (action == AssetAction.delete) {
         if (!context.read<AuthState>().isManager) return false;

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../state/auth_state.dart';
 import 'login_page.dart';
@@ -96,12 +98,12 @@ class _SignupPageState extends State<SignupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('회원가입 신청')),
-      body: Center(
+      body: PageBody(child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.zero,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Form(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SectionCard(title: '가입 정보', child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -125,7 +127,7 @@ class _SignupPageState extends State<SignupPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const FormGap(),
 
                   _field(
                     controller: _email,
@@ -167,7 +169,7 @@ class _SignupPageState extends State<SignupPage> {
                     obscureText: _obscure,
                     validator: _validatePassword,
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   TextFormField(
                     controller: _confirm,
                     decoration: const InputDecoration(
@@ -178,7 +180,7 @@ class _SignupPageState extends State<SignupPage> {
                     validator: (v) =>
                         v != _password.text ? '비밀번호가 일치하지 않습니다.' : null,
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
 
                   _field(
                     controller: _employeeNo,
@@ -208,12 +210,12 @@ class _SignupPageState extends State<SignupPage> {
                   ),
 
                   if (_error != null) ...[
-                    const SizedBox(height: 16),
+                    const FormGap(),
                     ErrorBanner(message: _error!),
                   ],
 
-                  const SizedBox(height: 24),
-                  FilledButton(
+                  const FormGap(),
+                  FormActions(child: FilledButton(
                     onPressed: _busy ? null : _submit,
                     child: _busy
                         ? const SizedBox(
@@ -222,7 +224,7 @@ class _SignupPageState extends State<SignupPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('가입 신청'),
-                  ),
+                  )),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed:
@@ -231,10 +233,10 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                 ],
               ),
-            ),
+            )),
           ),
         ),
-      ),
+      )),
     );
   }
 
@@ -312,12 +314,12 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         title: const Text('비밀번호 변경'),
         automaticallyImplyLeading: !widget.forced,
       ),
-      body: Center(
+      body: PageBody(child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.zero,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: Form(
+            child: SectionCard(title: '비밀번호 변경', child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -342,7 +344,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 20),
+                  const FormGap(),
                   TextFormField(
                     controller: _current,
                     decoration: const InputDecoration(
@@ -353,7 +355,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                     validator: (v) =>
                         (v == null || v.isEmpty) ? '현재 비밀번호를 입력해 주세요.' : null,
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   TextFormField(
                     controller: _next,
                     decoration: const InputDecoration(
@@ -374,7 +376,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   TextFormField(
                     controller: _confirm,
                     decoration: const InputDecoration(
@@ -386,11 +388,11 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                         v != _next.text ? '비밀번호가 일치하지 않습니다.' : null,
                   ),
                   if (_error != null) ...[
-                    const SizedBox(height: 16),
+                    const FormGap(),
                     ErrorBanner(message: _error!),
                   ],
-                  const SizedBox(height: 24),
-                  FilledButton(
+                  const FormGap(),
+                  FormActions(child: FilledButton(
                     onPressed: _busy ? null : _submit,
                     child: _busy
                         ? const SizedBox(
@@ -399,7 +401,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('변경하기'),
-                  ),
+                  )),
                   if (widget.forced) ...[
                     const SizedBox(height: 8),
                     TextButton(
@@ -409,20 +411,20 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       child: const Text('로그아웃'),
                     ),
                   ],
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   Text(
                     '변경 후 모든 기기에서 로그아웃되며, 새 비밀번호로 다시 로그인해야 합니다.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
                 ],
               ),
-            ),
+            )),
           ),
         ),
-      ),
+      )),
     );
   }
 }

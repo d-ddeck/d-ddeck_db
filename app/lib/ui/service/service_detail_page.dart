@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/file_repository.dart';
 import '../../data/admin_repository.dart';
 import '../../models/common.dart';
@@ -66,11 +68,11 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
             ),
           ],
         ),
-        body: AsyncView<ServiceTicket>(
+        body: PageBody(child: AsyncView<ServiceTicket>(
           key: _viewKey,
           load: () => serviceLoad(context, () => repo.get(widget.ticketId)),
           builder: (context, t, reload) => _wrap(t, ListView(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.zero,
             children: [
               Wrap(
                 spacing: 6, runSpacing: 6,
@@ -104,22 +106,22 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 t.displayNo,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Theme.of(context).colorScheme.outline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 16),
 
-              Card(child: ListTile(
+              SectionCard(title: '기본 정보', child: ListTile(
                 title: Text('${t.storeName ?? t.store?.name ?? '매장 미지정'} · ${t.brandName ?? t.store?.brandName ?? '-'}'),
                 subtitle: Text('발생일 ${Fmt.date(t.receivedAt.toLocal())} · 과실 ${t.fault?.name ?? '-'}'),
                 trailing: t.storeId == null ? null : const Icon(Icons.chevron_right),
                 onTap: t.storeId == null ? null : () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => StoreDetailPage(storeId: t.storeId!))),
               )),
-              _TextCard(title: '서비스구분 · 증상 · 제조사', body: t.causes.isEmpty
+              _TextCard(title: '원인 · 서비스구분 · 증상 · 제조사', body: t.causes.isEmpty
                 ? (t.causeLabels.isEmpty ? '-' : t.causeLabels.join('\n'))
                 : t.causes.map((c) => '${c.category?.name ?? '-'}${c.symptom == null ? '' : ' > ${c.symptom!.name}'}${c.maker == null ? '' : ' (${c.maker!.name})'}').join('\n')),
-              Wrap(spacing: 8, children: [for (final r in t.responders) Chip(label: Text(r.name))]),
+              SectionCard(title: '대응인원', child: Wrap(spacing: 8, children: [for (final r in t.responders) Chip(label: Text(r.name))])),
               if (t.isRental) ...[
                 _InfoCard(title: '렌탈', rows: [
                   ('종류', t.rentalType?.name ?? '-'), ('시리얼', t.rentalSerials ?? '-'),
@@ -129,7 +131,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 if (!t.rentalReturned && t.rentalDueDate != null)
                   Padding(padding: const EdgeInsets.all(12), child: Text(
                     '렌탈 미회수 · ${_ddayLabel(t.rentalDueDate!)}',
-                    style: TextStyle(fontWeight: FontWeight.w700, color: _daysLeft(t.rentalDueDate!) <= 0 ? Colors.red : Theme.of(context).colorScheme.primary))),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: _daysLeft(t.rentalDueDate!) <= 0 ? AppColors.danger(context) : Theme.of(context).colorScheme.primary))),
               ],
               const SizedBox(height: 12),
               _InfoCard(
@@ -177,15 +179,10 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
 
               if (t.parts.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
+                SectionCard(title: '사용 부품', child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('사용 부품',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 8),
+
                         for (final p in t.parts)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 3),
@@ -205,30 +202,20 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                             ),
                           ),
                       ],
-                    ),
-                  ),
-                ),
+                    )),
               ],
 
               const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
+              SectionCard(title: '처리 이력', child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('처리 이력',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
+
                       if (t.logs.isEmpty)
-                        const Text('기록이 없습니다.',
-                            style: TextStyle(fontSize: 12))
+                        const EmptyState(message: '아직 등록된 처리 이력이 없습니다')
                       else
                         for (final log in t.logs) _LogRow(log: log),
                     ],
-                  ),
-                ),
-              ),
+                  )),
 
               const SizedBox(height: 12),
               AttachmentSection(
@@ -262,7 +249,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               const SizedBox(height: 24),
             ],
           )),
-        ),
+        )),
       ),
     );
   }
@@ -288,7 +275,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     final form = GlobalKey<FormState>();
     var completedAt = DateTime.now();
     final dialog = DialogRoute<bool>(context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, update) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, update) => ConfirmDialog.form(
         title: Text(requiresResult ? '종결 처리' : ticket.status == ServiceStatus.completed ? '다시 열기' : '${next.label}(으)로 변경'),
         content: SizedBox(width: AppTheme.isWide(ctx) ? 520 : double.maxFinite,
           child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -308,8 +295,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 ])),
               OutlinedButton.icon(icon: const Icon(Icons.calendar_today), label: Text('대응일: ${Fmt.date(completedAt)}'),
                 onPressed: () async {
-                  final date = await showDatePicker(context: ctx, initialDate: completedAt,
-                    firstDate: DateTime(1900), lastDate: DateTime(2100, 12, 31));
+                  final date = await pickDate(ctx, completedAt, firstDate: DateTime(1900), lastDate: DateTime(2100, 12, 31));
                   if (date != null && ctx.mounted) update(() => completedAt = date);
                 }),
             ],
@@ -333,14 +319,14 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     resultController.dispose();
     minutesController.dispose();
     if (confirmed != true || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     final ok = await runGuarded(context, () async {
       final saved = await context.read<ServiceRepository>().changeStatus(ticket.id, next,
         note: note.isEmpty ? null : note, resultNote: requiresResult ? resultNote : null,
         responderIds: requiresResult ? responderIds.toList() : null,
         completedAt: requiresResult ? completedAt : null, workMinutes: minutes);
-      messenger.showSnackBar(SnackBar(content: Text(saved.notices.isEmpty
-        ? (requiresResult ? '종결 처리되었습니다.' : '상태가 변경되었습니다.') : saved.notices.join('\n'))));
+      if (!mounted) return;
+      AppSnack.show(context, saved.notices.isEmpty
+        ? (requiresResult ? '종결 처리되었습니다.' : '상태가 변경되었습니다.') : saved.notices.join('\n'));
     });
     if (ok && mounted) { _changed = true; reload(); }
   }
@@ -360,7 +346,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     final minutes = TextEditingController();
     final dialog = DialogRoute<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => ConfirmDialog.form(
         title: const Text('작업 기록 추가'),
         content: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -423,37 +409,15 @@ class _InfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            for (final (label, value) in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 78,
-                      child: Text(
-                        label,
-                        style: TextStyle(fontSize: 12, color: scheme.outline),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(value, style: const TextStyle(fontSize: 13)),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+    return SectionCard(title: title, child: Column(children: [
+      for (final (label, value) in rows) Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 78, child: Text(label, style: TextStyle(color: scheme.onSurfaceVariant))),
+          Expanded(child: Text(value)),
+        ]),
       ),
-    );
+    ]));
   }
 }
 
@@ -463,19 +427,7 @@ class _TextCard extends StatelessWidget {
   final String body;
 
   @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              SelectableText(body, style: const TextStyle(fontSize: 13)),
-            ],
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => SectionCard(title: title, child: SelectableText(body));
 }
 
 class _LogRow extends StatelessWidget {
@@ -510,7 +462,7 @@ class _LogRow extends StatelessWidget {
                 Text(
                   '${log.author?.fullName ?? '작성자 미상'} · ${Fmt.dateTime(log.createdAt)}'
                   '${log.workMinutes != null ? ' · ${Fmt.duration(log.workMinutes)}' : ''}',
-                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                 ),
               ],
             ),

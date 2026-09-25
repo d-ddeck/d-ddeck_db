@@ -19,9 +19,28 @@ class ResponsiveTable<T> extends StatelessWidget {
   final List<T> rows;
   final ValueChanged<T>? onTap;
 
+  /// Keep cell actions when migrating existing reports to phone cards.
+  static Widget fromDataRows({required List<DataColumn> columns, required List<DataRow> rows}) =>
+      ResponsiveTable<DataRow>(
+        columns: [for (final entry in columns.indexed) TableColumn<DataRow>(
+          label: (entry.$2.label as Text).data ?? '',
+          numeric: entry.$2.numeric,
+          cell: (row) {
+            final cell = row.cells[entry.$1];
+            if (cell.onTap == null) return cell.child;
+            return InkWell(onTap: cell.onTap, child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Align(alignment: entry.$2.numeric ? Alignment.centerRight : Alignment.centerLeft,
+                child: cell.child),
+            ));
+          },
+        )],
+        rows: rows,
+      );
+
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) return const EmptyState(message: '표시할 내용이 없습니다.');
+    if (rows.isEmpty) return const EmptyState(message: '아직 등록된 항목이 없습니다');
     if (AppTheme.isWide(context)) {
       return LayoutBuilder(builder: (context, constraints) => SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -51,7 +70,10 @@ class ResponsiveTable<T> extends StatelessWidget {
           child: Padding(padding: const EdgeInsets.all(AppSpace.lg), child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DefaultTextStyle.merge(style: const TextStyle(fontWeight: FontWeight.w700), child: columns.first.cell(row)),
+              Row(children: [
+                Expanded(child: DefaultTextStyle.merge(style: const TextStyle(fontWeight: FontWeight.w700), child: columns.first.cell(row))),
+                if (onTap != null) const Icon(Icons.chevron_right),
+              ]),
               for (final column in columns.skip(1)) Padding(
                 padding: const EdgeInsets.only(top: AppSpace.sm),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

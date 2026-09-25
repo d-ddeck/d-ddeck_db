@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'common/common.dart';
+
 import '../data/calendar_repository.dart';
 import '../models/common.dart';
 import '../models/user.dart';
@@ -49,30 +51,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
             },
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(44),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Row(
-              children: [
-                FilterChip(
+
+      ),
+      body: PageBody(child: Column(children: [
+        FilterBar(appliedFilters: [if (_unreadOnly) '읽지 않음만'],
+          onReset: () { setState(() => _unreadOnly = false); _refresh(); }, children: [FilterChip(
                   label: const Text('읽지 않음만'),
                   selected: _unreadOnly,
                   onSelected: (v) => setState(() {
                     _unreadOnly = v;
                     _viewKey.currentState?.reload();
                   }),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: AsyncView<PagedList<AppNotification>>(
+                )]),
+        Expanded(child: AsyncView<PagedList<AppNotification>>(
         key: _viewKey,
         load: () => repo.notifications(unreadOnly: _unreadOnly, size: 50),
         emptyCheck: (p) => p.isEmpty,
-        emptyMessage: '알림이 없습니다.',
+        emptyMessage: '아직 등록된 알림이 없습니다',
         emptyIcon: Icons.notifications_none,
         builder: (context, page, reload) => ListView.separated(
           itemCount: page.items.length,
@@ -102,7 +97,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     Fmt.relative(n.createdAt),
                     style: TextStyle(
                       fontSize: 11,
-                      color: Theme.of(context).colorScheme.outline,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -127,15 +122,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 // is the next step; for now the destination is shown so the
                 // contract is visible to whoever picks this up.
                 if (n.route != null && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('이동 대상: ${n.route}')),
-                  );
+                  AppSnack.show(context, '이동 대상: ${n.route}');
                 }
               },
             );
           },
         ),
-      ),
+      )),
+      ])),
     );
   }
 

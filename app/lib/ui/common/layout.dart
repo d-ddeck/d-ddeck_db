@@ -4,25 +4,32 @@ import '../theme.dart';
 
 class SectionCard extends StatelessWidget {
   const SectionCard({super.key, required this.title, this.actions = const [],
-    required this.child, this.padding = const EdgeInsets.all(AppSpace.lg)})
-      : assert(actions.length <= 2);
+    required this.child, this.padding = const EdgeInsets.all(AppSpace.lg)});
   final String title;
   final List<Widget> actions;
   final Widget child;
   final EdgeInsetsGeometry padding;
 
   @override
-  Widget build(BuildContext context) => Card(child: Padding(
+  Widget build(BuildContext context) {
+    assert(actions.length <= 2);
+    return Card(child: Padding(
     padding: padding,
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
-        ...actions,
-      ]),
+      LayoutBuilder(builder: (context, constraints) => constraints.maxWidth < 500 && actions.isNotEmpty
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Wrap(alignment: WrapAlignment.end, spacing: AppSpace.sm, children: actions),
+          ])
+        : Row(children: [
+            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+            ...actions,
+          ])),
       const SizedBox(height: AppSpace.md),
       child,
     ]),
   ));
+  }
 }
 
 /// Place inside a scroll view, or wrap a bounded list/table with this widget.
@@ -45,6 +52,18 @@ class PageBody extends StatelessWidget {
 
 class FormGap extends SizedBox {
   const FormGap({super.key}) : super(height: AppSpace.md);
+}
+
+/// Used inside a Scaffold body so resizeToAvoidBottomInset keeps it above the keyboard.
+class FormActions extends StatelessWidget {
+  const FormActions({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(top: false, child: Padding(
+    padding: const EdgeInsets.only(top: AppSpace.md, bottom: AppSpace.lg),
+    child: SizedBox(width: double.infinity, child: child),
+  ));
 }
 
 class FormSection extends StatelessWidget {

@@ -61,6 +61,8 @@ class AppTheme {
       colorScheme: scheme,
       useMaterial3: true,
       visualDensity: VisualDensity.standard,
+      listTileTheme: ListTileThemeData(minTileHeight: 56,
+        subtitleTextStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13, height: 1.4)),
       textTheme: const TextTheme(
         titleLarge: TextStyle(fontSize: 22, height: 1.4, fontWeight: FontWeight.w700),
         titleMedium: TextStyle(fontSize: 16, height: 1.4, fontWeight: FontWeight.w600),
@@ -219,7 +221,7 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accent = color ?? scheme.primary;
+    final accent = AppColors.readable(context, color ?? scheme.primary);
     return Card(
       child: InkWell(
         onTap: onTap,

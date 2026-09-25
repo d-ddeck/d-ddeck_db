@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
@@ -88,39 +90,46 @@ class _AssetFormPageState extends State<AssetFormPage> {
   Widget build(BuildContext context) {
     final category = _categories.where((s) => s.id == _categoryId).firstOrNull;
     return Scaffold(appBar: AppBar(title: const Text('자산 등록')), body: _loading
-      ? const Center(child: CircularProgressIndicator())
-      : _error != null ? Center(child: TextButton(onPressed: _load, child: const Text('다시 불러오기')))
-      : Form(key: _form, child: ListView(padding: const EdgeInsets.all(16), children: [
+      ? const LoadingState()
+      : _error != null ? ErrorState(message: _error!, onRetry: _load)
+      : PageBody(child: Form(key: _form, child: Column(children: [Expanded(child: ListView(padding: EdgeInsets.zero, children: [
+        FormSection(title: '자산 정보', children: [
         inventoryChoice('종류', _categoryId, {for (final c in _categories) c.id: c.name}, (v) => setState(() {
           _categoryId = v;
           _modelId = _models.where((m) => m.parentId == v).firstOrNull?.id;
           _makerId = null;
         }), required: true),
-        const SizedBox(height: 12),
+        const FormGap(),
         inventoryChoice('품명', _modelId, {for (final m in _models.where((m) => m.parentId == _categoryId)) m.id: m.name},
           (v) => setState(() => _modelId = v)),
-        const SizedBox(height: 12),
+        const FormGap(),
         inventoryChoice('제조사', _makerId, {for (final m in _makers.where((m) => m.parentId == _categoryId)) m.id: m.name},
           (v) => setState(() => _makerId = v), required: _requiredMakers.contains(category?.name)),
-        const SizedBox(height: 12),
+        const FormGap(),
         TextFormField(controller: _serial, minLines: 3, maxLines: 8,
           decoration: const InputDecoration(labelText: 'S/N 여러 개 *', helperText: '줄 또는 쉼표로 구분합니다.'),
           validator: (v) => (v ?? '').split(RegExp(r'[\r\n,]+')).every((s) => s.trim().isEmpty) ? 'S/N을 입력해 주세요.' : null),
-        const SizedBox(height: 20),
+        const FormGap(),
+        ]),
+        const FormGap(),
+        FormSection(title: '상태 · 위치', children: [
         AssetDestinationFields(value: _destination, statuses: _statuses, stores: _stores,
           locations: _locations, registration: true),
-        const SizedBox(height: 12),
+        const FormGap(),
+        ]),
+        const FormGap(),
+        FormSection(title: '기타', children: [
         ListTile(contentPadding: EdgeInsets.zero, title: const Text('설치일'), subtitle: Text(Fmt.date(_installDate)),
           trailing: IconButton(onPressed: () => setState(() => _installDate = null), icon: const Icon(Icons.clear)),
           onTap: () async {
-            final date = await showDatePicker(context: context, initialDate: _installDate ?? DateTime.now(),
-              firstDate: DateTime(2000), lastDate: DateTime(2100));
+            final date = await pickDate(context, _installDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
             if (date != null && mounted) setState(() => _installDate = date);
           }),
-        const SizedBox(height: 12),
+        const FormGap(),
         TextFormField(controller: _note, maxLines: 3, decoration: const InputDecoration(labelText: '비고')),
-        const SizedBox(height: 24),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '등록 중' : '등록')),
-      ])));
+        const FormGap(),
+        ]),
+
+      ])), FormActions(child: FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '등록 중' : '등록')))]))));
   }
 }

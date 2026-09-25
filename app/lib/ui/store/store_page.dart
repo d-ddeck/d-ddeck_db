@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/store_repository.dart';
 import '../../models/store.dart';
 import '../async_view.dart';
@@ -51,21 +53,19 @@ class _StorePageState extends State<StorePage> {
 
     // 브랜드를 고르기 전에는 브랜드 카드만 보여 준다.
     if (_brandId == null && _brandName.isEmpty && _query.isEmpty && !_includeClosed) {
-      return AsyncView<List<BrandSummary>>(
+      return PageBody(child: AsyncView<List<BrandSummary>>(
         key: ValueKey('brands:$_revision'),
         load: () => inventoryLoad(context, repo.brands),
-        emptyCheck: (d) => d.isEmpty,
-        emptyMessage: '등록된 매장이 없습니다.',
         builder: (context, brands, reload) => _BrandGrid(
           brands: brands,
           onPick: _pickBrand,
           searchField: _buildSearch(),
           onRefresh: reload,
         ),
-      );
+      ));
     }
 
-    return Column(
+    return PageBody(child: Column(
       children: [
         _buildSearch(),
         if (_brandName.isNotEmpty)
@@ -101,7 +101,7 @@ class _StorePageState extends State<StorePage> {
               return PagedStores(items, items.length);
             }),
             emptyCheck: (d) => d.items.isEmpty,
-            emptyMessage: '조건에 맞는 매장이 없습니다.',
+            emptyMessage: '아직 등록된 매장이 없습니다',
             builder: (context, data, reload) => _StoreList(
               stores: data.items,
               total: data.total,
@@ -110,7 +110,7 @@ class _StorePageState extends State<StorePage> {
           ),
         ),
       ],
-    );
+    ));
   }
 
   Future<void> _addStore() async {
@@ -120,25 +120,19 @@ class _StorePageState extends State<StorePage> {
     if (saved == true && mounted) setState(() => _revision++);
   }
 
-  Widget _buildSearch() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Column(children: [Row(children: [
-          Expanded(
-            child: _searchBox(),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: _addStore,
-            icon: const Icon(Icons.add),
-            label: const Text('매장'),
-          ),
-        ]),
-          Align(alignment: Alignment.centerLeft, child: FilterChip(
-            label: const Text('폐점 포함'), selected: _includeClosed,
-            onSelected: (v) => setState(() => _includeClosed = v),
-          )),
-        ]),
-      );
+  Widget _buildSearch() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    Align(alignment: Alignment.centerRight, child: FilledButton.icon(
+      onPressed: _addStore, icon: const Icon(Icons.add), label: const Text('매장 등록'))),
+    FilterBar(
+      appliedFilters: [if (_query.isNotEmpty) '검색: $_query', if (_includeClosed) '폐점 포함', if (_brandName.isNotEmpty) _brandName],
+      onReset: () => setState(() { _query = ''; _searchCtl.clear(); _includeClosed = false; _brandId = null; _brandName = ''; }),
+      children: [
+        SizedBox(width: AppTheme.isWide(context) ? 360 : double.infinity, child: _searchBox()),
+        FilterChip(label: const Text('폐점 포함'), selected: _includeClosed,
+          onSelected: (v) => setState(() => _includeClosed = v)),
+      ],
+    ),
+  ]);
 
   Widget _searchBox() => Builder(
         builder: (context) => TextField(
@@ -203,7 +197,7 @@ class _BrandGrid extends StatelessWidget {
                 Expanded(
                   child: StatTile(
                     label: '전체 매장',
-                    value: '$totalStores곳',
+                    value: '${Fmt.number(totalStores)}곳',
                     icon: Icons.storefront,
                   ),
                 ),
@@ -211,19 +205,20 @@ class _BrandGrid extends StatelessWidget {
                 Expanded(
                   child: StatTile(
                     label: '매장 보유 장비',
-                    value: '$totalAssets대',
+                    value: '${Fmt.number(totalAssets)}대',
                     icon: Icons.precision_manufacturing,
                   ),
                 ),
               ],
             ),
           ),
+          if (brands.isEmpty) const EmptyState(message: '아직 등록된 매장이 없습니다'),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            crossAxisCount: wide ? 3 : 2,
-            childAspectRatio: wide ? 2.0 : 1.5,
+            padding: EdgeInsets.zero,
+            crossAxisCount: wide ? 4 : 2,
+            mainAxisExtent: 154 * MediaQuery.textScalerOf(context).scale(14) / 14,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
             children: [
@@ -280,15 +275,15 @@ class _BrandCard extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                '${brand.storeCount}곳',
+                '${Fmt.number(brand.storeCount)}곳',
                 style: theme.textTheme.headlineSmall
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 2),
               Text(
                 brand.closedStoreCount > 0
-                    ? '운영 ${brand.openStoreCount} · 폐점 ${brand.closedStoreCount}'
-                    : '운영 ${brand.openStoreCount}',
+                    ? '운영 ${Fmt.number(brand.openStoreCount)} · 폐점 ${Fmt.number(brand.closedStoreCount)}'
+                    : '운영 ${Fmt.number(brand.openStoreCount)}',
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 6),
@@ -297,7 +292,7 @@ class _BrandCard extends StatelessWidget {
                   Icon(Icons.precision_manufacturing,
                       size: 14, color: theme.colorScheme.outline),
                   const SizedBox(width: 4),
-                  Text('장비 ${brand.assetCount}대',
+                  Text('장비 ${Fmt.number(brand.assetCount)}대',
                       style: theme.textTheme.bodySmall),
                 ],
               ),
@@ -360,17 +355,17 @@ class _StoreList extends StatelessWidget {
                 if (store.openDate != null) '개점 ${Fmt.date(store.openDate)}',
               ].join(' · '),
             ),
-            trailing: Column(
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('장비 ${store.assetCount}대',
+                Text('장비 ${Fmt.number(store.assetCount)}대',
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(fontWeight: FontWeight.w600)),
-                Text('AS ${store.ticketCount}건',
+                Text('AS ${Fmt.number(store.ticketCount)}건',
                     style: theme.textTheme.bodySmall),
               ],
-            ),
+            ), const SizedBox(width: AppSpace.sm), const Icon(Icons.chevron_right)]),
             onTap: () async { await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => StoreDetailPage(storeId: store.id),

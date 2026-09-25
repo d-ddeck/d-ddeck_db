@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../format.dart';
+
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/store_repository.dart';
@@ -82,12 +86,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
   Future<void> _pickDate({required bool closing}) async {
     final initial =
         (closing ? _closedDate : _openDate) ?? DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2015),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
+    final picked = await pickDate(context, initial, firstDate: DateTime(2015), lastDate: DateTime.now().add(const Duration(days: 365)));
     if (picked == null) return;
     setState(() {
       if (closing) {
@@ -107,7 +106,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
       final store = widget.store!;
       recoverId = store.recoverOptions.firstOrNull?.id;
       final confirmed = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(
-        builder: (ctx, update) => AlertDialog(title: const Text('폐점 처리'),
+        builder: (ctx, update) => ConfirmDialog.form(destructive: true, title: const Text('폐점 처리'),
           content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('설치 장비 ${store.movableCount}대가 옮겨집니다'),
@@ -117,9 +116,9 @@ class _StoreFormPageState extends State<StoreFormPage> {
                   for (final option in store.recoverOptions) RadioListTile<String>(value: option.id, title: Text(option.name)),
                   const RadioListTile<String>(value: '', title: Text('옮기지 않음')),
                 ])),
-              ListTile(title: const Text('폐점일'), subtitle: Text(_closedDate?.toIso8601String().split('T').first ?? '지정 안 함'),
+              ListTile(title: const Text('폐점일'), subtitle: Text((_closedDate == null ? null : Fmt.date(_closedDate)) ?? '지정 안 함'),
                 onTap: () async {
-                  final date = await showDatePicker(context: ctx, initialDate: _closedDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
+                  final date = await pickDate(ctx, _closedDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
                   if (date != null && ctx.mounted) update(() => _closedDate = date);
                 }),
             ]))),
@@ -163,9 +162,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
         }
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isNew ? '매장을 등록했습니다.' : '매장 정보를 저장했습니다.')),
-      );
+      AppSnack.show(context, _isNew ? '매장을 등록했습니다.' : '매장 정보를 저장했습니다.');
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -182,11 +179,11 @@ class _StoreFormPageState extends State<StoreFormPage> {
     return Scaffold(
       appBar: AppBar(title: Text(_isNew ? '매장 등록' : '매장 수정')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
+          ? const LoadingState()
+          : PageBody(child: Form(
               key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              child: Column(children: [Expanded(child: ListView(
+                padding: const EdgeInsets.only(bottom: 24),
                 children: [
                   if (_error != null)
                     Card(
@@ -196,6 +193,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                         child: Text(_error!),
                       ),
                     ),
+                  FormSection(title: '기본 정보', children: [
                   TextFormField(
                     controller: _name,
                     decoration: const InputDecoration(labelText: '매장명 *'),
@@ -203,7 +201,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                         ? '매장명을 입력해 주세요.'
                         : null,
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   DropdownButtonFormField<String>(
                     initialValue: _brandId,
                     isExpanded: true,
@@ -215,7 +213,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                     ],
                     onChanged: (v) => setState(() => _brandId = v),
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   DropdownButtonFormField<String>(
                     initialValue: _gripperType,
                     decoration: const InputDecoration(labelText: '그리퍼 종류'),
@@ -226,13 +224,13 @@ class _StoreFormPageState extends State<StoreFormPage> {
                     ],
                     onChanged: (v) => setState(() => _gripperType = v),
                   ),
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('개점일'),
                     subtitle: Text(_openDate == null
                         ? '지정 안 함'
-                        : _openDate!.toIso8601String().split('T').first),
+                        : Fmt.date(_openDate)),
                     trailing: const Icon(Icons.calendar_today, size: 18),
                     onTap: () => _pickDate(closing: false),
                   ),
@@ -255,19 +253,22 @@ class _StoreFormPageState extends State<StoreFormPage> {
                         title: const Text('폐점일'),
                         subtitle: Text(_closedDate == null
                             ? '지정 안 함'
-                            : _closedDate!.toIso8601String().split('T').first),
+                            : Fmt.date(_closedDate)),
                         trailing: const Icon(Icons.calendar_today, size: 18),
                         onTap: () => _pickDate(closing: true),
                       ),
                   ],
-                  const SizedBox(height: 12),
+                  const FormGap(),
                   TextFormField(
                     controller: _note,
                     decoration: const InputDecoration(labelText: '비고'),
                     maxLines: 3,
                   ),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
+                  const FormGap(),
+                  ]),
+
+                ],
+              )), FormActions(child: FilledButton.icon(
                     onPressed: _saving ? null : _save,
                     icon: _saving
                         ? const SizedBox(
@@ -277,10 +278,8 @@ class _StoreFormPageState extends State<StoreFormPage> {
                           )
                         : const Icon(Icons.check),
                     label: Text(_isNew ? '등록' : '저장'),
-                  ),
-                ],
-              ),
-            ),
+                  ))]),
+            )),
     );
   }
 }

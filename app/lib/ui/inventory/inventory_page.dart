@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
 import '../../data/store_repository.dart';
@@ -69,8 +71,8 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AsyncView<InventoryOverview>(
     load: () => inventoryLoad(context, context.read<InventoryRepository>().overview),
-    builder: (context, data, reload) => ListView(padding: const EdgeInsets.all(16), children: [
-      Row(children: [Expanded(child: Text('전체 ${data.total}대', style: Theme.of(context).textTheme.titleLarge)),
+    builder: (context, data, reload) => PageBody(child: ListView(padding: EdgeInsets.zero, children: [
+      Row(children: [Expanded(child: Text('전체 ${Fmt.number(data.total)}대', style: Theme.of(context).textTheme.titleLarge)),
         TextButton.icon(icon: const Icon(Icons.download), label: const Text('엑셀'), onPressed: () => runGuarded(context, () async {
           final bytes = await context.read<InventoryRepository>().exportXlsx();
           await saveAndOpenDownload(bytes, '재고_${DateTime.now().millisecondsSinceEpoch}.xlsx');
@@ -97,24 +99,21 @@ class _OverviewTab extends StatelessWidget {
           await Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: a.ticketId!)));
           if (context.mounted) onChanged();
         }),
-    ]),
+    ])),
   );
 
   Widget _table(BuildContext context, String title, List<OverviewRow> rows, List<CodeItem> kinds, String axis) {
     final columns = <String, String>{for (final k in kinds) k.id: k.name,
       if (rows.any((r) => r.counts.containsKey('-'))) '-': '미분류'};
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SizedBox(height: 20), Text(title, style: Theme.of(context).textTheme.titleMedium),
-      SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+    return SectionCard(title: title, child: ResponsiveTable.fromDataRows(
         columns: [const DataColumn(label: Text('구분')),
           for (final c in columns.values) DataColumn(label: Text(c), numeric: true),
           const DataColumn(label: Text('합계'), numeric: true)],
         rows: [for (final row in rows) DataRow(cells: [DataCell(Text(row.label)),
-          for (final c in columns.keys) DataCell(Text('${row.counts[c] ?? 0}'), onTap: () => _open(axis, row.key, c)),
-          DataCell(Text('${row.total}'), onTap: () => _open(axis, row.key, null)),
+          for (final c in columns.keys) DataCell(Text(Fmt.number(row.counts[c] ?? 0)), onTap: () => _open(axis, row.key, c)),
+          DataCell(Text(Fmt.number(row.total)), onTap: () => _open(axis, row.key, null)),
         ])],
-      )),
-    ]);
+      ));
   }
 
   void _open(String axis, String key, String? category) => onDrill({
@@ -146,7 +145,7 @@ class _InventoryListState extends State<_InventoryList> {
   List<Store> _stores = [];
   List<BrandSummary> _brands = [];
   List<StorageLocation> _places = [];
-  bool _ready = false, _exporting = false;
+  bool _ready = false, _exporting = false, _choicesLoading = true;
   String _sort = 'kind_serial';
   int _page = 1, _pages = 1, _total = 0, _request = 0;
   @override
@@ -164,6 +163,7 @@ class _InventoryListState extends State<_InventoryList> {
   void dispose() { _search.dispose(); super.dispose(); }
 
   Future<void> _loadChoices() async {
+    setState(() => _choicesLoading = true);
     await runGuarded(context, () async {
       final admin = context.read<AdminRepository>();
       final stores = context.read<StoreRepository>();
@@ -176,6 +176,7 @@ class _InventoryListState extends State<_InventoryList> {
         _places = data[4] as List<StorageLocation>; _ready = true;
       });
     });
+    if (mounted) setState(() => _choicesLoading = false);
   }
   void _set(String key, dynamic value) {
     setState(() {
@@ -227,15 +228,32 @@ class _InventoryListState extends State<_InventoryList> {
     if (mounted) setState(() => _exporting = false);
   }
 
-  Widget _filter(String label, String key, Map<String, String> choices) => SizedBox(width: 180,
+  List<String> get _appliedFilters => [
+    for (final e in _filters.entries) switch (e.key) {
+      'q' => '검색: ${e.value}',
+      'category_id' => _kinds.where((c) => c.id == e.value).firstOrNull?.name ?? '종류 미지정',
+      'status_item_id' => _statuses.where((c) => c.id == e.value).firstOrNull?.name ?? '상태 미지정',
+      'brand_id' => _brands.where((b) => b.brandId == e.value).firstOrNull?.brandName ?? '브랜드 미지정',
+      'store_id' => _stores.where((s) => s.id == e.value).firstOrNull?.name ?? '매장 미지정',
+      'location_id' => _places.where((l) => l.id == e.value).firstOrNull?.display ?? '위치 미지정',
+      'at_store' => e.value == true ? '매장' : '미설치',
+      'status' => AssetStatus.parse(e.value as String?).label,
+      _ => '정렬 적용',
+    },
+  ];
+
+  Widget _filter(String label, String key, Map<String, String> choices) => SizedBox(width: AppTheme.isWide(context) ? 180 : double.infinity,
     child: inventoryChoice(label, _filters[key] as String?, {
       if (_filters[key] == '-') '-': '미지정', ...choices,
     }, (v) { if (key == 'brand_id') _filters.remove('store_id'); _set(key, v); }, empty: '전체'));
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) return Center(child: TextButton(onPressed: _loadChoices, child: const Text('필터 불러오기')));
-    return Column(children: [
+    if (!_ready) {
+      return _choicesLoading ? const LoadingState()
+        : ErrorState(message: '검색 조건을 불러오지 못했습니다', onRetry: _loadChoices);
+    }
+    return PageBody(child: Column(children: [
       Padding(padding: const EdgeInsets.all(12), child: Column(children: [
         if (widget.category == null) Align(alignment: Alignment.centerRight, child: TextButton.icon(
           icon: const Icon(Icons.account_tree_outlined), label: const Text('위치 관리'),
@@ -247,14 +265,16 @@ class _InventoryListState extends State<_InventoryList> {
         Row(children: [Expanded(child: TextField(controller: _search,
           decoration: const InputDecoration(hintText: 'S/N · 품명 · 매장 · 메모 검색', prefixIcon: Icon(Icons.search)),
           onSubmitted: (v) => _set('q', v.trim().isEmpty ? null : v.trim()))),
-          IconButton(tooltip: '등록', icon: const Icon(Icons.add), onPressed: () async {
+          FilledButton.icon(label: const Text('등록'), icon: const Icon(Icons.add), onPressed: () async {
             final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const AssetFormPage()));
             if (saved == true && mounted) widget.onChanged();
           }),
           TextButton(onPressed: _exporting ? null : _export, child: const Text('엑셀')),
         ]),
         const SizedBox(height: 8),
-        if (widget.category != null) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        if (widget.category != null) FilterBar(appliedFilters: _appliedFilters,
+          onReset: () { _filters.clear(); _filters['category_id'] = widget.category!.id; _search.clear(); _set('q', null); },
+          children: [SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           ChoiceChip(label: const Text('전체'), selected: !_filters.containsKey('at_store'), onSelected: (_) {
             _filters.remove('brand_id'); _filters.remove('location_id'); _set('at_store', null);
           }),
@@ -264,7 +284,10 @@ class _InventoryListState extends State<_InventoryList> {
           for (final l in _places) Padding(padding: const EdgeInsets.only(left: 6), child: ChoiceChip(
             label: Text(l.name), selected: _filters['at_store'] == false && _filters['location_id'] == l.id,
             onSelected: (_) { _filters.remove('brand_id'); _filters['at_store'] = false; _set('location_id', l.id); })),
-        ])) else SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(spacing: 8, children: [
+        ]))]) else FilterBar(
+          appliedFilters: _appliedFilters,
+          onReset: () { _filters.clear(); _search.clear(); _set('q', null); },
+          children: [
           if (_filters.containsKey('status')) InputChip(label: Text('기본 상태: ${AssetStatus.parse(_filters['status'] as String?).label}'), onDeleted: () => _set('status', null)),
           _filter('종류', 'category_id', {for (final c in _kinds) c.id: c.name}),
           _filter('세부 상태', 'status_item_id', {for (final c in _statuses) c.id: c.name}),
@@ -275,14 +298,28 @@ class _InventoryListState extends State<_InventoryList> {
             const {'true': '매장', 'false': '미설치'}, (v) => _set('at_store', v == null ? null : v == 'true'), empty: '전체')),
           SizedBox(width: 150, child: inventoryChoice('정렬', _sort, const {'created_desc': '최근 등록', 'serial_asc': 'S/N', 'kind_serial': '종류 · S/N', 'updated_desc': '최근 수정'},
             (v) { _sort = v ?? 'kind_serial'; _set('sort', _sort); })),
-          TextButton(onPressed: () { _filters.clear(); _search.clear(); _set('q', null); }, child: const Text('초기화')),
-        ])),
+        ]),
       ])),
       Expanded(child: AsyncView<List<Asset>>(key: _viewKey, load: _load,
         builder: (context, assets, reload) => Column(children: [
-          Text('$_total대'),
-          Expanded(child: widget.category != null ? _grouped(assets, reload)
-            : ListView(children: [for (final a in assets) _tile(a, reload, check: true)])),
+          Text('${Fmt.number(_total)}대'),
+          Expanded(child: assets.isEmpty ? const EmptyState(message: '아직 등록된 자산이 없습니다') : widget.category != null ? _grouped(assets, reload)
+            : ListView(children: [ResponsiveTable<Asset>(
+              rows: assets, onTap: (a) => _detail(a, reload),
+              columns: [
+                TableColumn(label: 'S/N', cell: (a) => Row(mainAxisSize: MainAxisSize.min, children: [
+                  Checkbox(value: _selected.contains(a.id), onChanged: (v) => setState(() {
+                    if (v == true) { _selected.add(a.id); } else { _selected.remove(a.id); }
+                  })),
+                  Flexible(child: Text(a.serialNo ?? a.assetNo)),
+                ])),
+                TableColumn(label: '품명', cell: (a) => Text(a.name)),
+                TableColumn(label: '상태', cell: (a) => StatusChip(label: _statusLabel(a), color: a.status.color)),
+                TableColumn(label: '위치', cell: (a) => Text(_placeLabel(a))),
+                TableColumn(label: '세트', numeric: true, cell: (a) => Text(Fmt.number(a.setNo))),
+                TableColumn(label: '작업', cell: _actions),
+              ],
+            )])),
           if (widget.category == null && _pages > 1) Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             IconButton(onPressed: _page <= 1 ? null : () { setState(() => _page--); reload(); }, icon: const Icon(Icons.chevron_left)),
             Text('$_page / $_pages'),
@@ -290,12 +327,12 @@ class _InventoryListState extends State<_InventoryList> {
           ]),
         ]))),
       if (_selected.isNotEmpty) SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(8),
-        child: FilledButton(onPressed: () async {
+        child: OutlinedButton(onPressed: () async {
           if (await showAssetMoveDialog(context, _selected.toList(), bulk: true) && mounted) {
             setState(() => _selected.clear()); widget.onChanged();
           }
         }, child: Text('선택 ${_selected.length}대 일괄 변경')))),
-    ]);
+    ]));
   }
 
   Widget _grouped(List<Asset> assets, VoidCallback reload) {
@@ -309,14 +346,14 @@ class _InventoryListState extends State<_InventoryList> {
     final keys = groups.keys.toList()..sort();
     return ListView(children: [for (final key in keys) ...[
       Padding(padding: const EdgeInsets.all(12), child: Text('$key (${groups[key]!.length}대)', style: const TextStyle(fontWeight: FontWeight.w700))),
-      SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+      ResponsiveTable.fromDataRows(
         columns: const [DataColumn(label: Text('S/N')), DataColumn(label: Text('품명')), DataColumn(label: Text('상태')), DataColumn(label: Text('세트')), DataColumn(label: Text('작업'))],
         rows: [for (final a in groups[key]!) DataRow(cells: [
           DataCell(Text(a.serialNo ?? a.assetNo), onTap: () => _detail(a, reload)),
           DataCell(Text(a.modelName ?? a.name)), DataCell(StatusChip(label: _statusLabel(a), color: a.status.color)), DataCell(Text('${a.setNo}')),
           DataCell(_actions(a)),
         ])],
-      )),
+      ),
     ]]);
   }
   String _statusLabel(Asset a) => _statuses.where((s) => s.id == a.statusItemId).firstOrNull?.name ?? a.statusLabel;
@@ -324,16 +361,6 @@ class _InventoryListState extends State<_InventoryList> {
       ? _stores.where((s) => s.id == a.storeId).firstOrNull?.name ?? a.placeLabel
       : _places.where((l) => l.id == a.locationId).firstOrNull?.display ?? a.placeLabel;
 
-  Widget _tile(Asset a, VoidCallback reload, {bool check = false}) => ListTile(
-    leading: check ? Checkbox(value: _selected.contains(a.id), onChanged: (v) => setState(() {
-      if (v == true) { _selected.add(a.id); } else { _selected.remove(a.id); }
-    })) : null,
-    title: Text('${a.serialNo ?? a.assetNo} · ${a.name}'),
-    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('${_placeLabel(a)} · 세트 ${a.setNo}'),
-      StatusChip(label: _statusLabel(a), color: a.status.color),
-    ]),
-    trailing: _actions(a), onTap: () => _detail(a, reload));
   Widget _actions(Asset a) => AssetActionsMenu(key: ValueKey(a.id), assetId: a.id,
     label: '${a.name} S/N ${a.serialNo ?? a.assetNo}', atStore: a.storeId != null,
     onChanged: widget.onChanged);
@@ -351,7 +378,7 @@ class AssetDetailPage extends StatelessWidget {
     final repo = context.read<InventoryRepository>();
     return Scaffold(appBar: AppBar(title: const Text('자산 상세'),
       actions: [AssetDeleteButton(assetId: assetId)]),
-      body: AsyncView<(Asset, List<AssetMovement>, List<CodeItem>, List<Store>)>(
+      body: PageBody(child: AsyncView<(Asset, List<AssetMovement>, List<CodeItem>, List<Store>)>(
         load: () => inventoryLoad(context, () async {
           final data = await Future.wait([repo.get(assetId),
             context.read<AdminRepository>().codeGroup('ASSET_STATUS'), context.read<StoreRepository>().all(includeClosed: true)]);
@@ -368,25 +395,32 @@ class AssetDetailPage extends StatelessWidget {
           final (a, movements, statuses, stores) = data;
           String status(String? id, AssetStatus? fallback) => statuses.where((s) => s.id == id).firstOrNull?.name ?? fallback?.label ?? '-';
           String store(String? id) => stores.where((s) => s.id == id).firstOrNull?.name ?? (id == null ? '-' : '삭제된 매장');
-          return ListView(padding: const EdgeInsets.all(16), children: [
+          return Column(children: [Expanded(child: ListView(padding: EdgeInsets.zero, children: [
+            SectionCard(title: '기본 정보', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(a.name, style: Theme.of(context).textTheme.titleLarge),
             Text('${a.assetNo} · ${a.serialNo ?? '-'}'),
             Text('${a.statusLabel} · ${a.placeLabel} · 세트 ${a.setNo}'),
             Text('품명 ${a.modelName ?? '-'} · 제조사 ${a.manufacturer ?? '-'}'),
             Text('설치일 ${Fmt.date(a.purchaseDate)}'), if (a.note != null) Text(a.note!),
             const SizedBox(height: 16),
-            FilledButton.icon(icon: const Icon(Icons.swap_horiz), label: const Text('이동 / 상태 변경'), onPressed: () async {
+            ])),
+
+            const FormGap(),
+            SectionCard(title: '이동 이력 (${Fmt.number(movements.length)}건)',
+              child: ResponsiveTable<AssetMovement>(columns: [
+                TableColumn(label: '이동', cell: (m) => Text(m.movementType.label)),
+                TableColumn(label: '상태', cell: (m) => Text('${status(m.fromStatusItemId, m.fromStatus)} → ${status(m.toStatusItemId, m.toStatus)}')),
+                TableColumn(label: '매장', cell: (m) => Text('${store(m.fromStoreId)} → ${store(m.toStoreId)}')),
+                TableColumn(label: '일시', cell: (m) => Text(Fmt.dateTime(m.movedAt))),
+                TableColumn(label: '메모', cell: (m) => Text(m.reason ?? '-')),
+              ], rows: movements)),
+          ])), FormActions(child: FilledButton.icon(icon: const Icon(Icons.swap_horiz), label: const Text('이동 / 상태 변경'), onPressed: () async {
               if (await performAssetAction(context, AssetAction.move,
                   assetId: a.id, label: '${a.name} S/N ${a.serialNo ?? a.assetNo}') && context.mounted) {
                 reload();
               }
-            }),
-            const SizedBox(height: 16), Text('이동 이력 (${movements.length}건)'),
-            for (final m in movements) ListTile(contentPadding: EdgeInsets.zero,
-              title: Text('${m.movementType.label} · ${status(m.fromStatusItemId, m.fromStatus)} → ${status(m.toStatusItemId, m.toStatus)}'),
-              subtitle: Text('${store(m.fromStoreId)} → ${store(m.toStoreId)}\n${Fmt.dateTime(m.movedAt)}\n${m.reason ?? ''}')),
-          ]);
+            }))]);
         },
-      ));
+      )));
   }
 }

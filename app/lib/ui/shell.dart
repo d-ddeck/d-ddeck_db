@@ -240,7 +240,7 @@ class _AccountMenu extends StatelessWidget {
                 user?.email ?? '',
                 style: TextStyle(
                   fontSize: 11,
-                  color: Theme.of(context).colorScheme.outline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 4),
@@ -277,7 +277,7 @@ class _AccountMenu extends StatelessWidget {
           case 'server':
             showDialog<void>(
               context: context,
-              builder: (_) => AlertDialog(
+              builder: (_) => ConfirmDialog.form(
                 title: const Text('서버 정보'),
                 content: SelectableText(auth.serverUrl),
                 actions: [

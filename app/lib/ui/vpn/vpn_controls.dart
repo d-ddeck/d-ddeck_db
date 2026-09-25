@@ -5,10 +5,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../services/vpn_service.dart';
 import '../../services/wireguard_config.dart';
-import '../async_view.dart';
 import '../theme.dart';
 import 'vpn_qr_page.dart';
 
@@ -101,23 +102,8 @@ class _VpnControlsState extends State<VpnControls> {
   }
 
   Future<void> _unregister() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('VPN 등록 해제'),
-        content: const Text('VPN 연결을 끄고 저장된 설정을 삭제할까요?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('등록 해제'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await ConfirmDialog.show(context, title: 'VPN 등록 해제',
+        message: 'VPN 연결을 끄고 저장된 설정을 삭제할까요?', confirmLabel: '등록 해제', destructive: true);
     if (confirmed != true || !mounted) return;
     await _run(
       () => context.read<VpnService>().unregister(),
@@ -142,14 +128,15 @@ class _VpnControlsState extends State<VpnControls> {
             label: const Text('VPN 등록'),
           ),
         ] else
-          Row(
-            children: [
-              StatusChip(
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [StatusChip(
                 label: '사외 접속(VPN)',
                 icon: vpn.state.isOn ? Icons.check : Icons.vpn_key_outlined,
                 color: vpn.state.isOn ? scheme.primary : scheme.outline,
                 dense: true,
               ),
+          Row(
+            children: [
+
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -181,7 +168,7 @@ class _VpnControlsState extends State<VpnControls> {
                 ],
               ),
             ],
-          ),
+          )]),
         if (_busy) const LinearProgressIndicator(),
         if (vpn.error != null) ...[
           const SizedBox(height: 4),

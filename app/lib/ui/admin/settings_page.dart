@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/admin_repository.dart';
 import '../../models/admin.dart';
 import '../../models/calendar.dart' show parseHexColor;
@@ -49,7 +51,7 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
             ),
         ],
       ),
-      body: AsyncView<ModuleSettings>(
+      body: PageBody(child: AsyncView<ModuleSettings>(
         key: _viewKey,
         load: () => repo.settings(widget.module),
         builder: (context, data, reload) {
@@ -60,14 +62,9 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
           children: [
             if (data.settings.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Text('이 모듈에는 설정 항목이 없습니다.'),
-                ),
-              )
+              const EmptyState(message: '아직 등록된 설정 항목이 없습니다')
             else
-              Card(
+              SectionCard(title: '설정 항목',
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 6),
@@ -95,7 +92,7 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
               Text(
                 '여기서 바꾼 항목이 접수 화면의 선택지와 통계 분류에 그대로 반영됩니다.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
               const SizedBox(height: 10),
@@ -108,10 +105,10 @@ class _ModuleSettingsPageState extends State<ModuleSettingsPage> {
           ],
           );
         },
-      ),
+      )),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.viewInsetsOf(context).bottom + 16),
           child: FilledButton.icon(
             onPressed: _saving ? null : () => _save(),
             icon: _saving
@@ -231,13 +228,7 @@ class _SettingRowState extends State<_SettingRow> {
         ),
     };
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
+    final label = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -261,16 +252,16 @@ class _SettingRowState extends State<_SettingRow> {
                 ),
                 Text(
                   s.description ?? s.key,
-                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          editor,
-        ],
-      ),
-    );
+            );
+    return Padding(padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
+      child: AppTheme.isWide(context)
+        ? Row(children: [Expanded(child: label), const SizedBox(width: AppSpace.md), editor])
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            label, const FormGap(), Align(alignment: Alignment.centerRight, child: editor),
+          ]));
   }
 }
 
@@ -282,65 +273,18 @@ class _CodeGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    group.name,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _addItem(context),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('항목 추가'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            if (group.items.isEmpty)
-              const Text('등록된 항목이 없습니다.', style: TextStyle(fontSize: 12))
-            else
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final item in group.items)
-                    InputChip(
-                      label: Text(
-                        item.name,
-                        style: TextStyle(
-                          fontSize: 12,
-                          decoration: item.isActive
-                              ? null
-                              : TextDecoration.lineThrough,
-                        ),
-                      ),
-                      avatar: item.color != null
-                          ? CircleAvatar(
-                              backgroundColor: parseHexColor(item.color!),
-                              radius: 7,
-                            )
-                          : null,
-                      // Deleting deactivates rather than removes, so existing
-                      // tickets and their statistics keep resolving the name.
-                      onDeleted: item.isActive
-                          ? () => _deactivate(context, item)
-                          : null,
-                      deleteIcon: const Icon(Icons.close, size: 14),
-                    ),
-                ],
-              ),
-          ],
-        ),
+    return SectionCard(title: group.name, actions: [
+      TextButton.icon(onPressed: () => _addItem(context), icon: const Icon(Icons.add), label: const Text('항목 추가')),
+    ], child: Column(children: [
+      if (group.items.isEmpty) const EmptyState(message: '아직 등록된 코드 항목이 없습니다'),
+      for (final item in group.items) ListTile(
+        title: Text(item.name),
+        subtitle: Text(item.isActive ? '사용 중' : '비활성'),
+        leading: item.color == null ? null : CircleAvatar(radius: 7, backgroundColor: parseHexColor(item.color!)),
+        trailing: item.isActive ? IconButton(tooltip: '비활성화', icon: const Icon(Icons.remove_circle_outline),
+          onPressed: () => _deactivate(context, item)) : null,
       ),
-    );
+    ]));
   }
 
   Future<void> _addItem(BuildContext context) async {
@@ -349,7 +293,7 @@ class _CodeGroupCard extends StatelessWidget {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => ConfirmDialog.form(
         title: Text('${group.name} 항목 추가'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -402,26 +346,9 @@ class _CodeGroupCard extends StatelessWidget {
   }
 
   Future<void> _deactivate(BuildContext context, CodeItem item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${item.name} 비활성화'),
-        content: const Text(
-          '새로 등록할 때 선택지에서 제외됩니다.\n'
-          '기존 데이터의 분류와 통계는 그대로 유지됩니다.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('비활성화'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await ConfirmDialog.show(context, title: '${item.name} 비활성화',
+        message: '새로 등록할 때 선택지에서 제외됩니다.\n'
+          '기존 데이터의 분류와 통계는 그대로 유지됩니다.', confirmLabel: '비활성화', destructive: true);
     if (confirmed != true || !context.mounted) return;
 
     final ok = await runGuarded(

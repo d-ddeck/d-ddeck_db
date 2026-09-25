@@ -15,17 +15,24 @@ class FilterBar extends StatelessWidget {
     final reset = onReset == null ? null : TextButton.icon(
       onPressed: onReset, icon: const Icon(Icons.restart_alt), label: const Text('초기화'));
     if (AppTheme.isWide(context)) {
-      return Wrap(spacing: AppSpace.md, runSpacing: AppSpace.md,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [...children, if (reset != null) reset]);
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Wrap(spacing: AppSpace.md, runSpacing: AppSpace.md,
+          crossAxisAlignment: WrapCrossAlignment.center, children: children)),
+        if (reset != null) reset,
+      ]);
     }
     return Card(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ExpansionTile(
         title: Text('검색 조건 ${appliedFilters.length}개 적용'),
         childrenPadding: const EdgeInsets.all(AppSpace.lg),
-        children: [for (final child in children) Padding(
-          padding: const EdgeInsets.only(bottom: AppSpace.md), child: child),
-          if (reset != null) reset],
+        children: [ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
+          child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [for (final child in children) Padding(
+              padding: const EdgeInsets.only(bottom: AppSpace.md), child: child),
+              if (reset != null) Align(alignment: Alignment.centerRight, child: reset)],
+          )),
+        )],
       ),
       if (appliedFilters.isNotEmpty) Padding(
         padding: const EdgeInsets.all(AppSpace.md),

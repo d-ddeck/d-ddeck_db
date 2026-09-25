@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/admin_repository.dart';
 import '../../data/auth_repository.dart';
 import '../../models/admin.dart';
@@ -20,7 +22,7 @@ class AdminPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthState>().isAdmin;
-    return DefaultTabController(
+    return PageBody(child: DefaultTabController(
       key: ValueKey(isAdmin),
       length: isAdmin ? 5 : 4,
       child: Column(
@@ -50,7 +52,7 @@ class AdminPage extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -93,7 +95,7 @@ class _ApprovalTabState extends State<_ApprovalTab> {
                   '${u.phone != null ? ' · ${u.phone}' : ''}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: Theme.of(context).colorScheme.outline,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 if (u.signupNote?.isNotEmpty == true)
@@ -115,7 +117,7 @@ class _ApprovalTabState extends State<_ApprovalTab> {
                   child: const Text('반려'),
                 ),
                 const SizedBox(width: 4),
-                FilledButton(
+                OutlinedButton(
                   onPressed: () => _approve(u, reload),
                   child: const Text('승인'),
                 ),
@@ -139,7 +141,7 @@ class _ApprovalTabState extends State<_ApprovalTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setInner) => AlertDialog(
+        builder: (ctx, setInner) => ConfirmDialog.form(
           title: Text('${user.fullName} 승인'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -211,7 +213,7 @@ class _ApprovalTabState extends State<_ApprovalTab> {
     final controller = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => ConfirmDialog.form(
         title: Text('${user.fullName} 반려'),
         content: TextField(
           controller: controller,
@@ -253,7 +255,7 @@ class _SettingsHubTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.zero,
       children: [
         Card(
           child: Padding(
@@ -333,11 +335,9 @@ class _AuditTabState extends State<_AuditTab> {
     final repo = context.read<AdminRepository>();
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+        FilterBar(appliedFilters: [if (_action != null) AuditLog.actionLabels[_action] ?? _action!],
+          onReset: () { setState(() => _action = null); _viewKey.currentState?.reload(); },
+          children: [Wrap(spacing: 6, runSpacing: 6,
               children: [
                 ChoiceChip(
                   label: const Text('전체'),
@@ -359,16 +359,14 @@ class _AuditTabState extends State<_AuditTab> {
                   ),
                 ],
               ],
-            ),
-          ),
-        ),
+            )]),
         const Divider(height: 1),
         Expanded(
           child: AsyncView<List<AuditLog>>(
             key: _viewKey,
             load: () => repo.auditLogs(action: _action, size: 100),
             emptyCheck: (l) => l.isEmpty,
-            emptyMessage: '기록이 없습니다.',
+            emptyMessage: '아직 등록된 기록이 없습니다',
             emptyIcon: Icons.receipt_long,
             builder: (context, logs, reload) => ListView.separated(
               itemCount: logs.length,
@@ -424,9 +422,9 @@ class _HealthTab extends StatelessWidget {
         final (health, stats) = data;
         final wide = AppTheme.isWide(context);
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           children: [
-            Card(
+            SectionCard(title: '서버 상태',
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(
@@ -505,7 +503,7 @@ class _HealthTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('테이블 현황 (${stats.tables.length}개)',
+                    Text('테이블 현황 (${Fmt.number(stats.tables.length)}개)',
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     for (final t in stats.tables)
@@ -517,7 +515,7 @@ class _HealthTab extends StatelessWidget {
                               child: Text(t.table,
                                   style: const TextStyle(fontSize: 12)),
                             ),
-                            Text('${t.rows}',
+                            Text(Fmt.number(t.rows),
                                 style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600)),

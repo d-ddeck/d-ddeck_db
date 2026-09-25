@@ -38,10 +38,29 @@ Future<bool> runGuarded(BuildContext context, Future<void> Function() action,
   }
 }
 
-abstract final class ConfirmDialog {
+class ConfirmDialog extends StatelessWidget {
+  const ConfirmDialog.form({super.key, required this.title, required this.content,
+    required this.actions, this.destructive = false});
+  final Widget title;
+  final Widget content;
+  final List<Widget> actions;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: title, content: content,
+    actions: [for (final action in actions) destructive ? Theme(
+      data: Theme.of(context).copyWith(filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.danger(context),
+          foregroundColor: Theme.of(context).colorScheme.onError))),
+      child: action,
+    ) : action],
+  );
+
   static Future<bool> show(BuildContext context, {required String title,
     required String message, String confirmLabel = '확인', bool destructive = false}) async {
-    return await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+    return await showDialog<bool>(context: context, builder: (context) => ConfirmDialog.form(
       title: Text(title),
       content: SingleChildScrollView(child: Text(message)),
       actions: [
@@ -56,8 +75,9 @@ abstract final class ConfirmDialog {
   }
 }
 
-Future<DateTime?> pickDate(BuildContext context, DateTime? initial) {
-  final first = DateTime(2000), last = DateTime(2100, 12, 31);
+Future<DateTime?> pickDate(BuildContext context, DateTime? initial,
+    {DateTime? firstDate, DateTime? lastDate}) {
+  final first = firstDate ?? DateTime(2000), last = lastDate ?? DateTime(2100, 12, 31);
   final date = DateUtils.dateOnly(initial ?? DateTime.now());
   return showDatePicker(context: context, locale: const Locale('ko', 'KR'),
     initialDate: date.isBefore(first) ? first : date.isAfter(last) ? last : date,

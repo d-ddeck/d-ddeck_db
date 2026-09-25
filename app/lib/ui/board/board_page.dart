@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/file_repository.dart';
 import '../../data/board_repository.dart';
 import '../../models/board.dart';
@@ -70,11 +72,20 @@ class _PostListTabState extends State<_PostListTab> {
     final canWrite = widget.board.canWrite(auth.role);
 
     return Scaffold(
-      body: Column(
+      appBar: AppBar(title: Text(widget.board.name), actions: [if (canWrite) FilledButton.icon(
+        onPressed: () async {
+                final created = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => PostFormPage(board: widget.board),
+                  ),
+                );
+                if (created == true) _refresh();
+              }, icon: const Icon(Icons.edit), label: const Text('글쓰기'))]),
+      body: PageBody(child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: TextField(
+          FilterBar(appliedFilters: [if (_query != null) '검색: $_query'],
+            onReset: () { setState(() => _query = null); _refresh(); },
+            children: [SizedBox(width: 360, child: TextField(key: ValueKey(_query),
               decoration: const InputDecoration(
                 hintText: '제목 / 내용 검색',
                 prefixIcon: Icon(Icons.search, size: 20),
@@ -84,8 +95,7 @@ class _PostListTabState extends State<_PostListTab> {
                 _query = v.trim().isEmpty ? null : v.trim();
                 _refresh();
               }),
-            ),
-          ),
+            ))]),
           const Divider(height: 1),
           Expanded(
             child: AsyncView<PagedList<Post>>(
@@ -96,7 +106,7 @@ class _PostListTabState extends State<_PostListTab> {
                 size: widget.board.pageSize,
               ),
               emptyCheck: (p) => p.isEmpty,
-              emptyMessage: '등록된 글이 없습니다.',
+              emptyMessage: '아직 등록된 게시글이 없습니다',
               emptyIcon: Icons.article_outlined,
               builder: (context, page, reload) => ListView.separated(
                 itemCount: page.items.length,
@@ -152,10 +162,10 @@ class _PostListTabState extends State<_PostListTab> {
                       padding: const EdgeInsets.only(top: 3),
                       child: Text(
                         '${post.author?.fullName ?? '-'} · '
-                        '${Fmt.relative(post.createdAt)} · 조회 ${post.viewCount}',
+                        '${Fmt.relative(post.createdAt)} · 조회 ${Fmt.number(post.viewCount)}',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Theme.of(context).colorScheme.outline,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -165,21 +175,9 @@ class _PostListTabState extends State<_PostListTab> {
             ),
           ),
         ],
-      ),
+      )),
       // The write button only appears when the board's write_role allows it.
-      floatingActionButton: canWrite
-          ? FloatingActionButton(
-              onPressed: () async {
-                final created = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => PostFormPage(board: widget.board),
-                  ),
-                );
-                if (created == true) _refresh();
-              },
-              child: const Icon(Icons.edit),
-            )
-          : null,
+
     );
   }
 }
@@ -209,14 +207,14 @@ class _PostDetailPageState extends State<PostDetailPage> {
     final repo = context.read<BoardRepository>();
     return Scaffold(
       appBar: AppBar(title: Text(widget.board.name)),
-      body: AsyncView<Post>(
+      body: PageBody(child: AsyncView<Post>(
         key: _viewKey,
         load: () => repo.post(widget.postId),
         builder: (context, post, reload) => Column(
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.zero,
                 children: [
                   Text(
                     post.title,
@@ -228,15 +226,15 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   const SizedBox(height: 6),
                   Text(
                     '${post.author?.display ?? '-'} · '
-                    '${Fmt.dateTime(post.createdAt)} · 조회 ${post.viewCount}',
+                    '${Fmt.dateTime(post.createdAt)} · 조회 ${Fmt.number(post.viewCount)}',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Theme.of(context).colorScheme.outline,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const Divider(height: 24),
-                  SelectableText(post.content,
-                      style: const TextStyle(fontSize: 14, height: 1.6)),
+                  SectionCard(title: '본문', child: SelectableText(post.content,
+                      style: const TextStyle(fontSize: 14, height: 1.6))),
                   const SizedBox(height: 24),
                   AttachmentSection(
                     entityType: FileRepository.post,
@@ -244,7 +242,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   ),
                   const SizedBox(height: 24),
                   if (widget.board.allowComment) ...[
-                    Text('댓글 ${post.comments.length}',
+                    Text('댓글 ${Fmt.number(post.comments.length)}',
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     for (final c in post.comments)
@@ -323,7 +321,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
               ),
           ],
         ),
-      ),
+      )),
     );
   }
 }
@@ -357,20 +355,21 @@ class _PostFormPageState extends State<PostFormPage> {
       appBar: AppBar(
         title: Text('${widget.board.name} 글쓰기'),
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: _busy ? null : _submit,
             child: const Text('등록'),
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: PageBody(child: ListView(
+        padding: EdgeInsets.zero,
         children: [
+          FormSection(title: '게시글', children: [
           TextField(
             controller: _title,
             decoration: const InputDecoration(labelText: '제목 *'),
           ),
-          const SizedBox(height: 12),
+          const FormGap(),
           TextField(
             controller: _content,
             decoration: const InputDecoration(
@@ -396,15 +395,15 @@ class _PostFormPageState extends State<PostFormPage> {
               value: _secret,
               onChanged: (v) => setState(() => _secret = v ?? false),
             ),
+          ]),
         ],
-      ),
+      )),
     );
   }
 
   Future<void> _submit() async {
     if (_title.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('제목을 입력해 주세요.')));
+      AppSnack.show(context, '제목을 입력해 주세요.');
       return;
     }
     setState(() => _busy = true);

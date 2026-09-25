@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/admin_repository.dart';
 import '../../data/service_repository.dart';
 import '../../data/store_repository.dart';
 import '../../models/common.dart';
 import '../../models/service.dart';
 import '../../models/store.dart';
-import '../async_view.dart';
 import '../common/download.dart';
 import '../format.dart';
 import '../theme.dart';
@@ -121,7 +122,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
           _stores = (results[1] as PagedList<Store>).items;
           _storesLoading = false;
         }
-        for (final group in results.skip(2).cast<CodeGroup>()) _codes[group.code] = group.items;
+        for (final group in results.skip(2).cast<CodeGroup>()) { _codes[group.code] = group.items; }
         _lookupsReady = true;
       });
     });
@@ -279,53 +280,56 @@ class _ServiceListTabState extends State<ServiceListTab> {
     if (mounted) setState(() => _exporting = false);
   }
 
+  Future<void> _create() async {
+    final created = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ServiceFormPage()));
+    if (created == true && mounted) _refresh();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('대응 기록'), actions: [
+      FilledButton.icon(onPressed: _create, icon: const Icon(Icons.add), label: const Text('접수')),
       TextButton.icon(onPressed: _exporting ? null : _export, icon: const Icon(Icons.download), label: Text(_exporting ? '저장 중' : '엑셀')),
     ]),
-    body: Column(children: [
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(
+    body: PageBody(child: Column(children: [
+
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        for (final entry in [(0, '접수', _searchCounts?[0] ?? _summary?.total), (1, '종결', _searchCounts?[1] ?? _summary?.completedCount), (2, '미종결', _searchCounts?[2] ?? _summary?.openCount)])
+          Padding(padding: const EdgeInsets.all(4), child: ActionChip(label: Text('${entry.$2} ${entry.$3 == null ? '…' : Fmt.number(entry.$3)}'), onPressed: () {
+            _set('status', entry.$1 == 1 ? 'COMPLETED' : null); _set('only_open', entry.$1 == 2 ? true : null); _refresh();
+          })),
+      ])),
+      FilterBar(
+        appliedFilters: [for (final e in _filters.entries) _filterLabel(e.key, e.value)],
+        onReset: () { _filters.clear(); _searchController.clear(); _sort = 'received_desc'; _loadLookups(); _refresh(); },
+        children: [
+          SizedBox(width: AppTheme.isWide(context) ? 360 : double.infinity, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(
         controller: _searchController, textInputAction: TextInputAction.search,
         decoration: InputDecoration(hintText: '번호 / 내용 / 매장 / 인원 / 시리얼 검색', prefixIcon: const Icon(Icons.search),
           suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: () { _set('q', _searchController.text.trim()); _refresh(); })),
         onSubmitted: (v) { _set('q', v.trim()); _refresh(); },
-      )),
-      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-        for (final entry in [(0, '접수', _searchCounts?[0] ?? _summary?.total), (1, '종결', _searchCounts?[1] ?? _summary?.completedCount), (2, '미종결', _searchCounts?[2] ?? _summary?.openCount)])
-          Padding(padding: const EdgeInsets.all(4), child: ActionChip(label: Text('${entry.$2} ${entry.$3 ?? '…'}'), onPressed: () {
-            _set('status', entry.$1 == 1 ? 'COMPLETED' : null); _set('only_open', entry.$1 == 2 ? true : null); _refresh();
-          })),
-      ])),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
-        OutlinedButton.icon(onPressed: _editFilters, icon: const Icon(Icons.filter_list), label: const Text('필터')),
-        TextButton(onPressed: () { _filters.clear(); _searchController.clear(); _sort = 'received_desc'; _loadLookups(); _refresh(); }, child: const Text('초기화')),
-        const Spacer(),
-        DropdownButton<String>(value: _sort, items: [for (final e in _sortLabels.entries)
-          DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) { if (v != null) { _sort = v; _refresh(); } }),
-      ])),
-      if (_filters.isNotEmpty) SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, children: [
-        for (final e in _filters.entries) Padding(padding: const EdgeInsets.only(left: 6), child: Chip(label: Text(_filterLabel(e.key, e.value)))),
-      ])),
-      Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
+      ))),
+          OutlinedButton.icon(onPressed: _editFilters, icon: const Icon(Icons.filter_list), label: const Text('상세 조건')),
+          DropdownButton<String>(value: _sort, items: [for (final e in _sortLabels.entries)
+            DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) { if (v != null) { _sort = v; _refresh(); } }),
+        ],
+      ),
+      Expanded(child: _loading ? const LoadingState() : RefreshIndicator(
         onRefresh: _refresh,
         child: ListView.builder(controller: _scroll, physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 88), itemCount: _rows.length + 1,
           itemBuilder: (context, i) {
-            if (i == _rows.length) return Padding(padding: const EdgeInsets.all(16), child: Center(
-              child: _failed ? TextButton(onPressed: _refresh, child: const Text('다시 불러오기'))
-                : _loadingMore ? const CircularProgressIndicator()
+            if (i == _rows.length) { return Padding(padding: const EdgeInsets.all(16), child: Center(
+              child: _failed ? ErrorState(message: '대응 기록을 불러오지 못했습니다', onRetry: _refresh)
+                : _loadingMore ? const LoadingState()
                 : _rows.length < _total ? TextButton(onPressed: _loadMore, child: Text('더 보기 (${_rows.length} / $_total)'))
-                : Text(_total == 0 ? '조건에 맞는 접수 건이 없습니다.' : '전체 $_total건'),
-            ));
+                : _total == 0 ? EmptyState(message: '아직 등록된 대응 기록이 없습니다', action: OutlinedButton(onPressed: _create, child: const Text('접수하기'))) : Text('전체 ${Fmt.number(_total)}건'),
+            )); }
             return _TicketTile(ticket: _rows[i], onChanged: _refresh);
           }),
       )),
-    ]),
-    floatingActionButton: FloatingActionButton.extended(onPressed: () async {
-      final created = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ServiceFormPage()));
-      if (created == true && mounted) _refresh();
-    }, icon: const Icon(Icons.add), label: const Text('접수')),
+    ])),
+
   );
 }
 
@@ -335,27 +339,20 @@ class _TicketTile extends StatelessWidget {
   final VoidCallback onChanged;
 
   @override
-  Widget build(BuildContext context) => Card(child: InkWell(
+  Widget build(BuildContext context) => Card(child: ListTile(
     onTap: () async {
       final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: ticket.id)));
       if (changed == true) onChanged();
     },
-    child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text(ticket.displayNo, style: const TextStyle(fontWeight: FontWeight.w700)),
-        Text(Fmt.date(ticket.receivedAt.toLocal())),
-        StatusChip(label: ticket.status == ServiceStatus.completed ? '종결' : ticket.status.label, color: ticket.status.color, dense: true),
-        if (ticket.isRental && !ticket.rentalReturned) const StatusChip(label: '렌탈 미회수', color: Colors.red, dense: true),
-      ]),
-      Text('${ticket.brandName ?? '-'} / ${ticket.storeName ?? '-'}'),
-      Text(ticket.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-      if (ticket.causeLabels.isNotEmpty) Text(ticket.causeLabels.join(' | ')),
-      Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text(ticket.responderNames.join(', ')),
-        const Icon(Icons.attach_file, size: 15), Text('${ticket.attachmentCount}'),
-        const Icon(Icons.chat_bubble_outline, size: 15), Text('${ticket.logCount}'),
-      ]),
-    ])),
+    title: Row(children: [
+      Expanded(child: Text('${ticket.displayNo} · ${ticket.title}', maxLines: 1, overflow: TextOverflow.ellipsis)),
+      const SizedBox(width: AppSpace.sm),
+      StatusChip(label: ticket.status == ServiceStatus.completed ? '종결' : ticket.status.label, color: ticket.status.color, dense: true),
+    ]),
+    subtitle: Text('${ticket.isRental && !ticket.rentalReturned ? '렌탈 미회수 · ' : ''}${ticket.brandName ?? '-'} / ${ticket.storeName ?? '-'} · ${Fmt.date(ticket.receivedAt.toLocal())} · '
+      '${ticket.causeLabels.join(' | ')} · ${ticket.responderNames.join(', ')} · 첨부 ${Fmt.number(ticket.attachmentCount)} · 기록 ${Fmt.number(ticket.logCount)}',
+      maxLines: 1, overflow: TextOverflow.ellipsis),
+    trailing: const Icon(Icons.chevron_right),
   ));
 }
 

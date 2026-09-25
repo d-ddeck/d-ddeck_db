@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
 import '../../data/store_repository.dart';
 import '../../models/common.dart';
 import '../../models/inventory.dart';
 import '../../models/store.dart';
-import '../async_view.dart';
 import '../format.dart';
 import '../inventory/asset_actions.dart';
 import '../inventory/asset_destination.dart';
@@ -135,43 +136,46 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
       ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: serial), const SizedBox(width: 12), Expanded(child: model),
       ])
-      : Column(children: [serial, const SizedBox(height: 12), model]));
+      : Column(children: [serial, const FormGap(), model]));
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text('${_store?.name ?? '매장'} 장비 설정')),
-    body: _loading ? const Center(child: CircularProgressIndicator())
-      : _store == null ? Center(child: TextButton(onPressed: _load, child: const Text('다시 불러오기')))
-      : AbsorbPointer(absorbing: _saving, child: ListView(padding: const EdgeInsets.all(16), children: [
+    body: _loading ? const LoadingState()
+      : _store == null ? ErrorState(message: '장비 설정을 불러오지 못했습니다', onRetry: _load)
+      : PageBody(child: Column(children: [
+          Expanded(child: AbsorbPointer(absorbing: _saving, child: ListView(padding: EdgeInsets.zero, children: [
         ListTile(contentPadding: EdgeInsets.zero, title: const Text('설치일'), subtitle: Text(Fmt.date(_date)),
           trailing: IconButton(onPressed: () => setState(() => _date = null), icon: const Icon(Icons.clear)),
           onTap: () async {
-            final date = await showDatePicker(context: context, initialDate: _date ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
+            final date = await pickDate(context, _date ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
             if (date != null && mounted) setState(() => _date = date);
           }),
-        for (final d in _drafts) Card(key: ValueKey(d), child: Padding(padding: const EdgeInsets.all(14), child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Expanded(child: Text('세트 ${d.setNo}', style: Theme.of(context).textTheme.titleMedium)),
-              IconButton(tooltip: '세트 삭제', icon: const Icon(Icons.delete_outline),
-                onPressed: () => _changeSet((repo) => repo.deleteSet(widget.storeId, d.setNo)))]),
+        for (final d in _drafts) SectionCard(key: ValueKey(d), title: '세트 ${d.setNo}', actions: [IconButton(tooltip: '세트 삭제', icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  if (await ConfirmDialog.show(context, title: '세트 삭제', message: '세트 ${d.setNo}을 삭제하시겠습니까?', confirmLabel: '삭제', destructive: true) && mounted) {
+                    _changeSet((repo) => repo.deleteSet(widget.storeId, d.setNo));
+                  }
+                })], child: FormSection(title: '장비 정보', children: [
+
             Row(children: [Expanded(child: TextField(controller: d.name, decoration: const InputDecoration(labelText: '세트 이름'))),
               TextButton(onPressed: () => _changeSet((repo) => repo.renameSet(widget.storeId, d.setNo, d.name.text.trim())), child: const Text('이름 저장'))]),
-            const SizedBox(height: 12),
+            const FormGap(),
             RadioGroup<String>(groupValue: d.gripper, onChanged: (v) => setState(() => d.gripper = v!), child: const Wrap(children: [
               SizedBox(width: 150, child: RadioListTile<String>(value: '전동', title: Text('전동'))),
               SizedBox(width: 150, child: RadioListTile<String>(value: '비전동', title: Text('비전동'))),
             ])),
-            const SizedBox(height: 12),
+            const FormGap(),
             TextField(controller: d.note, decoration: const InputDecoration(labelText: '세트 메모')),
             for (final k in _kinds.where((k) => _visible(k, d))) _slot(d, k),
           ],
-        ))),
+        )),
         OutlinedButton.icon(onPressed: () => _changeSet((repo) => repo.addSet(widget.storeId)), icon: const Icon(Icons.add), label: const Text('세트 추가')),
-        FilledButton(onPressed: _drafts.isEmpty ? null : _save, child: Text(_saving ? '저장 중' : '장비 설정 저장')),
-        const SizedBox(height: 24), Text('현재 설치 장비', style: Theme.of(context).textTheme.titleMedium),
+
+        const FormGap(), Text('현재 설치 장비', style: Theme.of(context).textTheme.titleMedium),
         const Text('장비별 세트를 바꾸면 입력 중인 장비 설정은 현재 설치 정보로 갱신됩니다.'),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+        ResponsiveTable.fromDataRows(
           columns: const [DataColumn(label: Text('세트')), DataColumn(label: Text('종류')), DataColumn(label: Text('S/N')), DataColumn(label: Text('상태')), DataColumn(label: Text('세트 바꾸기')), DataColumn(label: Text('작업'))],
           rows: [for (final a in _assets) DataRow(cells: [
             DataCell(Text('${a.setNo}')), DataCell(Text(a.category?.name ?? a.name)),
@@ -182,7 +186,9 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
             DataCell(AssetActionsMenu(key: ValueKey(a.id), assetId: a.id,
               label: '${a.name} S/N ${a.serialNo ?? a.assetNo}', atStore: true, onChanged: _load)),
           ])],
-        )),
-      ])),
+        ),
+      ]))),
+          FormActions(child: FilledButton(onPressed: _saving || _drafts.isEmpty ? null : _save, child: Text(_saving ? '저장 중' : '장비 설정 저장'))),
+        ])),
   );
 }

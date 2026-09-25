@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../data/file_repository.dart';
 import '../../data/store_repository.dart';
 import '../../models/store.dart';
@@ -52,7 +54,7 @@ class StoreDetailPage extends StatelessWidget {
           ),
         ],
       ),
-      body: AsyncView<Store>(
+      body: PageBody(child: AsyncView<Store>(
         key: viewKey,
         load: () => inventoryLoad(context, () => repo.get(storeId)),
         builder: (context, store, reload) {
@@ -60,7 +62,7 @@ class StoreDetailPage extends StatelessWidget {
           current = store;
           return _StoreBody(store: store, onRefresh: reload);
         },
-      ),
+      )),
     );
   }
 }
@@ -77,7 +79,7 @@ class _StoreBody extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
           Row(
             children: [
@@ -101,7 +103,7 @@ class _StoreBody extends StatelessWidget {
               Expanded(
                 child: StatTile(
                   label: '보유 장비',
-                  value: '${store.assetCount}대',
+                  value: '${Fmt.number(store.assetCount)}대',
                   icon: Icons.precision_manufacturing,
                 ),
               ),
@@ -109,16 +111,15 @@ class _StoreBody extends StatelessWidget {
               Expanded(
                 child: StatTile(
                   label: 'AS 이력',
-                  value: '${store.ticketCount}건',
+                  value: '${Fmt.number(store.ticketCount)}건',
                   icon: Icons.build_circle_outlined,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text('매장 상태', style: theme.textTheme.titleMedium),
           _InfoCard(store: store),
-          if (store.rentalCount > 0) Text('렌탈 중 ${store.rentalCount}대는 대응 기록에서 회수 처리'),
+          if (store.rentalCount > 0) Text('렌탈 중 ${Fmt.number(store.rentalCount)}대는 대응 기록에서 회수 처리'),
           OutlinedButton.icon(icon: const Icon(Icons.settings), label: const Text('장비 설정'),
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => StoreEquipmentPage(storeId: store.id)));
@@ -146,12 +147,12 @@ class _StoreBody extends StatelessWidget {
             entityId: store.id,
           ),
           const SizedBox(height: 20),
-          Text('보유 장비', style: theme.textTheme.titleMedium),
+          SectionCard(title: '보유 장비', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const SizedBox(height: 8),
           if (store.assetGroups.isEmpty)
             const StatePlaceholder(
               icon: Icons.inventory_2_outlined,
-              message: '이 매장에 등록된 장비가 없습니다.',
+              message: '아직 등록된 장비가 없습니다',
             )
           else
             for (final number in (store.assetGroups.expand((g) => g.assets).map((a) => a.setNo).toSet().toList()..sort())) ...[
@@ -164,33 +165,37 @@ class _StoreBody extends StatelessWidget {
                 ), onRefresh: onRefresh),
             ],
           const SizedBox(height: 20),
-          Text('서비스구분별 발생', style: theme.textTheme.titleMedium),
-          if (store.categoryCounts.isEmpty) const Text('발생 기록 없음'),
+          ])),
+          SectionCard(title: '구분별 발생', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (store.categoryCounts.isEmpty) const EmptyState(message: '아직 등록된 발생 기록이 없습니다'),
           for (final c in store.categoryCounts) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Column(
             crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${c.label} · ${c.count}건'),
+              Text('${c.label} · ${Fmt.number(c.count)}건'),
               LinearProgressIndicator(value: c.count / store.categoryCounts.fold<int>(1, (n, row) => row.count > n ? row.count : n),
                 color: _parseColor(c.color), minHeight: 10),
             ],
           )),
-          const SizedBox(height: 20), Text('미회수 렌탈', style: theme.textTheme.titleMedium),
-          if (store.unreturnedRentals.isEmpty) const Text('미회수 렌탈 없음'),
-          for (final rental in store.unreturnedRentals) ListTile(contentPadding: EdgeInsets.zero,
+          ])),
+          const SizedBox(height: 20), SectionCard(title: '미회수 렌탈', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (store.unreturnedRentals.isEmpty) const EmptyState(message: '아직 등록된 미회수 렌탈이 없습니다'),
+          for (final rental in store.unreturnedRentals) ListTile(contentPadding: EdgeInsets.zero, trailing: const Icon(Icons.chevron_right),
             title: Text('${rental.ticketNo} · ${rental.serials ?? '-'}'),
             subtitle: Text('${rental.rentalType ?? ''} · ${Fmt.date(rental.dueDate)} · ${rentalDday(rental.dday)}'),
             onTap: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: rental.ticketId)));
               if (context.mounted) onRefresh();
             }),
-          const SizedBox(height: 20), Text('대응 이력 (미종결 ${store.openTicketCount}건)', style: theme.textTheme.titleMedium),
-          if (store.recentTickets.isEmpty) const Text('대응 이력 없음'),
-          for (final ticket in store.recentTickets) ListTile(contentPadding: EdgeInsets.zero,
+          ])),
+          const SizedBox(height: 20), SectionCard(title: '대응 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (store.recentTickets.isEmpty) const EmptyState(message: '아직 등록된 대응 이력이 없습니다'),
+          for (final ticket in store.recentTickets) ListTile(contentPadding: EdgeInsets.zero, trailing: const Icon(Icons.chevron_right),
             title: Text('${ticket.ticketNo} · ${ServiceStatus.parse(ticket.status).label}'),
             subtitle: Text('${Fmt.date(ticket.receivedAt)} · ${ticket.causeLabels.join(' · ')}'),
             onTap: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: ticket.id)));
               if (context.mounted) onRefresh();
             }),
+          ])),
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
@@ -232,7 +237,7 @@ class _InfoCard extends StatelessWidget {
       if (store.note?.isNotEmpty == true) ('비고', store.note!),
     ];
 
-    return Card(
+    return SectionCard(title: '기본 정보',
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -293,7 +298,7 @@ class _AssetGroupCard extends StatelessWidget {
                       ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(width: 6),
-                Text('${group.count}대', style: theme.textTheme.bodySmall),
+                Text('${Fmt.number(group.count)}대', style: theme.textTheme.bodySmall),
               ],
             ),
             const SizedBox(height: 4),

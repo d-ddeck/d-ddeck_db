@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/auth_repository.dart';
 import '../../data/calendar_repository.dart';
@@ -56,7 +58,16 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget build(BuildContext context) {
     final repo = context.read<CalendarRepository>();
     return Scaffold(
-      body: AsyncView<_MonthData>(
+      appBar: AppBar(title: const Text('캘린더'), actions: [FilledButton.icon(
+        onPressed: () async {
+          final created = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => EventFormPage(initialDate: _selected),
+            ),
+          );
+          if (created == true) _refresh();
+        }, icon: const Icon(Icons.add), label: const Text('일정 등록'))]),
+      body: PageBody(child: AsyncView<_MonthData>(
         key: _viewKey,
         load: () async {
           try {
@@ -72,7 +83,7 @@ class _CalendarPageState extends State<CalendarPage> {
               holidays: results.skip(2).expand((v) => (v as List<Holiday>)).toList(),
             );
           } on ApiException catch (e) {
-            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+            if (context.mounted) AppSnack.show(context, e.message, error: true);
             rethrow;
           }
         },
@@ -85,7 +96,7 @@ class _CalendarPageState extends State<CalendarPage> {
               .toList()
             ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
 
-          return Column(
+          return ListView(
             children: [
               _MonthHeader(
                 month: _month,
@@ -107,13 +118,12 @@ class _CalendarPageState extends State<CalendarPage> {
                 onSelect: (d) => setState(() => _selected = d),
               ),
               const Divider(height: 1),
-              Expanded(
-                child: dayEvents.isEmpty
+              dayEvents.isEmpty
                     ? StatePlaceholder(
                         icon: Icons.event_available,
-                        message: '${Fmt.monthDay(_selected)} 일정이 없습니다.',
+                        message: '아직 등록된 일정이 없습니다',
                       )
-                    : ListView.separated(
+                    : ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                         itemCount: dayEvents.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, i) => _EventTile(
@@ -122,23 +132,11 @@ class _CalendarPageState extends State<CalendarPage> {
                           onChanged: reload,
                         ),
                       ),
-              ),
             ],
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final created = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => EventFormPage(initialDate: _selected),
-            ),
-          );
-          if (created == true) _refresh();
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('일정 등록'),
-      ),
+      )),
+
     );
   }
 }
@@ -225,8 +223,8 @@ class _MonthGrid extends StatelessWidget {
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: switch (i) {
-                          5 => Colors.blue,
-                          6 => Colors.red,
+                          5 => AppColors.info(context),
+                          6 => AppColors.danger(context),
                           _ => scheme.outline,
                         },
                       ),
@@ -296,13 +294,13 @@ class _DayCell extends StatelessWidget {
 
     return InkWell(
       onTap: () => onTap(date),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Container(
-        height: 52,
+        constraints: const BoxConstraints(minHeight: 52, minWidth: 44),
         margin: const EdgeInsets.all(1),
         decoration: BoxDecoration(
           color: isSelected ? scheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           border: isToday && !isSelected
               ? Border.all(color: scheme.primary, width: 1.2)
               : null,
@@ -315,18 +313,18 @@ class _DayCell extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
-                color: holiday.isNotEmpty ? Colors.red : !inMonth
-                    ? scheme.outlineVariant
+                color: holiday.isNotEmpty ? AppColors.danger(context) : !inMonth
+                    ? scheme.onSurfaceVariant
                     : switch (date.weekday) {
-                        6 => Colors.blue,
-                        7 => Colors.red,
+                        6 => AppColors.info(context),
+                        7 => AppColors.danger(context),
                         _ => null,
                       },
               ),
             ),
             if (holiday.isNotEmpty) Tooltip(message: holiday, child: Text(holiday,
               maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 8, color: Colors.red))),
+              style: TextStyle(fontSize: 8, color: AppColors.danger(context)))),
             const SizedBox(height: 3),
             // Up to three dots, then a "+N" marker, so a busy day stays legible.
             Row(
@@ -345,7 +343,7 @@ class _DayCell extends StatelessWidget {
                 if (dayEvents.length > 3)
                   Text(
                     '+${dayEvents.length - 3}',
-                    style: TextStyle(fontSize: 8, color: scheme.outline),
+                    style: TextStyle(fontSize: 8, color: scheme.onSurfaceVariant),
                   ),
               ],
             ),
@@ -391,10 +389,10 @@ class _EventTile extends StatelessWidget {
         '${Fmt.range(event.startsAt, event.endsAt, allDay: event.allDay)}'
         '${event.location != null ? ' · ${event.location}' : ''}',
         style: TextStyle(
-            fontSize: 11, color: Theme.of(context).colorScheme.outline),
+            fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       trailing: me == null
-          ? null
+          ? const Icon(Icons.chevron_right)
           : PopupMenuButton<ParticipantResponse>(
               tooltip: '참석 응답',
               child: StatusChip(
@@ -435,9 +433,9 @@ class _EventSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
+        child: SectionCard(title: '일정 정보', child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -461,8 +459,8 @@ class _EventSheet extends StatelessWidget {
                 Icons.notifications_outlined,
                 event.reminders.map((r) => r.label).join(', '),
               ),
-            const SizedBox(height: 12),
-            Text('참석자 ${event.participants.length}명',
+            const FormGap(),
+            Text('참석자 ${Fmt.number(event.participants.length)}명',
                 style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Wrap(
@@ -480,8 +478,8 @@ class _EventSheet extends StatelessWidget {
               ],
             ),
           ],
-        ),
-      ),
+        )),
+      )),
     );
   }
 
@@ -490,7 +488,7 @@ class _EventSheet extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 15, color: Theme.of(context).colorScheme.outline),
+            Icon(icon, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 8),
             Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
           ],
@@ -542,7 +540,7 @@ class _EventFormPageState extends State<EventFormPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('일정 등록')),
-      body: AsyncView<(List<AppCalendar>, List<UserBrief>)>(
+      body: PageBody(child: AsyncView<(List<AppCalendar>, List<UserBrief>)>(
         load: () async {
           final results = await Future.wait([
             calendarRepo.calendars(),
@@ -557,17 +555,17 @@ class _EventFormPageState extends State<EventFormPage> {
           final (calendars, members) = data;
           _calendarId ??= calendars.isNotEmpty ? calendars.first.id : null;
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
+          return Column(children: [Expanded(child: ListView(
+            padding: EdgeInsets.zero,
             children: [
               TextField(
                 controller: _title,
                 decoration: const InputDecoration(labelText: '제목 *'),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               DropdownButtonFormField<String>(
                 initialValue: _calendarId,
-                decoration: const InputDecoration(labelText: '캘린더'),
+                decoration: const InputDecoration(labelText: '캘린더 *'),
                 isExpanded: true,
                 items: [
                   for (final c in calendars)
@@ -591,7 +589,7 @@ class _EventFormPageState extends State<EventFormPage> {
                 ],
                 onChanged: (v) => setState(() => _calendarId = v),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('종일', style: TextStyle(fontSize: 14)),
@@ -615,12 +613,12 @@ class _EventFormPageState extends State<EventFormPage> {
                 allDay: _allDay,
                 onChanged: (d) => setState(() => _end = d),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               TextField(
                 controller: _location,
                 decoration: const InputDecoration(labelText: '장소'),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               DropdownButtonFormField<int>(
                 initialValue: _reminderMinutes,
                 decoration: const InputDecoration(labelText: '알림'),
@@ -654,7 +652,7 @@ class _EventFormPageState extends State<EventFormPage> {
                     ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               TextField(
                 controller: _description,
                 decoration: const InputDecoration(
@@ -664,7 +662,10 @@ class _EventFormPageState extends State<EventFormPage> {
                 maxLines: 3,
               ),
               const SizedBox(height: 20),
-              FilledButton(
+
+              const SizedBox(height: 24),
+            ],
+          )), FormActions(child: FilledButton(
                 onPressed: _busy ? null : _submit,
                 child: _busy
                     ? const SizedBox(
@@ -673,19 +674,15 @@ class _EventFormPageState extends State<EventFormPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('등록 (참석자에게 알림 발송)'),
-              ),
-              const SizedBox(height: 24),
-            ],
-          );
+              ))]);
         },
-      ),
+      )),
     );
   }
 
   Future<void> _submit() async {
     if (_title.text.trim().isEmpty || _calendarId == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('제목과 캘린더를 확인해 주세요.')));
+      AppSnack.show(context, '제목과 캘린더를 확인해 주세요.');
       return;
     }
     setState(() => _busy = true);
@@ -733,12 +730,7 @@ class _DateTimeRow extends StatelessWidget {
           Expanded(
             child: OutlinedButton(
               onPressed: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: value,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2100),
-                );
+                final date = await pickDate(context, value, firstDate: DateTime(2020), lastDate: DateTime(2100));
                 if (date == null) return;
                 onChanged(DateTime(
                     date.year, date.month, date.day, value.hour, value.minute));

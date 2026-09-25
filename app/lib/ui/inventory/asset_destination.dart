@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../theme.dart';
+
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/inventory_repository.dart';
@@ -10,7 +14,7 @@ import '../../models/inventory.dart';
 import '../../models/store.dart';
 
 void inventoryMessage(BuildContext context, String message) =>
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    AppSnack.show(context, message);
 
 Future<T> inventoryLoad<T>(BuildContext context, Future<T> Function() load) async {
   try { return await load(); } on ApiException catch (e) {
@@ -20,7 +24,7 @@ Future<T> inventoryLoad<T>(BuildContext context, Future<T> Function() load) asyn
 }
 
 Future<void> inventoryResult(BuildContext context, String title, String text) =>
-    showDialog<void>(context: context, builder: (ctx) => AlertDialog(
+    showDialog<void>(context: context, builder: (ctx) => ConfirmDialog.form(
       title: Text(title), content: SingleChildScrollView(child: Text(text)),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('확인'))],
     ));
@@ -100,7 +104,7 @@ class _AssetDestinationFieldsState extends State<AssetDestinationFields> {
         d.storeId = null; d.brandId = null; d.setNo = null; d.locationId = null; d.clearStore = false;
         _sets = []; _request++;
       }), required: widget.registration, empty: '위치만 이동'),
-      const SizedBox(height: 12),
+      const FormGap(),
       if (status == null && !widget.registration)
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('매장으로 이동'),
           value: d.toStore, onChanged: (v) => setState(() {
@@ -113,7 +117,7 @@ class _AssetDestinationFieldsState extends State<AssetDestinationFields> {
         inventoryChoice('브랜드', d.brandId, {
           for (final s in widget.stores) if (s.brandId != null) s.brandId!: s.brandName,
         }, (v) => setState(() { d.brandId = v; d.storeId = null; d.setNo = null; _sets = []; _request++; }), empty: '전체 브랜드'),
-        const SizedBox(height: 12),
+        const FormGap(),
         inventoryChoice('매장', d.storeId, {
           for (final s in widget.stores.where((s) => d.brandId == null || s.brandId == d.brandId)) s.id: '${s.brandName} · ${s.name}',
         }, (v) {
@@ -121,7 +125,7 @@ class _AssetDestinationFieldsState extends State<AssetDestinationFields> {
           if (v != null) _loadSets(v);
         }, required: rule == 'store' || (status == null && d.toStore)),
         if (d.storeId != null) ...[
-          const SizedBox(height: 12),
+          const FormGap(),
           inventoryChoice('세트 번호', d.setNo?.toString(), {
             '0': '세트 미지정', for (final s in _sets) '${s.setNo}': s.label,
           }, (v) => setState(() => d.setNo = v == null ? null : int.parse(v)), empty: '기존 세트 유지'),
@@ -139,8 +143,13 @@ class _AssetDestinationFieldsState extends State<AssetDestinationFields> {
 }
 
 Future<bool> showAssetMoveDialog(BuildContext context, List<String> ids, {bool bulk = false}) async {
-  final changed = await showDialog<bool>(context: context,
-    builder: (_) => _AssetMoveDialog(ids: ids, bulk: bulk));
+  final changed = AppTheme.isWide(context)
+      ? await showDialog<bool>(context: context,
+          builder: (_) => _AssetMoveDialog(ids: ids, bulk: bulk))
+      : await showModalBottomSheet<bool>(context: context, isScrollControlled: true,
+          useSafeArea: true, isDismissible: false, enableDrag: false,
+          builder: (_) => SizedBox(height: MediaQuery.sizeOf(context).height,
+            child: _AssetMoveDialog(ids: ids, bulk: bulk)));
   return changed == true;
 }
 
@@ -204,15 +213,34 @@ class _AssetMoveDialogState extends State<_AssetMoveDialog> {
     } finally { if (mounted) setState(() => _saving = false); }
   }
   @override
-  Widget build(BuildContext context) => PopScope(canPop: !_saving, child: AlertDialog(
-    title: Text('이동 / 상태 변경 (${widget.ids.length}대)'),
-    content: SizedBox(width: 480, child: _loading ? const Center(heightFactor: 2, child: CircularProgressIndicator())
-      : SingleChildScrollView(child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget build(BuildContext context) {
+    final content = _loading ? const LoadingState() : Form(key: _form,
+      child: FormSection(title: '이동 정보', children: [
         AssetDestinationFields(value: _value, statuses: _statuses, stores: _stores, locations: _locations),
-        const SizedBox(height: 12),
         TextFormField(controller: _reason, decoration: const InputDecoration(labelText: '메모 (이동 사유)'), maxLines: 3),
-      ])))),
-    actions: [TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('취소')),
-      FilledButton(onPressed: _saving || _loading ? null : _save, child: Text(_saving ? '저장 중' : '변경'))],
-  ));
+      ]));
+    final actions = Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+      TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('취소')),
+      const SizedBox(width: AppSpace.sm),
+      FilledButton(onPressed: _saving || _loading ? null : _save, child: Text(_saving ? '저장 중' : '변경')),
+    ]);
+    final title = '이동 / 상태 변경 (${widget.ids.length}대)';
+    return PopScope(canPop: !_saving, child: AppTheme.isWide(context)
+      ? Dialog(child: SizedBox(width: 520, child: Padding(
+          padding: const EdgeInsets.all(AppSpace.xl),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const FormGap(),
+            Flexible(child: SingleChildScrollView(child: content)),
+            FormActions(child: actions),
+          ]),
+        )))
+      : Padding(padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: PageBody(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const FormGap(),
+            Expanded(child: SingleChildScrollView(child: content)),
+            FormActions(child: actions),
+          ]))));
+  }
 }

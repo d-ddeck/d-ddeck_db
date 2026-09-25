@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../common/common.dart';
+
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../../data/auth_repository.dart';
@@ -134,7 +136,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       }).catchError((Object error) {
         // 설정 조회 실패는 기본 규칙으로 계속 진행한다.
         if (error is ApiException && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+          AppSnack.show(context, error.message, error: true);
         }
       }),
     ]);
@@ -193,13 +195,12 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             icon: const Icon(Icons.calendar_today, size: 18),
             label: Text('$label: ${date == null ? '선택' : Fmt.date(date)}'),
             onPressed: () async {
-              final picked = await showDatePicker(context: context, initialDate: date ?? DateTime.now(),
-                firstDate: DateTime(1900), lastDate: DateTime(2100, 12, 31));
+              final picked = await pickDate(context, date ?? DateTime.now(), firstDate: DateTime(1900), lastDate: DateTime(2100, 12, 31));
               if (picked != null && mounted) setState(() => changed(picked));
             },
           ),
           if (field.hasError) Text(field.errorText!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          const SizedBox(height: 12),
+          const FormGap(),
         ]),
       );
 
@@ -229,11 +230,12 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(_isEdit ? '대응 기록 수정' : '대응 기록 접수')),
-    body: AsyncView<_FormOptions>(
+    body: PageBody(child: AsyncView<_FormOptions>(
       load: () => serviceLoad(context, _loadOptions),
       builder: (context, options, reload) => Form(
         key: _formKey,
-        child: ListView(padding: EdgeInsets.symmetric(horizontal: AppTheme.isWide(context) ? 32 : 16, vertical: 16), children: [
+        child: Column(children: [Expanded(child: ListView(padding: EdgeInsets.zero, children: [
+          FormSection(title: '매장', children: [
           DropdownButtonFormField<String>(
             key: ValueKey('brand:$_brandId'), initialValue: options.brands.any((b) => b.brandId == _brandId) ? _brandId : null, isExpanded: true,
             decoration: const InputDecoration(labelText: '브랜드'),
@@ -242,7 +244,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 DropdownMenuItem(value: b.brandId, child: Text(b.brandName))],
             onChanged: (v) => _changeBrand(v == '' ? null : v),
           ),
-          const SizedBox(height: 12),
+          const FormGap(),
           DropdownButtonFormField<String>(
             key: ValueKey('store:$_brandId:$_storeId:$_storesLoading'), initialValue: _storeId, isExpanded: true,
             decoration: InputDecoration(labelText: _storesLoading ? '매장 불러오는 중' : '매장 *'),
@@ -250,20 +252,32 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             onChanged: _storesLoading ? null : (v) => setState(() => _storeId = v),
             validator: (v) => v == null ? '매장을 선택해 주세요.' : null,
           ),
-          const SizedBox(height: 12),
+          const FormGap(),
+          ]),
+          const FormGap(),
+          FormSection(title: '발생', children: [
           _date('발생일', _receivedAt, (v) => _receivedAt = v, required: true),
           TextFormField(controller: _description, maxLines: 4,
             decoration: const InputDecoration(labelText: '발생 내용 *', alignLabelWithHint: true),
             validator: (v) => v == null || v.trim().isEmpty ? '발생 내용을 입력해 주세요.' : null),
-          const SizedBox(height: 12),
+          const FormGap(),
+          ]),
+          const FormGap(),
+          FormSection(title: '원인', children: [
           _code('과실', _faultId, options.items('SERVICE_FAULT'), (v) => setState(() => _faultId = v)),
           for (var i = 0; i < _causes.length; i++) _cause(_causes[i], i, options),
           TextButton.icon(onPressed: _causes.length >= 10 ? null : () => setState(() => _causes.add(_CauseInput())),
             icon: const Icon(Icons.add), label: const Text('서비스구분 추가')),
+          ]),
+          const FormGap(),
+          FormSection(title: '대응', children: [
           const Text('대응인원'),
           Wrap(spacing: 8, children: [for (final r in options.items('SERVICE_RESPONDER').where((r) => r.isActive || _responders.contains(r.id)))
             FilterChip(label: Text(r.name), selected: _responders.contains(r.id),
               onSelected: (v) => setState(() { v ? _responders.add(r.id) : _responders.remove(r.id); }))]),
+          ]),
+          const FormGap(),
+          FormSection(title: '렌탈', children: [
           SwitchListTile(title: const Text('렌탈'), value: _isRental, onChanged: (v) => setState(() => _isRental = v)),
           if (_isRental) ...[
             _code('렌탈 장비 종류', _rentalTypeId, options.items('SERVICE_RENTAL_TYPE'), (v) => setState(() => _rentalTypeId = v), required: true),
@@ -275,7 +289,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 var serials = <String>[];
                 await runGuarded(context, () async {
                   final page = await context.read<InventoryRepository>().list(query: query);
-                  final prefix = value.text.contains(',') ? value.text.substring(0, value.text.lastIndexOf(',') + 1).trimRight() + ' ' : '';
+                  final prefix = value.text.contains(',') ? "${value.text.substring(0, value.text.lastIndexOf(',') + 1).trimRight()} " : '';
                   serials = page.items.map((a) => a.serialNo).whereType<String>().where((s) => s.isNotEmpty).map((s) => '$prefix$s').toSet().toList();
                 });
                 return serials;
@@ -287,12 +301,17 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 onChanged: (v) => _rentalSerials = v,
                 validator: (v) => v == null || v.trim().isEmpty ? '시리얼을 입력해 주세요.' : null),
             ),
-            const SizedBox(height: 20),
+            const FormGap(),
             _date('회수 예정일', _rentalDueDate, (v) => _rentalDueDate = v, required: true),
-            SwitchListTile(title: const Text('회수 여부'), value: _rentalReturned, onChanged: (v) => setState(() => _rentalReturned = v)),
+            SwitchListTile(title: const Text('회수 여부'), value: _rentalReturned, onChanged: (v) async {
+              if (v && !await ConfirmDialog.show(context, title: '렌탈 회수', message: '렌탈 장비를 회수 처리하시겠습니까?', confirmLabel: '회수', destructive: true)) return;
+              if (mounted) setState(() => _rentalReturned = v);
+            }),
             if (_rentalReturned) _date('실제 회수일', _rentalReturnDate, (v) => _rentalReturnDate = v, required: true),
           ],
-          ExpansionTile(title: const Text('기타 정보'), children: [
+          ]),
+          const FormGap(),
+          FormSection(title: '기타', children: [
               DropdownButtonFormField<String>(
                 initialValue: _customerId,
                 decoration: const InputDecoration(labelText: '거래처'),
@@ -314,29 +333,29 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 }),
               ),
               if (_customerId == null) ...[
-                const SizedBox(height: 12),
+                const FormGap(),
                 TextFormField(
                   controller: _customerName,
                   decoration: const InputDecoration(labelText: '거래처명 (직접 입력)'),
                 ),
               ],
-              const SizedBox(height: 12),
+              const FormGap(),
               TextFormField(
                 controller: _phone,
                 decoration: const InputDecoration(labelText: '연락처'),
                 keyboardType: TextInputType.phone,
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               TextFormField(
                 controller: _address,
                 decoration: const InputDecoration(labelText: '현장 주소'),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               TextFormField(
                 controller: _product,
                 decoration: const InputDecoration(labelText: '제품명'),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               Row(
                 children: [
                   Expanded(
@@ -367,7 +386,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 ],
                 onChanged: (v) => setState(() => _assigneeId = v),
               ),
-              const SizedBox(height: 12),
+              const FormGap(),
               Row(
                 children: [
                   Expanded(
@@ -408,20 +427,17 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                 onChanged: (v) => setState(() => _isWarranty = v),
               ),
           ]),
-          const SizedBox(height: 24),
-          FilledButton(onPressed: _busy || _storesLoading ? null : _submit,
-            child: Text(_busy ? '저장 중…' : '저장')),
-          const SizedBox(height: 24),
-        ]),
+          const FormGap(),
+        ])), FormActions(child: FilledButton(onPressed: _busy || _storesLoading ? null : _submit,
+            child: Text(_busy ? '저장 중…' : '저장')))]),
       ),
-    ),
+    )),
   );
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     final repo = context.read<ServiceRepository>();
-    final messenger = ScaffoldMessenger.of(context);
     final causes = _causes.map((c) => c.toJson()).toList();
     final ok = await runGuarded(context, () async {
       final ServiceTicket saved;
@@ -453,7 +469,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
           assigneeId: _assigneeId, priority: _priority, channel: _channel, isWarranty: _isWarranty,
         );
       }
-      messenger.showSnackBar(SnackBar(content: Text(saved.notices.isEmpty ? '저장되었습니다.' : saved.notices.join('\n'))));
+      if (!mounted) return;
+      AppSnack.show(context, saved.notices.isEmpty ? '저장되었습니다.' : saved.notices.join('\n'));
     });
     if (!mounted) return;
     setState(() => _busy = false);

@@ -93,7 +93,7 @@ class DashboardPage extends StatelessWidget {
             Text(
               '${Fmt.date(DateTime.now())} · 이번 달 기준',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
             const SizedBox(height: AppSpace.lg),
@@ -146,7 +146,7 @@ class DashboardPage extends StatelessWidget {
             SectionCard(title: '미종결 ${Fmt.number(data.service.openCount)}건', actions: [
               TextButton(onPressed: () => viewAll(const ServiceListTab(initialOnlyOpen: true)), child: const Text('전체 보기')),
             ], child: Column(children: [
-              if (data.service.openTickets.isEmpty) const _EmptyRow(text: '미종결 기록이 없습니다.'),
+              if (data.service.openTickets.isEmpty) const _EmptyRow(text: '아직 등록된 미종결 기록이 없습니다'),
               for (final t in data.service.openTickets.take(10)) ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text('${t.ticketNo} · ${t.storeName ?? '-'}'),
@@ -161,7 +161,7 @@ class DashboardPage extends StatelessWidget {
             SectionCard(title: '렌탈 미회수', actions: [
               TextButton(onPressed: () => viewAll(const ServiceListTab(initialFilters: {'is_rental': true, 'rental_unreturned': true})), child: const Text('전체 보기')),
             ], child: Column(children: [
-              if (data.service.unreturnedRentals.isEmpty) const _EmptyRow(text: '미회수 렌탈이 없습니다.'),
+              if (data.service.unreturnedRentals.isEmpty) const _EmptyRow(text: '아직 등록된 미회수 렌탈이 없습니다'),
               for (final r in data.service.unreturnedRentals) ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text('${r.ticketNo} · ${r.storeName ?? '-'}'),
@@ -181,7 +181,7 @@ class DashboardPage extends StatelessWidget {
               title: '오늘 일정 · ${Fmt.number(data.todayEvents.length)}건',
               actions: [TextButton(onPressed: () => viewAll(const CalendarPage()), child: const Text('전체 보기'))],
               child: data.todayEvents.isEmpty
-                  ? const _EmptyRow(text: '오늘 등록된 일정이 없습니다.')
+                  ? const _EmptyRow(text: '아직 등록된 오늘 일정이 없습니다')
                   : Column(
                       children: [
                         for (final e in data.todayEvents) _EventRow(event: e),
@@ -193,12 +193,12 @@ class DashboardPage extends StatelessWidget {
             SectionCard(title: '최근 기록', actions: [
               TextButton(onPressed: () => viewAll(const ServiceListTab()), child: const Text('전체 보기')),
             ], child: Column(children: [
-              if (data.service.recent.isEmpty) const _EmptyRow(text: '최근 기록이 없습니다.'),
+              if (data.service.recent.isEmpty) const _EmptyRow(text: '아직 등록된 대응 기록이 없습니다'),
               for (final t in data.service.recent.take(10)) _TicketRow(ticket: t, onChanged: reload),
             ])),
             const SizedBox(height: AppSpace.lg),
             SectionCard(title: '연도별 건수', child: Column(children: [
-              if (data.service.byYear.isEmpty) const _EmptyRow(text: '집계된 기록이 없습니다.'),
+              if (data.service.byYear.isEmpty) const _EmptyRow(text: '아직 등록된 집계 기록이 없습니다'),
               for (final y in data.service.byYear) Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
                   SizedBox(width: 52, child: Text(y.year)),
@@ -212,7 +212,7 @@ class DashboardPage extends StatelessWidget {
             SectionCard(
               title: '내 진행중 AS · ${Fmt.number(data.myOpen.total)}건',
               child: data.myOpen.isEmpty
-                  ? const _EmptyRow(text: '진행중인 AS가 없습니다.')
+                  ? const _EmptyRow(text: '아직 등록된 진행 중 AS가 없습니다')
                   : Column(
                       children: [
                         for (final t in data.myOpen.items)
@@ -289,7 +289,7 @@ class _TicketRow extends StatelessWidget {
               Fmt.relative(ticket.receivedAt),
               style: TextStyle(
                 fontSize: 11,
-                color: Theme.of(context).colorScheme.outline,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
     );

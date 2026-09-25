@@ -3,8 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../common/common.dart';
+
 import '../../services/wireguard_config.dart';
-import '../theme.dart';
 
 class VpnQrPage extends StatefulWidget {
   const VpnQrPage({super.key});
@@ -40,8 +41,9 @@ class _VpnQrPageState extends State<VpnQrPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('QR 촬영')),
-    body: !Platform.isAndroid
-        ? const StatePlaceholder(
+    body: PageBody(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420),
+      child: !Platform.isAndroid
+        ? const EmptyState(
             icon: Icons.qr_code,
             message: 'QR 촬영은 안드로이드에서 사용할 수 있습니다.',
           )
@@ -54,8 +56,7 @@ class _VpnQrPageState extends State<VpnQrPage> {
               Expanded(
                 child: MobileScanner(
                   onDetect: _onDetect,
-                  errorBuilder: (context, error) => StatePlaceholder(
-                    icon: Icons.no_photography_outlined,
+                  errorBuilder: (context, error) => ErrorState(
                     message:
                         error.errorCode ==
                             MobileScannerErrorCode.permissionDenied
@@ -78,6 +79,6 @@ class _VpnQrPageState extends State<VpnQrPage> {
                   ),
                 ),
             ],
-          ),
+          )))),
   );
 }

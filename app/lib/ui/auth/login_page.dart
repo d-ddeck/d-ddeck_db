@@ -104,9 +104,9 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      body: Center(
+      body: PageBody(child: Center(
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg),
+          padding: EdgeInsets.zero,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Card(child: Padding(
@@ -118,7 +118,7 @@ class _LoginPageState extends State<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Icon(Icons.storage_rounded, size: 52, color: scheme.primary),
-                  const SizedBox(height: 14),
+                  const FormGap(),
                   Text(
                     AppConfig.appName,
                     textAlign: TextAlign.center,
@@ -134,14 +134,14 @@ class _LoginPageState extends State<LoginPage> {
                     style: Theme.of(context)
                         .textTheme
                         .bodyMedium
-                        ?.copyWith(color: scheme.outline),
+                        ?.copyWith(color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 28),
 
                   // VPN 이 꺼져 있으면 로그인 자체가 안 되므로 로그인 전에 연결한다.
                   if (VpnService.isSupported) ...[
                     const VpnControls(),
-                    const SizedBox(height: 20),
+                    const FormGap(),
                   ],
 
                   TextFormField(
@@ -189,7 +189,7 @@ class _LoginPageState extends State<LoginPage> {
                       _rememberMe
                           ? '다음부터 바로 시작합니다 (최대 14일)'
                           : '앱을 닫으면 다시 로그인해야 합니다',
-                      style: TextStyle(fontSize: 11, color: scheme.outline),
+                      style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                     ),
                     controlAffinity: ListTileControlAffinity.leading,
                     contentPadding: EdgeInsets.zero,
@@ -234,7 +234,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
 
                   if (_error != null) ...[
-                    const SizedBox(height: 14),
+                    const FormGap(),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -261,8 +261,8 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
 
-                  const SizedBox(height: 20),
-                  FilledButton(
+                  const FormGap(),
+                  FormActions(child: FilledButton(
                     onPressed: _busy ? null : _submit,
                     child: _busy
                         ? const SizedBox(
@@ -271,7 +271,7 @@ class _LoginPageState extends State<LoginPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('로그인'),
-                  ),
+                  )),
                   const SizedBox(height: 8),
                   OutlinedButton(
                     onPressed: _busy
@@ -282,7 +282,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                     child: const Text('회원가입 신청'),
                   ),
-                  const SizedBox(height: 14),
+                  const FormGap(),
                   const SizedBox(height: 4),
                   Text(
                     '가입 후 관리자 승인이 완료되어야 로그인할 수 있습니다.',
@@ -290,7 +290,7 @@ class _LoginPageState extends State<LoginPage> {
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
-                        ?.copyWith(color: scheme.outline),
+                        ?.copyWith(color: scheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -298,7 +298,7 @@ class _LoginPageState extends State<LoginPage> {
             )),
           ),
         ),
-      ),
+      )),
     );
   }
 }
@@ -313,17 +313,17 @@ class SignupSubmittedPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('가입 신청 완료')),
-      body: Center(
+      body: PageBody(child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.zero,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.mark_email_read_outlined,
                     size: 56, color: Colors.green),
-                const SizedBox(height: 16),
+                const FormGap(),
                 Text(
                   message,
                   textAlign: TextAlign.center,
@@ -334,20 +334,20 @@ class SignupSubmittedPage extends StatelessWidget {
                   '관리자가 승인하면 알림을 받게 되며, 그 후 로그인할 수 있습니다.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
-                const SizedBox(height: 24),
-                FilledButton(
+                const FormGap(),
+                FormActions(child: FilledButton(
                   onPressed: () => Navigator.of(context)
                       .popUntil((route) => route.isFirst),
                   child: const Text('로그인 화면으로'),
-                ),
+                )),
               ],
             ),
           ),
         ),
-      ),
+      )),
     );
   }
 }
@@ -359,16 +359,7 @@ class AuthLoadingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('세션 확인 중...'),
-          ],
-        ),
-      ),
+      body: PageBody(child: LoadingState(message: '세션 확인 중...')),
     );
   }
 }

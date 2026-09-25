@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:provider/provider.dart';
 
+import 'common/common.dart';
+
 import '../data/calendar_repository.dart';
 import '../models/calendar.dart';
 import '../services/alarm_service.dart';
@@ -45,17 +47,17 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
     if (!AlarmService.isSupported) {
       return Scaffold(
         appBar: AppBar(title: const Text('일정 알림')),
-        body: StatePlaceholder(
+        body: PageBody(child: StatePlaceholder(
           icon: Icons.notifications_off_outlined,
           message: '이 기기에서는 사용할 수 없습니다',
           detail: AlarmService.unsupportedReason,
-        ),
+        )),
       );
     }
 
     return Scaffold(
       appBar: AppBar(title: const Text('일정 알림')),
-      body: AsyncView<_AlarmStatus>(
+      body: PageBody(child: AsyncView<_AlarmStatus>(
         key: _viewKey,
         load: () async {
           final reminders = await repo.upcomingReminders(days: 7);
@@ -66,11 +68,11 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
           );
         },
         builder: (context, data, reload) => ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           children: [
             if (!data.exactAllowed) _ExactAlarmWarning(onFixed: reload),
 
-            Card(
+            SectionCard(title: '알림 상태',
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(
@@ -84,7 +86,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
                               : Icons.notifications_active,
                           color: data.pending.isEmpty
                               ? Theme.of(context).colorScheme.outline
-                              : const Color(0xFF10B981),
+                              : AppColors.success(context),
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -101,7 +103,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
                       '앞으로 7일간의 일정 알림을 기기에 미리 걸어둡니다.\n'
                       '인터넷이나 VPN 이 끊겨 있어도 정해진 시각에 울립니다.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ],
@@ -117,11 +119,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
                     onPressed: () async {
                       await alarms.showTest();
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('알림이 보이지 않으면 권한을 확인해 주세요.'),
-                        ),
-                      );
+                      AppSnack.show(context, '알림이 보이지 않으면 권한을 확인해 주세요.');
                     },
                     icon: const Icon(Icons.volume_up_outlined, size: 18),
                     label: const Text('테스트 알림'),
@@ -151,15 +149,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
             ),
             const SizedBox(height: 8),
             if (data.reminders.isEmpty)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    '앞으로 7일간 알림이 설정된 일정이 없습니다.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              )
+              const EmptyState(message: '아직 등록된 예정 알림이 없습니다')
             else
               for (final r in data.reminders)
                 Card(
@@ -207,7 +197,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> {
             const SizedBox(height: 24),
           ],
         ),
-      ),
+      )),
     );
   }
 }
@@ -249,7 +239,7 @@ class _ExactAlarmWarning extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: scheme.onErrorContainer),
             ),
             const SizedBox(height: 10),
-            FilledButton(
+            OutlinedButton(
               onPressed: () async {
                 await context.read<AlarmService>().requestPermissions();
                 onFixed();
@@ -269,7 +259,7 @@ class _BatteryOptimizationNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
+    return SectionCard(title: '알림 도움말',
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -277,7 +267,7 @@ class _BatteryOptimizationNote extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.battery_saver, size: 18, color: scheme.outline),
+                Icon(Icons.battery_saver, size: 18, color: scheme.onSurfaceVariant),
                 const SizedBox(width: 8),
                 const Text(
                   '알림이 안 울린다면',
@@ -291,7 +281,7 @@ class _BatteryOptimizationNote extends StatelessWidget {
               '잠재웁니다. 그러면 예약한 알림도 함께 멈춥니다.\n\n'
               '설정 > 배터리 > 앱 절전 관리 에서 d-ddeck 을 '
               '"제한 없음" 으로 바꿔주세요.',
-              style: TextStyle(fontSize: 12, color: scheme.outline),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ],
         ),
