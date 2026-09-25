@@ -3,10 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../../data/admin_repository.dart';
 import '../../data/service_repository.dart';
+import '../../data/store_repository.dart';
 import '../../models/common.dart';
 import '../../models/service.dart';
-import '../../state/auth_state.dart';
+import '../../models/store.dart';
 import '../async_view.dart';
+import '../common/download.dart';
 import '../format.dart';
 import '../theme.dart';
 import 'service_detail_page.dart';
@@ -54,7 +56,8 @@ class _ServicePageState extends State<ServicePage>
 }
 
 class ServiceListTab extends StatefulWidget {
-  const ServiceListTab({super.key});
+  const ServiceListTab({super.key, this.initialOnlyOpen = false});
+  final bool initialOnlyOpen;
 
   @override
   State<ServiceListTab> createState() => _ServiceListTabState();
@@ -62,367 +65,296 @@ class ServiceListTab extends StatefulWidget {
 
 class _ServiceListTabState extends State<ServiceListTab> {
   final _searchController = TextEditingController();
-  final _viewKey = GlobalKey<AsyncViewState<PagedList<ServiceTicket>>>();
   final _scroll = ScrollController();
-
-  String? _query;
-  ServiceStatus? _status;
-  bool _onlyOpen = false;
-  bool _mineOnly = false;
-
-  /// 첫 쪽 뒤에 이어 붙인 것들. 한 번에 566건을 내려받으면 화면이 멎으므로
-  /// 50건씩 이어 받는다. AsyncView 가 첫 쪽을 들고 있고 여기가 나머지다.
-  final List<ServiceTicket> _more = [];
-  int _loadedPage = 1;
-  int _total = 0;
-  bool _loadingMore = false;
-
-  static const _pageSize = 50;
+  final Map<String, dynamic> _filters = {};
+  final Map<String, List<CodeItem>> _codes = {};
+  List<BrandSummary> _brands = [];
+  List<Store> _stores = [];
+  final List<ServiceTicket> _rows = [];
+  ServiceSummary? _summary;
+  List<int>? _searchCounts;
+  int _page = 0, _total = 0, _generation = 0, _storeRequest = 0;
+  bool _loading = false, _loadingMore = false, _exporting = false;
+  bool _failed = false, _lookupsReady = false, _storesLoading = false;
+  String _sort = 'received_desc';
+  static const _sortLabels = {
+    'received_desc': '발생일↓', 'received_asc': '발생일↑',
+    'created_desc': '등록순', 'updated_desc': '수정순',
+  };
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialOnlyOpen) _filters['only_open'] = true;
     _scroll.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadLookups();
+      _refresh();
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scroll.hasClients || _loadingMore) return;
-    final remaining = _scroll.position.maxScrollExtent - _scroll.position.pixels;
-    if (remaining < 400) _loadMore();
-  }
-
-  /// 이미 화면에 있는 건수. 첫 쪽(AsyncView 가 들고 있는 50건) + 이어 받은 것.
-  int get _shownCount => _pageSize + _more.length;
-
-  bool get _hasMore => _total == 0 || _shownCount < _total;
-
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
-    setState(() => _loadingMore = true);
-    try {
-      final next = await context.read<ServiceRepository>().list(
-            query: _query,
-            status: _status,
-            onlyOpen: _onlyOpen,
-            assigneeId: _mineOnly ? context.read<AuthState>().user?.id : null,
-            page: _loadedPage + 1,
-            size: _pageSize,
-          );
+  Future<void> _loadLookups() async {
+    final request = ++_storeRequest;
+    final brand = _filters['brand_id'] as String?;
+    final admin = context.read<AdminRepository>();
+    final stores = context.read<StoreRepository>();
+    await runGuarded(context, () async {
+      final results = await Future.wait<dynamic>([
+        stores.brands(),
+        stores.list(brandId: brand, includeClosed: true, size: 200),
+        for (final g in ['SERVICE_CATEGORY', 'SERVICE_SYMPTOM', 'SERVICE_FAULT', 'SERVICE_RESPONDER']) admin.codeGroup(g),
+      ]);
       if (!mounted) return;
       setState(() {
-        _loadedPage += 1;
-        _more.addAll(next.items);
-        _total = next.total;
-        _loadingMore = false;
+        _brands = results[0] as List<BrandSummary>;
+        if (request == _storeRequest) {
+          _stores = (results[1] as PagedList<Store>).items;
+          _storesLoading = false;
+        }
+        for (final group in results.skip(2).cast<CodeGroup>()) _codes[group.code] = group.items;
+        _lookupsReady = true;
       });
-    } catch (_) {
-      // 다음 쪽을 못 받아도 이미 받은 목록은 그대로 둔다. 스크롤을 더 내리면
-      // 다시 시도한다.
-      if (mounted) setState(() => _loadingMore = false);
-    }
-  }
-
-  /// 필터가 바뀌면 이어 받은 것들은 버려야 한다. 안 그러면 새 조건에
-  /// 맞지 않는 옛 행이 아래에 남는다.
-  void _refresh() {
-    setState(() {
-      _more.clear();
-      _loadedPage = 1;
-      _total = 0;
     });
-    _viewKey.currentState?.reload();
   }
 
-  Widget _footer(int shown, int total) {
-    if (_loadingMore) {
-      return const Padding(
-        padding: EdgeInsets.all(20),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    final style = Theme.of(context)
-        .textTheme
-        .bodySmall
-        ?.copyWith(color: Theme.of(context).colorScheme.outline);
-    if (shown >= total) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Center(child: Text('전체 $total건을 모두 표시했습니다', style: style)),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Center(
-        child: TextButton(
-          onPressed: _loadMore,
-          child: Text('더 보기 ($shown / $total)'),
-        ),
-      ),
-    );
-  }
+  Map<String, dynamic> get _summaryFilters => Map<String, dynamic>.from(_filters)
+    ..remove('status')..remove('only_open')..remove('q');
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    final generation = ++_generation;
     final repo = context.read<ServiceRepository>();
-    final auth = context.watch<AuthState>();
-
-    return Scaffold(
-      body: Column(
-        children: [
-          _FilterBar(
-            controller: _searchController,
-            status: _status,
-            onlyOpen: _onlyOpen,
-            mineOnly: _mineOnly,
-            onSearch: (v) => setState(() {
-              _query = v.trim().isEmpty ? null : v.trim();
-              _refresh();
-            }),
-            onStatus: (v) => setState(() {
-              _status = v;
-              _refresh();
-            }),
-            onOnlyOpen: (v) => setState(() {
-              _onlyOpen = v;
-              _refresh();
-            }),
-            onMineOnly: (v) => setState(() {
-              _mineOnly = v;
-              _refresh();
-            }),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: AsyncView<PagedList<ServiceTicket>>(
-              key: _viewKey,
-              load: () => repo.list(
-                query: _query,
-                status: _status,
-                onlyOpen: _onlyOpen,
-                assigneeId: _mineOnly ? auth.user?.id : null,
-                size: 50,
-              ),
-              emptyCheck: (p) => p.isEmpty,
-              emptyMessage: '조건에 맞는 접수 건이 없습니다.',
-              emptyIcon: Icons.assignment_outlined,
-              builder: (context, page, reload) {
-                // 첫 쪽 총계를 상태로 끌어와 "더 있는지"를 판단한다.
-                if (_total != page.total) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _total = page.total);
-                  });
-                }
-                final rows = [...page.items, ..._more];
-                return ListView.separated(
-                  controller: _scroll,
-                  itemCount: rows.length + 1,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    if (i == rows.length) return _footer(rows.length, page.total);
-                    return _TicketTile(
-                      ticket: rows[i],
-                      onChanged: () {
-                        _refresh();
-                        reload();
-                      },
-                    );
-                  },
-                );
-              },
-            ),
-          ),
+    final filters = Map<String, dynamic>.from(_filters);
+    final summaryFilters = _summaryFilters;
+    setState(() { _loading = true; _loadingMore = false; _failed = false; _rows.clear(); _page = 0; _total = 0; _summary = null; _searchCounts = null; });
+    final ok = await runGuarded(context, () async {
+      final results = await Future.wait<dynamic>([
+        repo.list(filters: filters, sort: _sort, size: 50),
+        repo.summary(filters: summaryFilters),
+        // summary 계약에는 q가 없다. 검색어가 있을 때 같은 목록 조건의 총건수를 쓴다.
+        if (filters['q'] != null) ...[
+          for (final state in [null, 'COMPLETED', 'open'])
+            repo.list(size: 1, filters: {...summaryFilters, 'q': filters['q'],
+              if (state == 'COMPLETED') 'status': state,
+              if (state == 'open') 'only_open': true}),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final created = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => const ServiceFormPage()),
-          );
-          if (created == true) _refresh();
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('AS 접수'),
-      ),
-    );
+      ]);
+      if (!mounted || generation != _generation) return;
+      final page = results[0] as PagedList<ServiceTicket>;
+      setState(() {
+        _rows.addAll(page.items); _total = page.total; _page = 1;
+        _summary = results[1] as ServiceSummary;
+        if (results.length > 2) _searchCounts = results.skip(2).cast<PagedList<ServiceTicket>>().map((p) => p.total).toList();
+      });
+    });
+    if (mounted && generation == _generation) setState(() { _loading = false; _failed = !ok; });
   }
-}
 
-class _FilterBar extends StatelessWidget {
-  const _FilterBar({
-    required this.controller,
-    required this.status,
-    required this.onlyOpen,
-    required this.mineOnly,
-    required this.onSearch,
-    required this.onStatus,
-    required this.onOnlyOpen,
-    required this.onMineOnly,
-  });
+  void _onScroll() {
+    if (_scroll.hasClients && _scroll.position.extentAfter < 400) _loadMore();
+  }
 
-  final TextEditingController controller;
-  final ServiceStatus? status;
-  final bool onlyOpen;
-  final bool mineOnly;
-  final ValueChanged<String> onSearch;
-  final ValueChanged<ServiceStatus?> onStatus;
-  final ValueChanged<bool> onOnlyOpen;
-  final ValueChanged<bool> onMineOnly;
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || _page == 0 || _rows.length >= _total) return;
+    final generation = _generation;
+    setState(() => _loadingMore = true);
+    await runGuarded(context, () async {
+      final page = await context.read<ServiceRepository>().list(
+        page: _page + 1, size: 50, filters: Map<String, dynamic>.from(_filters), sort: _sort);
+      if (!mounted || generation != _generation) return;
+      setState(() { _rows.addAll(page.items); _page = page.page; _total = page.total; });
+    });
+    if (mounted && generation == _generation) setState(() => _loadingMore = false);
+  }
+
+  void _set(String key, dynamic value) {
+    if (value == null || value == '') { _filters.remove(key); } else { _filters[key] = value; }
+  }
+
+  Widget _select(String label, String key, Map<String, String> choices, StateSetter update,
+      {bool enabled = true, void Function(String?)? after}) => SizedBox(
+    width: AppTheme.isWide(context) ? 180 : double.infinity,
+    child: DropdownButtonFormField<String>(
+      key: ValueKey('$key:${_filters[key]}:${choices.keys.join(',')}'),
+      initialValue: choices.containsKey(_filters[key]?.toString()) ? _filters[key].toString() : '',
+      isExpanded: true, decoration: InputDecoration(labelText: label),
+      items: [const DropdownMenuItem(value: '', child: Text('전체')),
+        for (final c in choices.entries) DropdownMenuItem(value: c.key, child: Text(c.value))],
+      onChanged: enabled ? (v) { update(() => _set(key, v)); after?.call(v == '' ? null : v); } : null,
+    ),
+  );
+
+  Map<String, String> _codeChoices(String group, {String? parent}) => {
+    for (final c in _codes[group] ?? <CodeItem>[])
+      if (parent == null || c.parentId == parent) c.id: c.name,
+  };
+
+  Future<void> _editFilters() async {
+    if (!_lookupsReady) await _loadLookups();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(context: context, isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(builder: (ctx, update) => SafeArea(
+        child: Padding(padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.viewInsetsOf(ctx).bottom + 16),
+          child: SizedBox(height: MediaQuery.sizeOf(ctx).height * 0.72,
+            child: Column(children: [
+              const Text('검색 조건', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              Expanded(child: SingleChildScrollView(child: Wrap(spacing: 12, runSpacing: 12, children: [
+                _select('연도', 'year', {for (var y = DateTime.now().year; y >= 2000; y--) '$y': '$y년'}, update,
+                  after: (v) { if (v == null) update(() => _filters.remove('month')); }),
+                _select('월', 'month', {for (var m = 1; m <= 12; m++) '$m': '$m월'}, update, enabled: _filters['year'] != null),
+                _select('브랜드', 'brand_id', {for (final b in _brands) if (b.brandId != null) b.brandId!: b.brandName}, update,
+                  after: (brand) async {
+                    final request = ++_storeRequest;
+                    update(() { _filters.remove('store_id'); _stores = []; _storesLoading = true; });
+                    await runGuarded(context, () async {
+                      final page = await context.read<StoreRepository>().list(brandId: brand, includeClosed: true, size: 200);
+                      if (mounted && request == _storeRequest) {
+                        if (ctx.mounted) { update(() => _stores = page.items); }
+                        else { _stores = page.items; }
+                      }
+                    });
+                    if (mounted && request == _storeRequest) {
+                      if (ctx.mounted) { update(() => _storesLoading = false); }
+                      else { _storesLoading = false; }
+                    }
+                  }),
+                _select('매장', 'store_id', {for (final s in _stores) s.id: '${s.name}${s.isClosed ? ' (폐점)' : ''}'}, update, enabled: !_storesLoading),
+                _select('서비스구분', 'category_id', _codeChoices('SERVICE_CATEGORY'), update,
+                  after: (_) => update(() => _filters.remove('symptom_id'))),
+                _select('증상', 'symptom_id', _filters['category_id'] == null ? {} : _codeChoices('SERVICE_SYMPTOM', parent: _filters['category_id'] as String?), update,
+                  enabled: _filters['category_id'] != null && _codeChoices('SERVICE_SYMPTOM', parent: _filters['category_id'] as String?).isNotEmpty),
+                _select('과실', 'fault_id', _codeChoices('SERVICE_FAULT'), update),
+                _select('대응인원', 'responder_id', _codeChoices('SERVICE_RESPONDER'), update),
+                SizedBox(width: AppTheme.isWide(context) ? 180 : double.infinity, child: DropdownButtonFormField<String>(
+                  initialValue: _filters['only_open'] == true ? 'open' : (_filters['status'] == 'COMPLETED' ? 'done' : ''),
+                  decoration: const InputDecoration(labelText: '상태'), isExpanded: true,
+                  items: const [DropdownMenuItem(value: '', child: Text('전체')), DropdownMenuItem(value: 'open', child: Text('미종결')), DropdownMenuItem(value: 'done', child: Text('종결'))],
+                  onChanged: (v) => update(() { _set('only_open', v == 'open' ? true : null); _set('status', v == 'done' ? 'COMPLETED' : null); }),
+                )),
+                SizedBox(width: AppTheme.isWide(context) ? 180 : double.infinity, child: DropdownButtonFormField<String>(
+                  initialValue: _filters['rental_unreturned'] == true ? 'unreturned' : (_filters['is_rental'] == true ? 'rental' : ''),
+                  decoration: const InputDecoration(labelText: '렌탈'), isExpanded: true,
+                  items: const [DropdownMenuItem(value: '', child: Text('전체')), DropdownMenuItem(value: 'rental', child: Text('렌탈만')), DropdownMenuItem(value: 'unreturned', child: Text('미회수'))],
+                  onChanged: (v) => update(() { _set('is_rental', v == 'rental' || v == 'unreturned' ? true : null); _set('rental_unreturned', v == 'unreturned' ? true : null); }),
+                )),
+              ]))),
+              FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('적용')),
+            ]),
+          ),
+        ),
+      )),
+    );
+    if (mounted) _refresh();
+  }
+
+  String _filterLabel(String key, dynamic value) {
+    if (key == 'year') return '$value년';
+    if (key == 'month') return '$value월';
+    if (key == 'q') return '검색: $value';
+    if (key == 'only_open') return '미종결';
+    if (key == 'status') return '종결';
+    if (key == 'is_rental') return '렌탈만';
+    if (key == 'rental_unreturned') return '렌탈 미회수';
+    if (key == 'brand_id') return _brands.where((b) => b.brandId == value).firstOrNull?.brandName ?? '브랜드';
+    if (key == 'store_id') return _stores.where((s) => s.id == value).firstOrNull?.name ?? '매장';
+    return _codes.values.expand((c) => c).where((c) => c.id == value).firstOrNull?.name ?? value.toString();
+  }
+
+  Future<void> _export() async {
+    setState(() => _exporting = true);
+    await runGuarded(context, () async {
+      final bytes = await context.read<ServiceRepository>().exportXlsx(filters: Map<String, dynamic>.from(_filters));
+      await saveAndOpenDownload(bytes, '대응기록_${ServiceRepository.dateOnly(DateTime.now())}.xlsx');
+    });
+    if (mounted) setState(() => _exporting = false);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: Column(
-        children: [
-          TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              hintText: '접수번호 / 제목 / 시리얼 / 거래처 검색',
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: controller.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () {
-                        controller.clear();
-                        onSearch('');
-                      },
-                    ),
-            ),
-            textInputAction: TextInputAction.search,
-            onSubmitted: onSearch,
-          ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('미완료만'),
-                  selected: onlyOpen,
-                  onSelected: onOnlyOpen,
-                ),
-                const SizedBox(width: 6),
-                FilterChip(
-                  label: const Text('내 담당'),
-                  selected: mineOnly,
-                  onSelected: onMineOnly,
-                ),
-                const SizedBox(width: 12),
-                const VerticalDivider(width: 1),
-                const SizedBox(width: 12),
-                ChoiceChip(
-                  label: const Text('전체'),
-                  selected: status == null,
-                  onSelected: (_) => onStatus(null),
-                ),
-                for (final s in ServiceStatus.values) ...[
-                  const SizedBox(width: 6),
-                  ChoiceChip(
-                    label: Text(s.label),
-                    selected: status == s,
-                    onSelected: (_) => onStatus(s),
-                    selectedColor: s.color.withValues(alpha: 0.2),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('대응 기록'), actions: [
+      TextButton.icon(onPressed: _exporting ? null : _export, icon: const Icon(Icons.download), label: Text(_exporting ? '저장 중' : '엑셀')),
+    ]),
+    body: Column(children: [
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: TextField(
+        controller: _searchController, textInputAction: TextInputAction.search,
+        decoration: InputDecoration(hintText: '번호 / 내용 / 매장 / 인원 / 시리얼 검색', prefixIcon: const Icon(Icons.search),
+          suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: () { _set('q', _searchController.text.trim()); _refresh(); })),
+        onSubmitted: (v) { _set('q', v.trim()); _refresh(); },
+      )),
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        for (final entry in [(0, '접수', _searchCounts?[0] ?? _summary?.total), (1, '종결', _searchCounts?[1] ?? _summary?.completedCount), (2, '미종결', _searchCounts?[2] ?? _summary?.openCount)])
+          Padding(padding: const EdgeInsets.all(4), child: ActionChip(label: Text('${entry.$2} ${entry.$3 ?? '…'}'), onPressed: () {
+            _set('status', entry.$1 == 1 ? 'COMPLETED' : null); _set('only_open', entry.$1 == 2 ? true : null); _refresh();
+          })),
+      ])),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
+        OutlinedButton.icon(onPressed: _editFilters, icon: const Icon(Icons.filter_list), label: const Text('필터')),
+        TextButton(onPressed: () { _filters.clear(); _searchController.clear(); _sort = 'received_desc'; _loadLookups(); _refresh(); }, child: const Text('초기화')),
+        const Spacer(),
+        DropdownButton<String>(value: _sort, items: [for (final e in _sortLabels.entries)
+          DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) { if (v != null) { _sort = v; _refresh(); } }),
+      ])),
+      if (_filters.isNotEmpty) SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, children: [
+        for (final e in _filters.entries) Padding(padding: const EdgeInsets.only(left: 6), child: Chip(label: Text(_filterLabel(e.key, e.value)))),
+      ])),
+      Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView.builder(controller: _scroll, physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 88), itemCount: _rows.length + 1,
+          itemBuilder: (context, i) {
+            if (i == _rows.length) return Padding(padding: const EdgeInsets.all(16), child: Center(
+              child: _failed ? TextButton(onPressed: _refresh, child: const Text('다시 불러오기'))
+                : _loadingMore ? const CircularProgressIndicator()
+                : _rows.length < _total ? TextButton(onPressed: _loadMore, child: Text('더 보기 (${_rows.length} / $_total)'))
+                : Text(_total == 0 ? '조건에 맞는 접수 건이 없습니다.' : '전체 $_total건'),
+            ));
+            return _TicketTile(ticket: _rows[i], onChanged: _refresh);
+          }),
+      )),
+    ]),
+    floatingActionButton: FloatingActionButton.extended(onPressed: () async {
+      final created = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ServiceFormPage()));
+      if (created == true && mounted) _refresh();
+    }, icon: const Icon(Icons.add), label: const Text('접수')),
+  );
 }
 
 class _TicketTile extends StatelessWidget {
   const _TicketTile({required this.ticket, required this.onChanged});
-
   final ServiceTicket ticket;
   final VoidCallback onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      onTap: () async {
-        final changed = await Navigator.of(context).push<bool>(
-          MaterialPageRoute(
-            builder: (_) => ServiceDetailPage(ticketId: ticket.id),
-          ),
-        );
-        if (changed == true) onChanged();
-      },
-      title: Row(
-        children: [
-          StatusChip(
-            label: ticket.status.label,
-            color: ticket.status.color,
-            dense: true,
-          ),
-          if (ticket.priority != ServicePriority.normal) ...[
-            const SizedBox(width: 4),
-            StatusChip(
-              label: ticket.priority.label,
-              color: ticket.priority.color,
-              dense: true,
-            ),
-          ],
-          if (ticket.isOverdue) ...[
-            const SizedBox(width: 4),
-            const StatusChip(
-              label: '지연',
-              color: Color(0xFFEF4444),
-              icon: Icons.schedule,
-              dense: true,
-            ),
-          ],
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              ticket.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(
-          '${ticket.ticketNo} · ${ticket.customerLabel}'
-          '${ticket.productName != null ? ' · ${ticket.productName}' : ''}'
-          '${ticket.assignee != null ? ' · ${ticket.assignee!.fullName}' : ''}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12, color: scheme.outline),
-        ),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            Fmt.date(ticket.receivedAt),
-            style: TextStyle(fontSize: 11, color: scheme.outline),
-          ),
-          if (ticket.totalCost != null)
-            Text(
-              Fmt.money(ticket.totalCost),
-              style: const TextStyle(fontSize: 11),
-            ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Card(child: InkWell(
+    onTap: () async {
+      final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: ticket.id)));
+      if (changed == true) onChanged();
+    },
+    child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text(ticket.displayNo, style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(Fmt.date(ticket.receivedAt.toLocal())),
+        StatusChip(label: ticket.status == ServiceStatus.completed ? '종결' : ticket.status.label, color: ticket.status.color, dense: true),
+        if (ticket.isRental && !ticket.rentalReturned) const StatusChip(label: '렌탈 미회수', color: Colors.red, dense: true),
+      ]),
+      Text('${ticket.brandName ?? '-'} / ${ticket.storeName ?? '-'}'),
+      Text(ticket.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      if (ticket.causeLabels.isNotEmpty) Text(ticket.causeLabels.join(' | ')),
+      Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text(ticket.responderNames.join(', ')),
+        const Icon(Icons.attach_file, size: 15), Text('${ticket.attachmentCount}'),
+        const Icon(Icons.chat_bubble_outline, size: 15), Text('${ticket.logCount}'),
+      ]),
+    ])),
+  ));
 }
 
 /// Loads a classification list from the code master.

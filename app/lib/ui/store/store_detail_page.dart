@@ -8,6 +8,7 @@ import '../async_view.dart';
 import '../common/attachment_section.dart';
 import '../format.dart';
 import '../theme.dart';
+import '../service/service_form_page.dart';
 import 'store_form_page.dart';
 
 /// 매장 한 곳 — 무엇이 들어가 있는지.
@@ -86,6 +87,23 @@ class _StoreBody extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(store.brandName, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('이 매장 기록 추가'),
+              onPressed: () async {
+                final saved = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(builder: (_) => ServiceFormPage(
+                    initialStoreId: store.id,
+                    initialBrandId: store.brandId,
+                  )),
+                );
+                if (saved == true && context.mounted) onRefresh();
+              },
+            ),
+          ),
           const SizedBox(height: 16),
           Row(
             children: [

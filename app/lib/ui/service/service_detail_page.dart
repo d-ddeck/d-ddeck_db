@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/file_repository.dart';
+import '../../data/admin_repository.dart';
+import '../../models/common.dart';
+import '../store/store_detail_page.dart';
 import '../../data/service_repository.dart';
 import '../../models/service.dart';
 import '../async_view.dart';
@@ -9,6 +12,7 @@ import '../common/attachment_section.dart';
 import '../format.dart';
 import '../theme.dart';
 import 'service_form_page.dart';
+import 'service_feedback.dart';
 
 class ServiceDetailPage extends StatefulWidget {
   const ServiceDetailPage({super.key, required this.ticketId});
@@ -64,11 +68,12 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
         ),
         body: AsyncView<ServiceTicket>(
           key: _viewKey,
-          load: () => repo.get(widget.ticketId),
+          load: () => serviceLoad(context, () => repo.get(widget.ticketId)),
           builder: (context, t, reload) => _wrap(t, ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Row(
+              Wrap(
+                spacing: 6, runSpacing: 6,
                 children: [
                   StatusChip(label: t.status.label, color: t.status.color),
                   const SizedBox(width: 6),
@@ -96,7 +101,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               Text(
-                t.ticketNo,
+                t.displayNo,
                 style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.outline,
@@ -104,6 +109,29 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               ),
               const SizedBox(height: 16),
 
+              Card(child: ListTile(
+                title: Text('${t.storeName ?? t.store?.name ?? '매장 미지정'} · ${t.brandName ?? t.store?.brandName ?? '-'}'),
+                subtitle: Text('발생일 ${Fmt.date(t.receivedAt.toLocal())} · 과실 ${t.fault?.name ?? '-'}'),
+                trailing: t.storeId == null ? null : const Icon(Icons.chevron_right),
+                onTap: t.storeId == null ? null : () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => StoreDetailPage(storeId: t.storeId!))),
+              )),
+              _TextCard(title: '서비스구분 · 증상 · 제조사', body: t.causes.isEmpty
+                ? (t.causeLabels.isEmpty ? '-' : t.causeLabels.join('\n'))
+                : t.causes.map((c) => '${c.category?.name ?? '-'}${c.symptom == null ? '' : ' > ${c.symptom!.name}'}${c.maker == null ? '' : ' (${c.maker!.name})'}').join('\n')),
+              Wrap(spacing: 8, children: [for (final r in t.responders) Chip(label: Text(r.name))]),
+              if (t.isRental) ...[
+                _InfoCard(title: '렌탈', rows: [
+                  ('종류', t.rentalType?.name ?? '-'), ('시리얼', t.rentalSerials ?? '-'),
+                  ('회수 예정일', Fmt.date(t.rentalDueDate)), ('회수 여부', t.rentalReturned ? '회수 완료' : '미회수'),
+                  ('실제 회수일', Fmt.date(t.rentalReturnDate)),
+                ]),
+                if (!t.rentalReturned && t.rentalDueDate != null)
+                  Padding(padding: const EdgeInsets.all(12), child: Text(
+                    '렌탈 미회수 · ${_ddayLabel(t.rentalDueDate!)}',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: _daysLeft(t.rentalDueDate!) <= 0 ? Colors.red : Theme.of(context).colorScheme.primary))),
+              ],
+              const SizedBox(height: 12),
               _InfoCard(
                 title: '접수 정보',
                 rows: [
@@ -111,7 +139,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                   ('연락처', t.contactPhone ?? '-'),
                   ('현장 주소', t.siteAddress ?? '-'),
                   ('접수 경로', t.channel.label),
-                  ('접수 일시', Fmt.dateTime(t.receivedAt)),
+                  ('접수 일시', Fmt.dateTime(t.receivedAt.toLocal())),
                   ('처리 기한', Fmt.dateTime(t.dueAt)),
                   ('담당자', t.assignee?.display ?? '미배정'),
                 ],
@@ -212,7 +240,12 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final next in t.status.nextOptions)
+                  if (t.status.isOpen)
+                    FilledButton.icon(onPressed: () => _changeStatus(t, ServiceStatus.completed, reload),
+                      icon: const Icon(Icons.check), label: const Text('종결 처리')),
+                  if (t.status == ServiceStatus.completed)
+                    OutlinedButton(onPressed: () => _changeStatus(t, ServiceStatus.inProgress, reload), child: const Text('다시 열기')),
+                  for (final next in t.status.nextOptions.where((s) => s != ServiceStatus.completed && t.status != ServiceStatus.completed))
                     OutlinedButton.icon(
                       onPressed: () => _changeStatus(t, next, reload),
                       icon: Icon(Icons.arrow_forward, size: 15,
@@ -239,87 +272,97 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     ServiceStatus next,
     VoidCallback reload,
   ) async {
-    final noteController = TextEditingController();
-    final resultController = TextEditingController(text: ticket.resultNote);
-    final minutesController = TextEditingController();
-
-    // Completing requires a result note unless an admin turned that rule off,
-    // so the dialog asks for it up front rather than letting the API reject.
     final requiresResult = next == ServiceStatus.completed;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${next.label}(으)로 변경'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (requiresResult)
-                TextField(
-                  controller: resultController,
-                  decoration: const InputDecoration(
-                    labelText: '처리 내용 *',
-                    helperText: '완료 처리에는 처리 내용이 필요합니다.',
-                  ),
-                  maxLines: 3,
-                ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(labelText: '변경 메모'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: minutesController,
-                decoration: const InputDecoration(labelText: '작업 시간 (분)'),
-                keyboardType: TextInputType.number,
-              ),
+    final responderIds = ticket.responders.map((r) => r.id).toSet();
+    var responders = <CodeItem>[];
+    if (requiresResult) {
+      final loaded = await runGuarded(context, () async {
+        responders = (await context.read<AdminRepository>().codeGroup('SERVICE_RESPONDER')).items
+            .where((r) => r.isActive || responderIds.contains(r.id)).toList();
+      });
+      if (!loaded || !mounted) return;
+    }
+    final resultController = TextEditingController(text: ticket.resultNote);
+    final noteController = TextEditingController();
+    final minutesController = TextEditingController();
+    final form = GlobalKey<FormState>();
+    var completedAt = DateTime.now();
+    final dialog = DialogRoute<bool>(context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, update) => AlertDialog(
+        title: Text(requiresResult ? '종결 처리' : ticket.status == ServiceStatus.completed ? '다시 열기' : '${next.label}(으)로 변경'),
+        content: SizedBox(width: AppTheme.isWide(ctx) ? 520 : double.maxFinite,
+          child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (requiresResult) ...[
+              TextFormField(controller: resultController, maxLines: 4,
+                decoration: const InputDecoration(labelText: '대응 내용 *'),
+                validator: (v) => v == null || v.trim().isEmpty ? '대응 내용을 입력해 주세요.' : null),
+              const SizedBox(height: 12),
+              FormField<bool>(validator: (_) => responderIds.isEmpty ? '대응인원을 선택해 주세요.' : null,
+                builder: (field) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('대응인원 *'),
+                  Wrap(spacing: 8, children: [for (final r in responders)
+                    FilterChip(label: Text(r.name), selected: responderIds.contains(r.id), onSelected: (v) => update(() {
+                      v ? responderIds.add(r.id) : responderIds.remove(r.id);
+                    }))]),
+                  if (field.hasError) Text(field.errorText!, style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                ])),
+              OutlinedButton.icon(icon: const Icon(Icons.calendar_today), label: Text('대응일: ${Fmt.date(completedAt)}'),
+                onPressed: () async {
+                  final date = await showDatePicker(context: ctx, initialDate: completedAt,
+                    firstDate: DateTime(1900), lastDate: DateTime(2100, 12, 31));
+                  if (date != null && ctx.mounted) update(() => completedAt = date);
+                }),
             ],
-          ),
+            TextFormField(controller: noteController, decoration: const InputDecoration(labelText: '변경 메모')),
+            const SizedBox(height: 10),
+            TextFormField(controller: minutesController, decoration: const InputDecoration(labelText: '작업 시간 (분)'), keyboardType: TextInputType.number),
+          ]))),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('변경'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
+          FilledButton(onPressed: () { if (form.currentState!.validate()) Navigator.of(ctx).pop(true); }, child: const Text('저장')),
         ],
-      ),
+      )),
     );
+    final confirmed = await Navigator.of(context, rootNavigator: true).push(dialog);
+    await dialog.completed;
+    final note = noteController.text.trim();
+    final resultNote = resultController.text.trim();
+    final minutes = int.tryParse(minutesController.text);
+    noteController.dispose();
+    resultController.dispose();
+    minutesController.dispose();
     if (confirmed != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await runGuarded(context, () async {
+      final saved = await context.read<ServiceRepository>().changeStatus(ticket.id, next,
+        note: note.isEmpty ? null : note, resultNote: requiresResult ? resultNote : null,
+        responderIds: requiresResult ? responderIds.toList() : null,
+        completedAt: requiresResult ? completedAt : null, workMinutes: minutes);
+      messenger.showSnackBar(SnackBar(content: Text(saved.notices.isEmpty
+        ? (requiresResult ? '종결 처리되었습니다.' : '상태가 변경되었습니다.') : saved.notices.join('\n'))));
+    });
+    if (ok && mounted) { _changed = true; reload(); }
+  }
 
-    final ok = await runGuarded(
-      context,
-      () => context.read<ServiceRepository>().changeStatus(
-            ticket.id,
-            next,
-            note: noteController.text.isEmpty ? null : noteController.text,
-            resultNote:
-                requiresResult && resultController.text.isNotEmpty
-                    ? resultController.text
-                    : null,
-            workMinutes: int.tryParse(minutesController.text),
-          ),
-      successMessage: '${next.label}(으)로 변경되었습니다.',
-    );
-    if (ok) {
-      _changed = true;
-      reload();
-    }
+  static int _daysLeft(DateTime due) {
+    final now = DateTime.now();
+    return DateTime.utc(due.year, due.month, due.day).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+  }
+
+  static String _ddayLabel(DateTime due) {
+    final days = _daysLeft(due);
+    return days == 0 ? 'D-day' : days > 0 ? 'D-$days' : 'D+${-days}';
   }
 
   Future<void> _addLog(String ticketId, VoidCallback reload) async {
     final controller = TextEditingController();
     final minutes = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final dialog = DialogRoute<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('작업 기록 추가'),
-        content: Column(
+        content: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
@@ -334,7 +377,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               keyboardType: TextInputType.number,
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -347,18 +390,24 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
         ],
       ),
     );
-    if (confirmed != true || controller.text.trim().isEmpty || !mounted) return;
+    final confirmed = await Navigator.of(context, rootNavigator: true).push(dialog);
+    await dialog.completed;
+    final content = controller.text.trim();
+    final workMinutes = int.tryParse(minutes.text);
+    controller.dispose();
+    minutes.dispose();
+    if (confirmed != true || content.isEmpty || !mounted) return;
 
     final ok = await runGuarded(
       context,
       () => context.read<ServiceRepository>().addLog(
             ticketId,
-            controller.text.trim(),
-            workMinutes: int.tryParse(minutes.text),
+            content,
+            workMinutes: workMinutes,
           ),
       successMessage: '기록이 추가되었습니다.',
     );
-    if (ok) {
+    if (ok && mounted) {
       _changed = true;
       reload();
     }
@@ -459,7 +508,7 @@ class _LogRow extends StatelessWidget {
                   style: const TextStyle(fontSize: 13),
                 ),
                 Text(
-                  '${Fmt.dateTime(log.createdAt)}'
+                  '${log.author?.fullName ?? '작성자 미상'} · ${Fmt.dateTime(log.createdAt)}'
                   '${log.workMinutes != null ? ' · ${Fmt.duration(log.workMinutes)}' : ''}',
                   style: TextStyle(fontSize: 11, color: scheme.outline),
                 ),

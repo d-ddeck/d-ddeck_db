@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 /// The server's error envelope, parsed once so the UI never digs through JSON.
@@ -44,7 +46,15 @@ class ApiException implements Exception {
 
   factory ApiException.fromDio(DioException e) {
     final response = e.response;
-    final data = response?.data;
+    dynamic data = response?.data;
+    // 엑셀/첨부 다운로드도 오류일 때는 같은 JSON 오류 계약을 사용한다.
+    if (data is List<int>) {
+      try {
+        data = jsonDecode(utf8.decode(data));
+      } on FormatException catch (_) {
+        // JSON이 아니면 아래의 통신 오류 메시지를 사용한다.
+      }
+    }
 
     if (data is Map && data['error'] is Map) {
       final err = data['error'] as Map;

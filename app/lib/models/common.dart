@@ -68,6 +68,7 @@ class CodeItem {
     this.sortOrder = 0,
     this.isActive = true,
     this.groupId,
+    this.parentId,
   });
 
   final String id;
@@ -77,6 +78,7 @@ class CodeItem {
   final int sortOrder;
   final bool isActive;
   final String? groupId;
+  final String? parentId;
 
   factory CodeItem.fromJson(Map<String, dynamic> j) => CodeItem(
         id: asString(j['id']),
@@ -86,6 +88,7 @@ class CodeItem {
         sortOrder: asInt(j['sort_order']),
         isActive: asBool(j['is_active'], true),
         groupId: j['group_id'] as String?,
+        parentId: j['parent_id'] as String?,
       );
 }
 

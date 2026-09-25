@@ -19,7 +19,7 @@
 
 ---
 
-## 2. 전체 테이블 (24개)
+## 2. 전체 테이블 (28개)
 
 ```
 인증      users, departments, refresh_tokens, devices
@@ -95,6 +95,10 @@ PUT  /api/v1/admin/settings/SERVICE   → 폼 전체를 한 번에 저장(upsert
 `config.py`가 psycopg3 드라이버(`postgresql+psycopg://`)로 자동 교정합니다.
 
 ---
+
+### SQLite 의 SAVEPOINT
+
+pysqlite 드라이버의 기본 트랜잭션 처리는 `RELEASE SAVEPOINT` 때 통째로 커밋해 버린다. 접수번호·자산번호 채번이 `begin_nested()` 를 쓰므로, 그 뒤에 규칙 검사가 실패하면 반쪽 행이 남을 수 있었다. `app/core/database.py` 가 SQLAlchemy 문서의 처방대로 드라이버의 BEGIN 을 끄고(`isolation_level=None`) `begin` 이벤트에서 직접 `BEGIN` 을 낸다. PostgreSQL 은 영향 없다.
 
 ## 5. 인증
 
@@ -221,3 +225,7 @@ GET /service/stats/trend      일 / 주 / 월 접수·완료 추이
   실제 방어는 `ticket_no` / `asset_no`의 UNIQUE 인덱스이고,
   savepoint 안에서 다음 번호로 최대 5회 재시도합니다.
 - 첨부파일은 소프트 삭제만 하고 디스크 파일은 남습니다. 정리 잡이 필요합니다.
+
+## 12. 구 서버(CS_Record)에서 옮겨 온 규칙
+
+회사가 쓰던 구 서버의 입력 규칙 · 재고 상태 규칙 · 통계 세는 법 · 매장 관리 방식은 `docs/LEGACY_RULES.md` 에 대응표로 정리돼 있다. 코드는 `backend/app/services/asset_rules.py`(재고 상태 13종의 규칙, 코드 항목 `extra` 에 저장) 와 `backend/app/services/ticket_rules.py`(대응 기록 검증 · 렌탈 ↔ 재고 연동) 에 모여 있고, 동작 확인은 `backend/scripts/smoke_test_legacy.py` 가 한다.

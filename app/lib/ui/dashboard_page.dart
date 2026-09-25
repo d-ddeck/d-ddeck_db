@@ -12,6 +12,9 @@ import '../state/auth_state.dart';
 import 'async_view.dart';
 import 'format.dart';
 import 'theme.dart';
+import 'service/service_detail_page.dart';
+import 'service/service_page.dart';
+import 'service/service_feedback.dart';
 
 /// Everything the dashboard shows, fetched in one round of parallel calls.
 class _DashboardData {
@@ -20,8 +23,10 @@ class _DashboardData {
     required this.myOpen,
     required this.inventory,
     required this.todayEvents,
+    required this.service,
   });
 
+  final ServiceDashboard service;
   final ServiceSummary summary;
   final PagedList<ServiceTicket> myOpen;
   final InventorySummary inventory;
@@ -39,13 +44,12 @@ class DashboardPage extends StatelessWidget {
     final calendarRepo = context.read<CalendarRepository>();
 
     return AsyncView<_DashboardData>(
-      load: () async {
+      load: () => serviceLoad(context, () async {
         final now = DateTime.now();
         final monthStart = DateTime(now.year, now.month, 1);
         final dayStart = DateTime(now.year, now.month, now.day);
 
-        // Parallel: the dashboard is four independent reads, and doing them in
-        // sequence would make the first paint four round trips deep.
+        // 독립적인 대시보드 조회를 함께 요청한다.
         final results = await Future.wait([
           serviceRepo.summary(dateFrom: monthStart),
           serviceRepo.list(
@@ -58,14 +62,16 @@ class DashboardPage extends StatelessWidget {
             from: dayStart,
             to: dayStart.add(const Duration(days: 1)),
           ),
+          serviceRepo.dashboard(limit: 10),
         ]);
         return _DashboardData(
           summary: results[0] as ServiceSummary,
           myOpen: results[1] as PagedList<ServiceTicket>,
           inventory: results[2] as InventorySummary,
           todayEvents: results[3] as List<CalendarEvent>,
+          service: results[4] as ServiceDashboard,
         );
-      },
+      }),
       builder: (context, data, reload) {
         final wide = AppTheme.isWide(context);
         return ListView(
@@ -131,6 +137,57 @@ class DashboardPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
+            _Section(title: '미종결 ${data.service.openCount}건', child: Column(children: [
+              if (data.service.openTickets.isEmpty) const _EmptyRow(text: '미종결 기록이 없습니다.'),
+              for (final t in data.service.openTickets.take(10)) ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('${t.ticketNo} · ${t.storeName ?? '-'}'),
+                subtitle: Text('${Fmt.date(t.receivedAt.toLocal())} · ${t.daysOpen ?? 0}일 경과'),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: t.id)));
+                  if (context.mounted) reload();
+                },
+              ),
+              TextButton(onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ServiceListTab(initialOnlyOpen: true)));
+                if (context.mounted) reload();
+              }, child: const Text('전체 보기')),
+            ])),
+            const SizedBox(height: 16),
+            _Section(title: '렌탈 미회수', child: Column(children: [
+              if (data.service.unreturnedRentals.isEmpty) const _EmptyRow(text: '미회수 렌탈이 없습니다.'),
+              for (final r in data.service.unreturnedRentals) ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('${r.ticketNo} · ${r.storeName ?? '-'}'),
+                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${r.rentalType ?? '-'} · ${r.serials ?? '-'}'),
+                  Text('회수 예정 ${Fmt.date(r.dueDate)} · ${r.dday == null ? '-' : r.dday == 0 ? 'D-day' : r.dday! > 0 ? 'D-${r.dday}' : 'D+${-r.dday!}'}',
+                    style: TextStyle(color: r.dday != null && r.dday! <= 0 ? Colors.red : null, fontWeight: FontWeight.w700)),
+                ]),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: r.ticketId)));
+                  if (context.mounted) reload();
+                },
+              ),
+            ])),
+            const SizedBox(height: 16),
+            _Section(title: '최근 기록', child: Column(children: [
+              if (data.service.recent.isEmpty) const _EmptyRow(text: '최근 기록이 없습니다.'),
+              for (final t in data.service.recent.take(10)) _TicketRow(ticket: t, onChanged: reload),
+            ])),
+            const SizedBox(height: 16),
+            _Section(title: '연도별 건수', child: Column(children: [
+              if (data.service.byYear.isEmpty) const _EmptyRow(text: '집계된 기록이 없습니다.'),
+              for (final y in data.service.byYear) Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
+                  SizedBox(width: 52, child: Text(y.year)),
+                  Expanded(child: LinearProgressIndicator(minHeight: 12, value:
+                    y.count / data.service.byYear.fold<int>(1, (max, row) => row.count > max ? row.count : max))),
+                  SizedBox(width: 70, child: Text('${y.count}건', textAlign: TextAlign.right)),
+                ])),
+            ])),
+            const SizedBox(height: 16),
+
             _Section(
               title: '내 진행중 AS',
               trailing: '${data.myOpen.total}건',
@@ -139,7 +196,7 @@ class DashboardPage extends StatelessWidget {
                   : Column(
                       children: [
                         for (final t in data.myOpen.items)
-                          _TicketRow(ticket: t),
+                          _TicketRow(ticket: t, onChanged: reload),
                       ],
                     ),
             ),
@@ -241,12 +298,17 @@ class _EmptyRow extends StatelessWidget {
 }
 
 class _TicketRow extends StatelessWidget {
-  const _TicketRow({required this.ticket});
+  const _TicketRow({required this.ticket, this.onChanged});
+  final VoidCallback? onChanged;
   final ServiceTicket ticket;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      onTap: () async {
+        final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ServiceDetailPage(ticketId: ticket.id)));
+        if (changed == true) onChanged?.call();
+      },
       dense: true,
       contentPadding: EdgeInsets.zero,
       leading: StatusChip(
@@ -261,7 +323,7 @@ class _TicketRow extends StatelessWidget {
         style: const TextStyle(fontSize: 13),
       ),
       subtitle: Text(
-        '${ticket.ticketNo} · ${ticket.customerLabel}',
+        '${ticket.displayNo} · ${ticket.storeName ?? ticket.customerLabel}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 11),

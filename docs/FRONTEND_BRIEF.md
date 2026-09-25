@@ -452,3 +452,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 에뮬레이터에서 호스트 PC에 접속할 때: Android 에뮬레이터는 `10.0.2.2:8000`,
 실기기는 PC의 LAN IP를 사용하세요.
+
+## 구 서버 규칙 반영(접수)
+
+- 접수·수정: `/service/tickets` POST 및 `/{id}` PATCH, 브랜드→매장 조회, 분류 코드와 `SERVICE` 설정, `/inventory/assets?q=…` 시리얼 자동완성. 제목은 발생 내용 첫 줄(250자), 렌탈 날짜는 `YYYY-MM-DD`.
+- 목록: `/service/tickets`와 `/service/stats/summary`에 같은 필터(요약은 상태 제외), `/service/tickets/export.xlsx`로 엑셀 저장·열기. 요약 계약에 `q`가 없어 검색어가 있으면 전체·종결·미종결 목록의 `total`로 요약 칩을 표시한다.
+- 상세: `/service/tickets/{id}`, `/{id}/status`, `/{id}/logs`와 기존 첨부 API. 종결 시 대응 내용·대응인원·대응일을 보내고, 저장 안내 `notices`와 서버 오류 메시지를 표시한다.
+- 대시보드: `/service/dashboard?limit=10`의 미종결·렌탈 미회수·최근 기록·연도별 건수와 상세/미종결 목록 이동. 기존 타일 유지.
+- 통계 저장소: `/service/stats/grouped`, `/summary`, `/trend`, `/crosstab`, `/crosstab.xlsx`, `/store-years` 계약 지원.
+- 매장 상세: “이 매장 기록 추가”에서 브랜드·매장을 채운 접수 폼으로 이동. 폼·필터·종결 다이얼로그는 360px와 데스크톱에서 스크롤·줄바꿈을 지원한다.

@@ -19,6 +19,17 @@ class ServiceRepository {
     DateTime? dateFrom,
     DateTime? dateTo,
     String sort = 'received_desc',
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
   }) async {
     final res = await _api.get('/service/tickets', query: {
       'page': page,
@@ -33,6 +44,17 @@ class ServiceRepository {
       'date_from': dateFrom,
       'date_to': dateTo,
       'sort': sort,
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      ...filters,
     });
     return PagedList.fromJson(res, ServiceTicket.fromJson);
   }
@@ -41,7 +63,18 @@ class ServiceRepository {
       ServiceTicket.fromJson(asMap(await _api.get('/service/tickets/$id')));
 
   Future<ServiceTicket> create({
-    required String title,
+    String? title,
+    String? storeId,
+    String? faultId,
+    DateTime? receivedAt,
+    List<Map<String, dynamic>>? causes,
+    List<String>? responderIds,
+    bool isRental = false,
+    String? rentalTypeId,
+    String? rentalSerials,
+    DateTime? rentalDueDate,
+    bool rentalReturned = false,
+    DateTime? rentalReturnDate,
     String? customerId,
     String? customerName,
     String? contactPhone,
@@ -58,7 +91,18 @@ class ServiceRepository {
     String? description,
   }) async {
     final res = await _api.post('/service/tickets', body: {
-      'title': title,
+      'title': titleFromDescription(description ?? title ?? ''),
+      'store_id': storeId,
+      'fault_id': faultId,
+      'received_at': receivedAt?.toUtc().toIso8601String(),
+      'causes': causes,
+      'responder_ids': responderIds,
+      'is_rental': isRental,
+      'rental_type_id': rentalTypeId,
+      'rental_serials': rentalSerials,
+      'rental_due_date': dateOnly(rentalDueDate),
+      'rental_returned': rentalReturned,
+      'rental_return_date': dateOnly(rentalReturnDate),
       'customer_id': customerId,
       'customer_name': customerName,
       'contact_phone': contactPhone,
@@ -78,7 +122,17 @@ class ServiceRepository {
   }
 
   Future<ServiceTicket> update(String id, Map<String, dynamic> changes) async {
-    final res = await _api.patch('/service/tickets/$id', body: changes);
+    final body = Map<String, dynamic>.from(changes);
+    if (body.containsKey('description')) {
+      body['title'] = titleFromDescription(asString(body['description']));
+    }
+    for (final key in ['rental_due_date', 'rental_return_date']) {
+      if (body[key] is DateTime) body[key] = dateOnly(body[key] as DateTime);
+    }
+    if (body['received_at'] is DateTime) {
+      body['received_at'] = (body['received_at'] as DateTime).toUtc().toIso8601String();
+    }
+    final res = await _api.patch('/service/tickets/$id', body: body);
     return ServiceTicket.fromJson(asMap(res));
   }
 
@@ -90,9 +144,13 @@ class ServiceRepository {
     String? note,
     String? resultNote,
     int? workMinutes,
+    List<String>? responderIds,
+    DateTime? completedAt,
   }) async {
     final res = await _api.post('/service/tickets/$id/status', body: {
       'status': status.value,
+      if (responderIds != null) 'responder_ids': responderIds,
+      if (completedAt != null) 'completed_at': completedAt.toUtc().toIso8601String(),
       if (note != null) 'note': note,
       if (resultNote != null) 'result_note': resultNote,
       if (workMinutes != null) 'work_minutes': workMinutes,
@@ -136,12 +194,34 @@ class ServiceRepository {
     DateTime? dateTo,
     String? assigneeId,
     String? categoryId,
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
   }) async {
     final res = await _api.get('/service/stats/summary', query: {
       'date_from': dateFrom,
       'date_to': dateTo,
       'assignee_id': assigneeId,
       'category_id': categoryId,
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      ...filters,
     });
     return ServiceSummary.fromJson(asMap(res));
   }
@@ -152,6 +232,17 @@ class ServiceRepository {
     DateTime? dateTo,
     String? assigneeId,
     String? categoryId,
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
   }) async {
     final res = await _api.get('/service/stats/grouped', query: {
       'group_by': axis.value,
@@ -159,6 +250,17 @@ class ServiceRepository {
       'date_to': dateTo,
       'assignee_id': assigneeId,
       'category_id': categoryId,
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      ...filters,
     });
     return ServiceGrouped.fromJson(asMap(res));
   }
@@ -169,6 +271,17 @@ class ServiceRepository {
     DateTime? dateTo,
     String? assigneeId,
     String? categoryId,
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
   }) async {
     final res = await _api.get('/service/stats/trend', query: {
       'interval': interval,
@@ -176,7 +289,194 @@ class ServiceRepository {
       'date_to': dateTo,
       'assignee_id': assigneeId,
       'category_id': categoryId,
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      ...filters,
     });
     return ServiceTrend.fromJson(asMap(res));
   }
+
+  static String titleFromDescription(String description) {
+    final line = description.trim().split(RegExp(r'[\r\n]')).first;
+    return String.fromCharCodes(line.runes.take(250));
+  }
+
+  static String? dateOnly(DateTime? date) => date == null ? null
+      : '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  Future<ServiceDashboard> dashboard({int limit = 10}) async =>
+      ServiceDashboard.fromJson(asMap(await _api.get('/service/dashboard', query: {'limit': limit})));
+
+  Future<StoreYears> storeYears() async =>
+      StoreYears.fromJson(asMap(await _api.get('/service/stats/store-years')));
+
+  Future<Crosstab> crosstab(String rows, String cols, {
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    String? categoryId,
+    String? assigneeId,
+    String? customerId,
+    String? departmentId,
+    ServiceStatus? status,
+    bool onlyOpen = false,
+    bool? isWarranty,
+  }) async {
+    final queryValues = <String, dynamic>{
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      'date_from': dateFrom,
+      'date_to': dateTo,
+      'category_id': categoryId,
+      'assignee_id': assigneeId,
+      'customer_id': customerId,
+      'department_id': departmentId,
+      'status': status?.value,
+      'only_open': onlyOpen ? true : null,
+      'is_warranty': isWarranty,
+      'rows': rows,
+      'cols': cols,
+      ...filters,
+    };
+    return Crosstab.fromJson(asMap(await _api.get('/service/stats/crosstab', query: queryValues)));
+  }
+
+  Future<List<int>> exportXlsx({
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    String? categoryId,
+    String? assigneeId,
+    String? customerId,
+    String? departmentId,
+    ServiceStatus? status,
+    bool onlyOpen = false,
+    bool? isWarranty,
+    String? query,
+    ServicePriority? priority,
+    ServiceChannel? channel,
+  }) async {
+    final queryValues = <String, dynamic>{
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      'date_from': dateFrom,
+      'date_to': dateTo,
+      'category_id': categoryId,
+      'assignee_id': assigneeId,
+      'customer_id': customerId,
+      'department_id': departmentId,
+      'status': status?.value,
+      'only_open': onlyOpen ? true : null,
+      'is_warranty': isWarranty,
+      'q': query,
+      'priority': priority?.value,
+      'channel': channel?.value,
+      ...filters,
+    };
+    return _api.getBytes(_downloadPath('/service/tickets/export.xlsx', queryValues));
+  }
+
+  Future<List<int>> crosstabXlsx(String rows, String cols, {
+    int? year,
+    int? month,
+    String? brandId,
+    String? storeId,
+    String? symptomId,
+    String? makerId,
+    String? faultId,
+    String? responderId,
+    bool? isRental,
+    bool rentalUnreturned = false,
+    Map<String, dynamic> filters = const {},
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    String? categoryId,
+    String? assigneeId,
+    String? customerId,
+    String? departmentId,
+    ServiceStatus? status,
+    bool onlyOpen = false,
+    bool? isWarranty,
+  }) async {
+    final queryValues = <String, dynamic>{
+      'year': year,
+      'month': month,
+      'brand_id': brandId,
+      'store_id': storeId,
+      'symptom_id': symptomId,
+      'maker_id': makerId,
+      'fault_id': faultId,
+      'responder_id': responderId,
+      'is_rental': isRental,
+      'rental_unreturned': rentalUnreturned ? true : null,
+      'date_from': dateFrom,
+      'date_to': dateTo,
+      'category_id': categoryId,
+      'assignee_id': assigneeId,
+      'customer_id': customerId,
+      'department_id': departmentId,
+      'status': status?.value,
+      'only_open': onlyOpen ? true : null,
+      'is_warranty': isWarranty,
+      'rows': rows,
+      'cols': cols,
+      ...filters,
+    };
+    return _api.getBytes(_downloadPath('/service/stats/crosstab.xlsx', queryValues));
+  }
+
+  String _downloadPath(String path, Map<String, dynamic> query) => Uri(
+    path: path,
+    queryParameters: {
+      for (final entry in query.entries)
+        if (entry.value != null)
+          entry.key: entry.value is DateTime
+              ? (entry.value as DateTime).toUtc().toIso8601String()
+              : entry.value.toString(),
+    },
+  ).toString();
 }

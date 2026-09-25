@@ -121,6 +121,7 @@ class ServiceLog {
     this.toStatus,
     this.workMinutes,
     this.createdAt,
+    this.author,
   });
 
   final String id;
@@ -129,6 +130,7 @@ class ServiceLog {
   final ServiceStatus? toStatus;
   final int? workMinutes;
   final DateTime? createdAt;
+  final UserBrief? author;
 
   factory ServiceLog.fromJson(Map<String, dynamic> j) => ServiceLog(
         id: asString(j['id']),
@@ -141,6 +143,7 @@ class ServiceLog {
             : ServiceStatus.parse(j['to_status'] as String?),
         workMinutes: j['work_minutes'] == null ? null : asInt(j['work_minutes']),
         createdAt: asDate(j['created_at']),
+        author: j['author'] is Map ? UserBrief.fromJson(asMap(j['author'])) : null,
       );
 }
 
@@ -181,6 +184,27 @@ class ServiceTicket {
     this.resolutionMinutes,
     this.parts = const [],
     this.logs = const [],
+    this.legacyNo,
+    this.storeId,
+    this.storeName,
+    this.brandName,
+    this.faultId,
+    this.fault,
+    this.causes = const [],
+    this.causeLabels = const [],
+    this.responders = const [],
+    this.responderNames = const [],
+    this.isRental = false,
+    this.rentalTypeId,
+    this.rentalType,
+    this.rentalSerials,
+    this.rentalDueDate,
+    this.rentalReturned = false,
+    this.rentalReturnDate,
+    this.attachmentCount = 0,
+    this.logCount = 0,
+    this.notices = const [],
+    this.store,
   });
 
   final String id;
@@ -218,6 +242,29 @@ class ServiceTicket {
   final int? resolutionMinutes;
   final List<ServicePart> parts;
   final List<ServiceLog> logs;
+  final int? legacyNo;
+  final String? storeId;
+  final String? storeName;
+  final String? brandName;
+  final String? faultId;
+  final CodeItem? fault;
+  final List<CauseRow> causes;
+  final List<String> causeLabels;
+  final List<CodeItem> responders;
+  final List<String> responderNames;
+  final bool isRental;
+  final String? rentalTypeId;
+  final CodeItem? rentalType;
+  final String? rentalSerials;
+  final DateTime? rentalDueDate;
+  final bool rentalReturned;
+  final DateTime? rentalReturnDate;
+  final int attachmentCount;
+  final int logCount;
+  final List<String> notices;
+  final StoreRef? store;
+
+  String get displayNo => legacyNo?.toString() ?? ticketNo;
 
   /// Display name regardless of whether the ticket points at a customer row.
   String get customerLabel =>
@@ -268,6 +315,27 @@ class ServiceTicket {
             : asInt(j['resolution_minutes']),
         parts: asList(j['parts'], ServicePart.fromJson),
         logs: asList(j['logs'], ServiceLog.fromJson),
+        legacyNo: j['legacy_no'] == null ? null : asInt(j['legacy_no']),
+        storeId: j['store_id'] as String?,
+        storeName: j['store_name'] as String?,
+        brandName: j['brand_name'] as String?,
+        faultId: j['fault_id'] as String?,
+        fault: j['fault'] is Map ? CodeItem.fromJson(asMap(j['fault'])) : null,
+        causes: asList(j['causes'], CauseRow.fromJson),
+        causeLabels: (j['cause_labels'] as List? ?? []).map((v) => asString(v)).toList(),
+        responders: asList(j['responders'], CodeItem.fromJson),
+        responderNames: (j['responder_names'] as List? ?? []).map((v) => asString(v)).toList(),
+        isRental: asBool(j['is_rental']),
+        rentalTypeId: j['rental_type_id'] as String?,
+        rentalType: j['rental_type'] is Map ? CodeItem.fromJson(asMap(j['rental_type'])) : null,
+        rentalSerials: j['rental_serials'] as String?,
+        rentalDueDate: asDate(j['rental_due_date']),
+        rentalReturned: asBool(j['rental_returned']),
+        rentalReturnDate: asDate(j['rental_return_date']),
+        attachmentCount: asInt(j['attachment_count']),
+        logCount: asInt(j['log_count']),
+        notices: (j['notices'] as List? ?? []).map((v) => asString(v)).toList(),
+        store: j['store'] is Map ? StoreRef.fromJson(asMap(j['store'])) : null,
       );
 }
 
@@ -387,14 +455,333 @@ enum StatAxis {
   fault('fault', '과실'),
   store('store', '매장'),
   brand('brand', '브랜드'),
+  responder('responder', '대응인원'),
   assignee('assignee', '담당자'),
   status('status', '상태'),
   priority('priority', '우선순위'),
   channel('channel', '접수 경로');
 
-  bool get isMultiValue => this == category || this == symptom || this == maker;
+  bool get isMultiValue => this == category || this == symptom || this == maker || this == responder;
 
   const StatAxis(this.value, this.label);
   final String value;
   final String label;
+}
+
+class CauseRow {
+  const CauseRow({
+    required this.id,
+    required this.seq,
+    this.categoryId,
+    this.symptomId,
+    this.makerId,
+    this.category,
+    this.symptom,
+    this.maker,
+  });
+
+  final String id;
+  final int seq;
+  final String? categoryId;
+  final String? symptomId;
+  final String? makerId;
+  final CodeItem? category;
+  final CodeItem? symptom;
+  final CodeItem? maker;
+
+  factory CauseRow.fromJson(Map<String, dynamic> j) => CauseRow(
+        id: asString(j['id']),
+        seq: asInt(j['seq']),
+        categoryId: j['category_id'] as String?,
+        symptomId: j['symptom_id'] as String?,
+        makerId: j['maker_id'] as String?,
+        category: j['category'] is Map ? CodeItem.fromJson(asMap(j['category'])) : null,
+        symptom: j['symptom'] is Map ? CodeItem.fromJson(asMap(j['symptom'])) : null,
+        maker: j['maker'] is Map ? CodeItem.fromJson(asMap(j['maker'])) : null,
+      );
+}
+
+class StoreRef {
+  const StoreRef({
+    required this.id,
+    required this.name,
+    this.brandId,
+    this.brandName,
+    required this.isClosed,
+  });
+
+  final String id;
+  final String name;
+  final String? brandId;
+  final String? brandName;
+  final bool isClosed;
+
+  factory StoreRef.fromJson(Map<String, dynamic> j) => StoreRef(
+        id: asString(j['id']),
+        name: asString(j['name']),
+        brandId: j['brand_id'] as String?,
+        brandName: j['brand_name'] as String?,
+        isClosed: asBool(j['is_closed']),
+      );
+}
+
+class AxisKey {
+  const AxisKey({
+    required this.key,
+    required this.label,
+    this.color,
+  });
+
+  final String key;
+  final String label;
+  final String? color;
+
+  factory AxisKey.fromJson(Map<String, dynamic> j) => AxisKey(
+        key: asString(j['key']),
+        label: asString(j['label']),
+        color: j['color'] as String?,
+      );
+}
+
+class CrosstabRow {
+  const CrosstabRow({
+    required this.key,
+    required this.label,
+    this.color,
+    required this.cells,
+    required this.total,
+    required this.ticketCount,
+    required this.ratio,
+  });
+
+  final String key;
+  final String label;
+  final String? color;
+  final Map<String, int> cells;
+  final int total;
+  final int ticketCount;
+  final double ratio;
+
+  factory CrosstabRow.fromJson(Map<String, dynamic> j) => CrosstabRow(
+        key: asString(j['key']),
+        label: asString(j['label']),
+        color: j['color'] as String?,
+        cells: asMap(j['cells']).map((key, value) => MapEntry(key, asInt(value))),
+        total: asInt(j['total']),
+        ticketCount: asInt(j['ticket_count']),
+        ratio: asDouble(j['ratio']) ?? 0,
+      );
+}
+
+class Crosstab {
+  const Crosstab({
+    required this.rowsAxis,
+    required this.colsAxis,
+    required this.cols,
+    required this.rows,
+    required this.colTotals,
+    required this.totalCauses,
+    required this.totalTickets,
+  });
+
+  final String rowsAxis;
+  final String colsAxis;
+  final List<AxisKey> cols;
+  final List<CrosstabRow> rows;
+  final Map<String, int> colTotals;
+  final int totalCauses;
+  final int totalTickets;
+
+  factory Crosstab.fromJson(Map<String, dynamic> j) => Crosstab(
+        rowsAxis: asString(j['rows_axis']),
+        colsAxis: asString(j['cols_axis']),
+        cols: asList(j['cols'], AxisKey.fromJson),
+        rows: asList(j['rows'], CrosstabRow.fromJson),
+        colTotals: asMap(j['col_totals']).map((key, value) => MapEntry(key, asInt(value))),
+        totalCauses: asInt(j['total_causes']),
+        totalTickets: asInt(j['total_tickets']),
+      );
+}
+
+class StoreYearRow {
+  const StoreYearRow({
+    required this.year,
+    required this.operating,
+    required this.opened,
+    required this.closed,
+    required this.yearEnd,
+    required this.active,
+    required this.tickets,
+    this.perStore,
+  });
+
+  final String year;
+  final int operating;
+  final int opened;
+  final int closed;
+  final int yearEnd;
+  final int active;
+  final int tickets;
+  final double? perStore;
+
+  factory StoreYearRow.fromJson(Map<String, dynamic> j) => StoreYearRow(
+        year: asString(j['year']),
+        operating: asInt(j['operating']),
+        opened: asInt(j['opened']),
+        closed: asInt(j['closed']),
+        yearEnd: asInt(j['year_end']),
+        active: asInt(j['active']),
+        tickets: asInt(j['tickets']),
+        perStore: asDouble(j['per_store']),
+      );
+}
+
+class BrandYearRow {
+  const BrandYearRow({
+    required this.brand,
+    required this.counts,
+  });
+
+  final String brand;
+  final Map<String, int> counts;
+
+  factory BrandYearRow.fromJson(Map<String, dynamic> j) => BrandYearRow(
+        brand: asString(j['brand']),
+        counts: asMap(j['counts']).map((key, value) => MapEntry(key, asInt(value))),
+      );
+}
+
+class StoreYears {
+  const StoreYears({
+    required this.years,
+    required this.rows,
+    required this.byBrand,
+    required this.totalStores,
+    required this.closedStores,
+    required this.unknownOpen,
+  });
+
+  final List<String> years;
+  final List<StoreYearRow> rows;
+  final List<BrandYearRow> byBrand;
+  final int totalStores;
+  final int closedStores;
+  final List<String> unknownOpen;
+
+  factory StoreYears.fromJson(Map<String, dynamic> j) => StoreYears(
+        years: (j['years'] as List? ?? []).map((v) => asString(v)).toList(),
+        rows: asList(j['rows'], StoreYearRow.fromJson),
+        byBrand: asList(j['by_brand'], BrandYearRow.fromJson),
+        totalStores: asInt(j['total_stores']),
+        closedStores: asInt(j['closed_stores']),
+        unknownOpen: (j['unknown_open'] as List? ?? []).map((v) => asString(v)).toList(),
+      );
+}
+
+class TicketBrief {
+  const TicketBrief({
+    required this.id,
+    required this.ticketNo,
+    required this.title,
+    this.storeName,
+    this.brandName,
+    required this.status,
+    required this.receivedAt,
+    this.daysOpen,
+  });
+
+  final String id;
+  final String ticketNo;
+  final String title;
+  final String? storeName;
+  final String? brandName;
+  final ServiceStatus status;
+  final DateTime receivedAt;
+  final int? daysOpen;
+
+  factory TicketBrief.fromJson(Map<String, dynamic> j) => TicketBrief(
+        id: asString(j['id']),
+        ticketNo: asString(j['ticket_no']),
+        title: asString(j['title']),
+        storeName: j['store_name'] as String?,
+        brandName: j['brand_name'] as String?,
+        status: ServiceStatus.parse(j['status'] as String?),
+        receivedAt: asDate(j['received_at']) ?? DateTime.now(),
+        daysOpen: j['days_open'] == null ? null : asInt(j['days_open']),
+      );
+}
+
+class RentalRow {
+  const RentalRow({
+    required this.ticketId,
+    required this.ticketNo,
+    this.storeName,
+    this.rentalType,
+    this.serials,
+    this.dueDate,
+    this.dday,
+  });
+
+  final String ticketId;
+  final String ticketNo;
+  final String? storeName;
+  final String? rentalType;
+  final String? serials;
+  final DateTime? dueDate;
+  final int? dday;
+
+  factory RentalRow.fromJson(Map<String, dynamic> j) => RentalRow(
+        ticketId: asString(j['ticket_id']),
+        ticketNo: asString(j['ticket_no']),
+        storeName: j['store_name'] as String?,
+        rentalType: j['rental_type'] as String?,
+        serials: j['serials'] as String?,
+        dueDate: asDate(j['due_date']),
+        dday: j['dday'] == null ? null : asInt(j['dday']),
+      );
+}
+
+class YearCount {
+  const YearCount({
+    required this.year,
+    required this.count,
+  });
+
+  final String year;
+  final int count;
+
+  factory YearCount.fromJson(Map<String, dynamic> j) => YearCount(
+        year: asString(j['year']),
+        count: asInt(j['count']),
+      );
+}
+
+class ServiceDashboard {
+  const ServiceDashboard({
+    required this.total,
+    required this.thisYear,
+    required this.openCount,
+    required this.openTickets,
+    required this.unreturnedRentals,
+    required this.recent,
+    required this.byYear,
+  });
+
+  final int total;
+  final int thisYear;
+  final int openCount;
+  final List<TicketBrief> openTickets;
+  final List<RentalRow> unreturnedRentals;
+  final List<ServiceTicket> recent;
+  final List<YearCount> byYear;
+
+  factory ServiceDashboard.fromJson(Map<String, dynamic> j) => ServiceDashboard(
+        total: asInt(j['total']),
+        thisYear: asInt(j['this_year']),
+        openCount: asInt(j['open_count']),
+        openTickets: asList(j['open_tickets'], TicketBrief.fromJson),
+        unreturnedRentals: asList(j['unreturned_rentals'], RentalRow.fromJson),
+        recent: asList(j['recent'], ServiceTicket.fromJson),
+        byYear: asList(j['by_year'], YearCount.fromJson),
+      );
 }
