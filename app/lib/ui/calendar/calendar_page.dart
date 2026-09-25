@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api_exception.dart';
 import '../../data/auth_repository.dart';
 import '../../data/calendar_repository.dart';
 import '../../models/calendar.dart';
@@ -11,9 +12,10 @@ import '../format.dart';
 import '../theme.dart';
 
 class _MonthData {
-  const _MonthData({required this.calendars, required this.events});
+  const _MonthData({required this.calendars, required this.events, required this.holidays});
   final List<AppCalendar> calendars;
   final List<CalendarEvent> events;
+  final List<Holiday> holidays;
 }
 
 /// 캘린더. A month grid plus the selected day's list.
@@ -32,6 +34,11 @@ class _CalendarPageState extends State<CalendarPage> {
 
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _selected = DateTime.now();
+  final Map<int, List<Holiday>> _holidays = {};
+
+  Future<List<Holiday>> _loadHolidays(CalendarRepository repo, int year) async {
+    return _holidays[year] ??= await repo.holidays(year);
+  }
 
   DateTime get _windowStart =>
       DateTime(_month.year, _month.month, 1).subtract(const Duration(days: 7));
@@ -52,14 +59,22 @@ class _CalendarPageState extends State<CalendarPage> {
       body: AsyncView<_MonthData>(
         key: _viewKey,
         load: () async {
-          final results = await Future.wait([
-            repo.calendars(),
-            repo.events(from: _windowStart, to: _windowEnd),
-          ]);
-          return _MonthData(
-            calendars: results[0] as List<AppCalendar>,
-            events: results[1] as List<CalendarEvent>,
-          );
+          try {
+            final results = await Future.wait([
+              repo.calendars(),
+              repo.events(from: _windowStart, to: _windowEnd),
+              for (var y = _windowStart.year; y <= _windowEnd.year; y++)
+                if (y >= 2000 && y <= 2100) _loadHolidays(repo, y),
+            ]);
+            return _MonthData(
+              calendars: results[0] as List<AppCalendar>,
+              events: results[1] as List<CalendarEvent>,
+              holidays: results.skip(2).expand((v) => (v as List<Holiday>)).toList(),
+            );
+          } on ApiException catch (e) {
+            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+            rethrow;
+          }
         },
         builder: (context, data, reload) {
           final colorsById = {
@@ -87,6 +102,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 month: _month,
                 selected: _selected,
                 events: data.events,
+                holidays: data.holidays,
                 colorsById: colorsById,
                 onSelect: (d) => setState(() => _selected = d),
               ),
@@ -172,6 +188,7 @@ class _MonthGrid extends StatelessWidget {
     required this.month,
     required this.selected,
     required this.events,
+    required this.holidays,
     required this.colorsById,
     required this.onSelect,
   });
@@ -179,6 +196,7 @@ class _MonthGrid extends StatelessWidget {
   final DateTime month;
   final DateTime selected;
   final List<CalendarEvent> events;
+  final List<Holiday> holidays;
   final Map<String, Color> colorsById;
   final ValueChanged<DateTime> onSelect;
 
@@ -229,6 +247,7 @@ class _MonthGrid extends StatelessWidget {
                       selected: selected,
                       today: today,
                       events: events,
+                      holidays: holidays,
                       colorsById: colorsById,
                       onTap: onSelect,
                     ),
@@ -249,6 +268,7 @@ class _DayCell extends StatelessWidget {
     required this.selected,
     required this.today,
     required this.events,
+    required this.holidays,
     required this.colorsById,
     required this.onTap,
   });
@@ -258,6 +278,7 @@ class _DayCell extends StatelessWidget {
   final DateTime selected;
   final DateTime today;
   final List<CalendarEvent> events;
+  final List<Holiday> holidays;
   final Map<String, Color> colorsById;
   final ValueChanged<DateTime> onTap;
 
@@ -270,6 +291,7 @@ class _DayCell extends StatelessWidget {
     final inMonth = date.month == month.month;
     final isSelected = _sameDay(date, selected);
     final isToday = _sameDay(date, today);
+    final holiday = holidays.where((h) => _sameDay(h.date, date)).map((h) => h.name).join(' · ');
     final dayEvents = events.where((e) => e.occursOn(date)).toList();
 
     return InkWell(
@@ -293,7 +315,7 @@ class _DayCell extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
-                color: !inMonth
+                color: holiday.isNotEmpty ? Colors.red : !inMonth
                     ? scheme.outlineVariant
                     : switch (date.weekday) {
                         6 => Colors.blue,
@@ -302,6 +324,9 @@ class _DayCell extends StatelessWidget {
                       },
               ),
             ),
+            if (holiday.isNotEmpty) Tooltip(message: holiday, child: Text(holiday,
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 8, color: Colors.red))),
             const SizedBox(height: 3),
             // Up to three dots, then a "+N" marker, so a busy day stays legible.
             Row(

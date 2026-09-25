@@ -1,4 +1,6 @@
+import 'package:ddeck_app/models/calendar.dart';
 import 'package:ddeck_app/models/common.dart';
+import 'package:ddeck_app/models/service.dart';
 import 'package:ddeck_app/models/inventory.dart';
 import 'package:ddeck_app/models/store.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -172,5 +174,87 @@ void main() {
     expect(equipment.kept, ['SN-2']);
     expect(equipment.store.id, 'store');
     expect(StoreRentalRow.fromJson({'ticket_id': 't', 'ticket_no': 'AS-1'}).dday, isNull);
+  });
+  test('공휴일은 시각 변환 없이 날짜와 대체공휴일 이름을 보존한다', () {
+    final holiday = Holiday.fromJson({'date': '2026-05-25', 'name': '부처님오신날 대체공휴일'});
+    expect(holiday.date, DateTime(2026, 5, 25));
+    expect(holiday.date.isUtc, false);
+    expect(holiday.name, '부처님오신날 대체공휴일');
+    expect(Holiday.fromJson({'date': '2027-01-01', 'name': '신정'}).date.year, 2027);
+  });
+
+  test('교차표는 원인 합계와 중복 제거 대응 수 및 희소 셀을 구분한다', () {
+    final table = Crosstab.fromJson({
+      'rows_axis': 'store', 'cols_axis': 'year',
+      'cols': [{'key': '2025', 'label': '2025'}, {'key': '2026', 'label': '2026', 'color': '#123456'}],
+      'rows': [{'key': 'store', 'label': '강남점', 'cells': {'2026': '5'},
+        'total': '5', 'ticket_count': '2', 'ratio': '0.8333'},
+        {'key': '-', 'label': '매장 미상', 'cells': {'2025': 1}, 'total': 1, 'ticket_count': 1, 'ratio': 0.1667}],
+      'col_totals': {'2025': 1, '2026': '5'}, 'total_causes': '6', 'total_tickets': 3,
+    });
+    expect(table.rowsAxis, 'store');
+    expect(table.colsAxis, 'year');
+    expect(table.cols.map((c) => c.key), ['2025', '2026']);
+    expect(table.cols.last.color, '#123456');
+    expect(table.rows.first.cells['2025'] ?? 0, 0);
+    expect(table.rows.first.cells['2026'], 5);
+    expect(table.rows.first.total, 5);
+    expect(table.rows.first.ticketCount, 2);
+    expect(table.rows.first.ratio, closeTo(0.8333, 0.00001));
+    expect(table.rows.last.key, '-');
+    expect(table.colTotals, {'2025': 1, '2026': 5});
+    expect(table.totalCauses, 6);
+    expect(table.totalTickets, 3);
+    expect(Crosstab.fromJson({}).rows, isEmpty);
+    expect(Crosstab.fromJson({}).cols, isEmpty);
+    expect(Crosstab.fromJson({}).totalCauses, 0);
+    expect(CrosstabRow.fromJson({'cells': null}).cells, isEmpty);
+  });
+
+  test('운영 매장의 연도·브랜드 순서, 폐점, 미상, 매장당 건수를 읽는다', () {
+    final years = StoreYears.fromJson({
+      'years': ['2025', '2026'], 'total_stores': '3', 'closed_stores': 1,
+      'unknown_open': ['개점일 미상점'],
+      'rows': [{'year': '2025', 'operating': '2', 'opened': 1, 'closed': '1',
+        'year_end': 1, 'active': '1', 'tickets': 3, 'per_store': '1.5'},
+        {'year': '2026', 'operating': 0, 'per_store': null}],
+      'by_brand': [{'brand': '브랜드 A', 'counts': {'2025': '2', '2026': 0}},
+        {'brand': '전체', 'counts': {'2025': 2, '2026': 0}}],
+    });
+    expect(years.years, ['2025', '2026']);
+    expect(years.totalStores, 3);
+    expect(years.closedStores, 1);
+    expect(years.unknownOpen, ['개점일 미상점']);
+    final row = years.rows.first;
+    expect(row.year, '2025');
+    expect(row.operating, 2);
+    expect(row.opened, 1);
+    expect(row.closed, 1);
+    expect(row.yearEnd, 1);
+    expect(row.active, 1);
+    expect(row.tickets, 3);
+    expect(row.perStore, 1.5);
+    expect(years.rows.last.perStore, isNull);
+    expect(years.byBrand.first.counts['2025'], 2);
+    expect(years.byBrand.last.brand, '전체');
+    expect(StoreYears.fromJson({}).years, isEmpty);
+    expect(StoreYears.fromJson({}).unknownOpen, isEmpty);
+    expect(StoreYears.fromJson({}).byBrand, isEmpty);
+  });
+
+  test('위치 트리의 부모·종류·자산 수와 하위 노드를 보존한다', () {
+    final root = StorageLocation.fromJson({
+      'id': 'root', 'code': 'HQ', 'name': '본사', 'type': 'SITE', 'asset_count': '2',
+      'children': [{'id': 'child', 'code': 'WH', 'name': '창고', 'type': 'ROOM',
+        'parent_id': 'root', 'path': '본사 > 창고', 'asset_count': 3, 'children': []}],
+    });
+    expect(root.type, LocationType.site);
+    expect(root.assetCount, 2);
+    expect(root.children.single.parentId, 'root');
+    expect(root.children.single.type, LocationType.room);
+    expect(root.children.single.display, '본사 > 창고');
+    expect(root.children.single.assetCount, 3);
+    expect(StorageLocation.fromJson({}).children, isEmpty);
+    expect(StorageLocation.fromJson({}).assetCount, 0);
   });
 }

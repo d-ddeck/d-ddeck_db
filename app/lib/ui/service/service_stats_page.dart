@@ -1,8 +1,14 @@
+import 'dart:convert';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api_exception.dart';
+import '../../data/admin_repository.dart';
 import '../../data/service_repository.dart';
+import '../common/download.dart';
+import 'service_page.dart';
 import '../../models/calendar.dart' show parseHexColor;
 import '../../models/common.dart';
 import '../../models/service.dart';
@@ -10,11 +16,6 @@ import '../async_view.dart';
 import '../format.dart';
 import '../theme.dart';
 
-/// Automatic AS statistics.
-///
-/// The three server endpoints (summary / grouped / trend) take the same filter
-/// parameters, so the one filter row at the top is applied to all of them and
-/// the numbers on the screen always describe the same set of tickets.
 class ServiceStatsTab extends StatefulWidget {
   const ServiceStatsTab({super.key});
 
@@ -25,11 +26,29 @@ class ServiceStatsTab extends StatefulWidget {
 class _ServiceStatsTabState extends State<ServiceStatsTab> {
   final _viewKey = GlobalKey<AsyncViewState<_StatsData>>();
 
-  _Period _period = _Period.month3;
+  CodeItem? _category;
+  String? _brandId;
   StatAxis _axis = StatAxis.category;
-  String _interval = 'day';
+  String _interval = 'month';
 
-  DateTime get _from => _period.from();
+  Map<String, dynamic> get _filters => {
+    if (_category != null) 'category_id': _category!.id,
+    if (_brandId != null) 'brand_id': _brandId,
+  };
+
+  List<(String, String, String)> get _tables => [
+    ('연도별 발생 빈도', 'year', 'category'),
+    ('연도별 브랜드별', 'brand', 'year'),
+    ('연도별 매장별', 'store', 'year'),
+    ('브랜드별 세부 구분별', 'brand', _category == null ? 'category' : 'symptom'),
+    ('매장별 세부 구분별', 'store', _category == null ? 'category' : 'symptom'),
+    if (_category == null ||
+        const ['ROBOT_ARM', 'CONTROL_BOX', 'E_GRIPPER'].contains(_category!.code) ||
+        const ['로봇팔', '제어박스', '전동 그리퍼'].contains(_category!.name)) ...[
+      ('제조사별 연도별', 'maker', 'year'),
+      if (_category != null) ('제조사별 세부 구분별', 'maker', 'symptom'),
+    ],
+  ];
 
   void _refresh() => _viewKey.currentState?.reload();
 
@@ -40,40 +59,63 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
     return AsyncView<_StatsData>(
       key: _viewKey,
       load: () async {
-        final from = _from;
-        final results = await Future.wait([
-          repo.summary(dateFrom: from),
-          repo.grouped(_axis, dateFrom: from),
-          repo.trend(interval: _interval, dateFrom: from),
-        ]);
-        return _StatsData(
-          summary: results[0] as ServiceSummary,
-          grouped: results[1] as ServiceGrouped,
-          trend: results[2] as ServiceTrend,
-        );
+        try {
+          final filters = _filters;
+          final tables = _tables;
+          final admin = context.read<AdminRepository>();
+          final results = await Future.wait<dynamic>([
+            repo.summary(filters: filters),
+            repo.grouped(_axis, filters: filters),
+            repo.trend(interval: _interval, filters: filters),
+            admin.codeGroup('SERVICE_CATEGORY'),
+            admin.codeGroup('STORE_BRAND'),
+            Future.wait([for (final t in tables) repo.crosstab(t.$2, t.$3, filters: filters)]),
+            if (_category == null) repo.storeYears(),
+          ]);
+          return _StatsData(
+            summary: results[0] as ServiceSummary,
+            grouped: results[1] as ServiceGrouped,
+            trend: results[2] as ServiceTrend,
+            categories: (results[3] as CodeGroup).selectable,
+            brands: (results[4] as CodeGroup).selectable,
+            tables: tables,
+            crosses: results[5] as List<Crosstab>,
+            stores: results.length > 6 ? results[6] as StoreYears : null,
+          );
+        } on ApiException catch (e) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+          rethrow;
+        }
       },
       builder: (context, data, reload) {
         final wide = AppTheme.isWide(context);
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _PeriodSelector(
-              period: _period,
-              onChanged: (p) => setState(() {
-                _period = p;
-                // A long window with daily buckets produces an unreadable
-                // chart, so widen the bucket along with the range.
-                _interval = switch (p) {
-                  _Period.week => 'day',
-                  _Period.month => 'day',
-                  _Period.month3 => 'week',
-                  _Period.year => 'month',
-                };
-                _refresh();
-              }),
+            DefaultTabController(
+              length: data.categories.length + 1,
+              initialIndex: _category == null ? 0 : data.categories.indexWhere((c) => c.id == _category!.id) + 1,
+              child: TabBar(isScrollable: true, tabAlignment: TabAlignment.start,
+                tabs: [const Tab(text: '메인(전체)'), for (final c in data.categories) Tab(text: c.name)],
+                onTap: (i) { setState(() => _category = i == 0 ? null : data.categories[i - 1]); _refresh(); },
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey(_brandId), initialValue: _brandId ?? '', isExpanded: true,
+              decoration: const InputDecoration(labelText: '브랜드 · 전 기간'),
+              items: [const DropdownMenuItem(value: '', child: Text('전체 브랜드')),
+                for (final b in data.brands) DropdownMenuItem(value: b.id, child: Text(b.name))],
+              onChanged: (v) { setState(() => _brandId = v == '' ? null : v); _refresh(); },
             ),
             const SizedBox(height: 14),
-
+            for (var i = 0; i < data.crosses.length; i++) ...[
+              _crossTable(data.tables[i].$1, data.crosses[i], frequency: i == 0),
+              if (i == 2) _storeBars(data.crosses[i]),
+              const SizedBox(height: 14),
+            ],
+            const Text('기존 집계 · 전 기간', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 14),
             GridView.count(
               crossAxisCount: wide ? 4 : 2,
               shrinkWrap: true,
@@ -220,12 +262,153 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                       ],
                     ),
             ),
+            if (data.stores != null) ..._storeTables(data.stores!),
             const SizedBox(height: 24),
           ],
         );
       },
     );
   }
+  void _drill(Map<String, dynamic> axes) {
+    // '-' is a display bucket, not a UUID accepted by the list API.
+    if (axes.values.contains('-')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('미분류·미상 항목의 목록 필터는 서버에서 지원하지 않습니다.')));
+      return;
+    }
+    final filters = {..._filters, ...axes};
+    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+      appBar: AppBar(title: const Text('통계 조건의 접수 목록')),
+      body: ServiceListTab(initialFilters: filters),
+    )));
+  }
+
+  String _filterKey(String axis) => axis == 'year' ? 'year' : '${axis}_id';
+
+  Widget _number(int value, Map<String, dynamic> filters, {String? label}) => InkWell(
+    onTap: () => _drill(filters),
+    child: Container(
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      color: value >= 5 ? const Color(0xFFFFE0B2)
+          : value >= 2 ? const Color(0xFFFFF59D)
+          : value >= 1 ? const Color(0xFFFFFDE7) : null,
+      child: Text(label ?? '$value', style: const TextStyle(color: Colors.black87)),
+    ),
+  );
+
+  Widget _crossTable(String title, Crosstab data, {bool frequency = false}) {
+    final rows = [...data.rows];
+    if (data.rowsAxis == 'store') rows.sort((a, b) => b.total.compareTo(a.total));
+    return _ChartCard(
+      title: title,
+      trailing: TextButton(onPressed: () => runGuarded(context, () async {
+        final bytes = await context.read<ServiceRepository>().crosstabXlsx(
+          data.rowsAxis, data.colsAxis, filters: _filters);
+        await saveAndOpenDownload(bytes, '${title}_${DateTime.now().millisecondsSinceEpoch}.xlsx');
+      }), child: const Text('엑셀')),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('원인 수 기준 · 대응 건수는 괄호', style: TextStyle(fontSize: 12)),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+          columnSpacing: 16,
+          columns: [
+            DataColumn(label: Text(frequency ? '연도' : switch (data.rowsAxis) {
+              'brand' => '브랜드', 'store' => '매장', 'maker' => '제조사', _ => data.rowsAxis,
+            })),
+            if (!frequency) for (final c in data.cols) DataColumn(label: Text(c.label), numeric: true),
+            const DataColumn(label: Text('원인 수'), numeric: true),
+            const DataColumn(label: Text('대응 건수'), numeric: true),
+            const DataColumn(label: Text('비율%'), numeric: true),
+          ],
+          rows: [
+            for (final r in rows) DataRow(cells: [
+              DataCell(Text(r.label)),
+              if (!frequency) for (final c in data.cols) DataCell(_number(r.cells[c.key] ?? 0,
+                {_filterKey(data.rowsAxis): r.key, _filterKey(data.colsAxis): c.key})),
+              DataCell(_number(r.total, {_filterKey(data.rowsAxis): r.key})),
+              DataCell(_number(r.ticketCount, {_filterKey(data.rowsAxis): r.key}, label: '(${r.ticketCount})')),
+              DataCell(InkWell(onTap: () => _drill({_filterKey(data.rowsAxis): r.key}),
+                child: Text(Fmt.percent(r.ratio, digits: 1)))),
+            ]),
+            DataRow(cells: [
+              const DataCell(Text('합계')),
+              if (!frequency) for (final c in data.cols) DataCell(_number(data.colTotals[c.key] ?? 0,
+                {_filterKey(data.colsAxis): c.key})),
+              DataCell(_number(data.totalCauses, {})),
+              DataCell(_number(data.totalTickets, {}, label: '(${data.totalTickets})')),
+              DataCell(Text(data.totalCauses == 0 ? '0%' : '100%')),
+            ]),
+          ],
+        )),
+      ]),
+    );
+  }
+
+  Widget _storeBars(Crosstab data) {
+    final rows = [...data.rows]..sort((a, b) => b.total.compareTo(a.total));
+    final max = rows.isEmpty || rows.first.total == 0 ? 1 : rows.first.total;
+    return _ChartCard(title: '매장별 원인 수 · 상위 15', child: Column(children: [
+      for (final r in rows.take(15)) InkWell(onTap: () => _drill({'store_id': r.key}),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
+          Expanded(flex: 3, child: Text(r.label, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 8),
+          Expanded(flex: 4, child: LinearProgressIndicator(value: r.total / max, minHeight: 8)),
+          const SizedBox(width: 8), Text('${r.total} (${r.ticketCount})'),
+        ]))),
+      if (rows.isEmpty) const _NoData(),
+    ]));
+  }
+
+  // store-years has no workbook endpoint. Export the displayed data as an
+  // Excel-readable UTF-8 CSV, preserving numeric cells and neutralizing formulas.
+  Widget _storeExport(String title, List<List<Object?>> rows) => TextButton(
+    child: const Text('엑셀 (CSV)'),
+    onPressed: () => runGuarded(context, () async {
+      String cell(Object? value) {
+        var text = value?.toString() ?? '';
+        if (value is String && RegExp(r'^\s*[=+@-]').hasMatch(text)) text = "'$text";
+        return '"${text.replaceAll('"', '""')}"';
+      }
+      final csv = '\uFEFF${rows.map((r) => r.map(cell).join(',')).join('\r\n')}';
+      await saveAndOpenDownload(utf8.encode(csv), '${title}_${DateTime.now().millisecondsSinceEpoch}.csv');
+    }),
+  );
+
+  List<Widget> _storeTables(StoreYears data) => [
+    const SizedBox(height: 14),
+    Text('운영 매장 · 전체 브랜드 기준 · 총 ${data.totalStores} / 폐점 ${data.closedStores}'),
+    const Text('개점일이 없으면 첫 대응·장비 설치일로 추정합니다.', style: TextStyle(fontSize: 12)),
+    if (data.unknownOpen.isNotEmpty) Text('개점 연도 미상: ${data.unknownOpen.join(', ')}'),
+    _ChartCard(title: '연도별 운영 매장', trailing: _storeExport('연도별 운영 매장', [
+      ['연도', '운영', '개점', '폐점', '연말 운영', '대응 매장', '대응 건수', '매장당 건수'],
+      for (final r in data.rows) [r.year, r.operating, r.opened, r.closed, r.yearEnd, r.active, r.tickets, r.perStore],
+    ]), child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal, child: DataTable(
+        columns: [for (final h in ['연도', '운영', '개점', '폐점', '연말 운영', '대응 매장', '대응 건수', '매장당 건수']) DataColumn(label: Text(h))],
+        rows: [for (final r in data.rows) DataRow(cells: [
+          for (final v in [r.year, r.operating, r.opened, r.closed, r.yearEnd, r.active]) DataCell(Text('$v')),
+          DataCell(InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+            appBar: AppBar(title: Text('${r.year}년 접수 목록')),
+            body: ServiceListTab(initialFilters: {'year': r.year}),
+          ))), child: Text('(${r.tickets})'))),
+          DataCell(Text(r.perStore?.toStringAsFixed(1) ?? '-')),
+        ])],
+      ),
+    )),
+    _ChartCard(title: '브랜드별 운영 매장', trailing: _storeExport('브랜드별 운영 매장', [
+      ['브랜드', ...data.years],
+      for (final b in data.byBrand) [b.brand, for (final y in data.years) b.counts[y] ?? 0],
+    ]), child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal, child: DataTable(
+        columns: [const DataColumn(label: Text('브랜드')), for (final y in data.years) DataColumn(label: Text(y), numeric: true)],
+        rows: [for (final b in data.byBrand) DataRow(cells: [
+          DataCell(Text(b.brand)), for (final y in data.years) DataCell(Text('${b.counts[y] ?? 0}')),
+        ])],
+      ),
+    )),
+  ];
+
 }
 
 class _StatsData {
@@ -233,57 +416,17 @@ class _StatsData {
     required this.summary,
     required this.grouped,
     required this.trend,
+    required this.categories, required this.brands, required this.tables,
+    required this.crosses, this.stores,
   });
 
   final ServiceSummary summary;
   final ServiceGrouped grouped;
   final ServiceTrend trend;
-}
-
-enum _Period {
-  week('최근 7일'),
-  month('최근 30일'),
-  month3('최근 90일'),
-  year('최근 1년');
-
-  const _Period(this.label);
-  final String label;
-
-  DateTime from() {
-    final now = DateTime.now();
-    return switch (this) {
-      _Period.week => now.subtract(const Duration(days: 7)),
-      _Period.month => now.subtract(const Duration(days: 30)),
-      _Period.month3 => now.subtract(const Duration(days: 90)),
-      _Period.year => DateTime(now.year - 1, now.month, now.day),
-    };
-  }
-}
-
-class _PeriodSelector extends StatelessWidget {
-  const _PeriodSelector({required this.period, required this.onChanged});
-
-  final _Period period;
-  final ValueChanged<_Period> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final p in _Period.values) ...[
-            ChoiceChip(
-              label: Text(p.label),
-              selected: period == p,
-              onSelected: (_) => onChanged(p),
-            ),
-            const SizedBox(width: 6),
-          ],
-        ],
-      ),
-    );
-  }
+  final List<CodeItem> categories, brands;
+  final List<(String, String, String)> tables;
+  final List<Crosstab> crosses;
+  final StoreYears? stores;
 }
 
 class _ChartCard extends StatelessWidget {

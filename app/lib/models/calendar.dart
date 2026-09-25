@@ -287,3 +287,15 @@ Color parseHexColor(String hex, [Color fallback = const Color(0xFF3B82F6)]) {
   final parsed = int.tryParse(value, radix: 16);
   return parsed == null ? fallback : Color(parsed);
 }
+
+/// A calendar date; do not shift a holiday through UTC/local time conversion.
+class Holiday {
+  const Holiday({required this.date, required this.name});
+  final DateTime date;
+  final String name;
+
+  factory Holiday.fromJson(Map<String, dynamic> j) => Holiday(
+    date: DateTime.parse(asString(j['date'])),
+    name: asString(j['name']),
+  );
+}

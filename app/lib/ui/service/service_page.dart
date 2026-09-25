@@ -56,8 +56,9 @@ class _ServicePageState extends State<ServicePage>
 }
 
 class ServiceListTab extends StatefulWidget {
-  const ServiceListTab({super.key, this.initialOnlyOpen = false});
+  const ServiceListTab({super.key, this.initialOnlyOpen = false, this.initialFilters = const {}});
   final bool initialOnlyOpen;
+  final Map<String, dynamic> initialFilters;
 
   @override
   State<ServiceListTab> createState() => _ServiceListTabState();
@@ -85,6 +86,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
   @override
   void initState() {
     super.initState();
+    _filters.addAll(widget.initialFilters);
     if (widget.initialOnlyOpen) _filters['only_open'] = true;
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {

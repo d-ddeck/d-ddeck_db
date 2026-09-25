@@ -14,6 +14,8 @@ class InventoryRepository {
         .toList();
   }
 
+  Future<void> deleteLocation(String id) => _api.delete('/inventory/locations/$id');
+
   Future<List<StorageLocation>> locations() async {
     final res = await _api.get('/inventory/locations');
     return (res as List? ?? [])

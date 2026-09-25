@@ -14,6 +14,7 @@ import '../service/service_detail_page.dart';
 import '../theme.dart';
 import 'asset_destination.dart';
 import 'asset_form_page.dart';
+import 'location_page.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -154,6 +155,7 @@ class _InventoryListState extends State<_InventoryList> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.revision != widget.revision) {
       _selected.clear();
+      _loadChoices();
       _viewKey.currentState?.reload();
     }
   }
@@ -234,6 +236,13 @@ class _InventoryListState extends State<_InventoryList> {
     if (!_ready) return Center(child: TextButton(onPressed: _loadChoices, child: const Text('필터 불러오기')));
     return Column(children: [
       Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+        if (widget.category == null) Align(alignment: Alignment.centerRight, child: TextButton.icon(
+          icon: const Icon(Icons.account_tree_outlined), label: const Text('위치 관리'),
+          onPressed: () async {
+            await Navigator.push(context, MaterialPageRoute(builder: (_) => const LocationPage()));
+            if (mounted) widget.onChanged();
+          },
+        )),
         Row(children: [Expanded(child: TextField(controller: _search,
           decoration: const InputDecoration(hintText: 'S/N · 품명 · 매장 · 메모 검색', prefixIcon: Icon(Icons.search)),
           onSubmitted: (v) => _set('q', v.trim().isEmpty ? null : v.trim()))),

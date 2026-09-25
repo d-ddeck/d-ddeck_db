@@ -7,6 +7,11 @@ class CalendarRepository {
   CalendarRepository(this._api);
   final ApiClient _api;
 
+  Future<List<Holiday>> holidays(int year) async {
+    final res = await _api.get('/calendar/holidays', query: {'year': year});
+    return (res as List? ?? []).map((e) => Holiday.fromJson(asMap(e))).toList();
+  }
+
   Future<List<AppCalendar>> calendars() async {
     final res = await _api.get('/calendar/calendars');
     return (res as List? ?? [])
