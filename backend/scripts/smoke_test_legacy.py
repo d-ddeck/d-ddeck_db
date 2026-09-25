@@ -69,6 +69,13 @@ with TestClient(app) as c:
         assert r.status_code == 201, r.text
         return r.json()
 
+    def item_or_add(g, code, name, parent_id=None, **kw):
+        """시드에 이미 있으면 그것을 쓴다 (2026-09-25 부터 구 서버 서비스구분·세부분류가 기본값)."""
+        for i in g["items"]:
+            if i["name"] == name and (parent_id is None or i["parent_id"] == parent_id):
+                return i
+        return add_item(g, code, name, parent_id, **kw)
+
     # ============================================================ 기본 목록
     print("\n[1] 기본 목록: 장비 종류 · 상태 규칙 · 품명 · 제조사 · 위치")
     kinds = group("ASSET_CATEGORY")
@@ -91,12 +98,12 @@ with TestClient(app) as c:
 
     # 서비스 목록: 서비스구분 로봇팔 · 제어박스, 증상, 대응인원, 렌탈 종류, 브랜드
     cats = group("SERVICE_CATEGORY")
-    cat_robot = add_item(cats, "ROBOT_ARM", "로봇팔")
-    cat_ctrl = add_item(cats, "CONTROL_BOX", "제어박스")
-    cat_comm = add_item(cats, "COMM", "통신")
+    cat_robot = item_or_add(cats, "ROBOT_ARM", "로봇팔")
+    cat_ctrl = item_or_add(cats, "CONTROL_BOX", "제어박스")
+    cat_comm = item_or_add(cats, "COMM", "통신")
     symptoms = group("SERVICE_SYMPTOM")
-    sym_grip = add_item(symptoms, "GRIP_ERR", "그리퍼 오류", cat_robot["id"])
-    sym_power = add_item(symptoms, "POWER_CABLE", "파워 케이블", cat_ctrl["id"])
+    sym_grip = item_or_add(symptoms, "GRIP_ERR", "그리퍼 오류", cat_robot["id"])
+    sym_power = item_or_add(symptoms, "POWER_CABLE", "파워 케이블", cat_ctrl["id"])
     responders = group("SERVICE_RESPONDER")
     resp_a = add_item(responders, "SEO", "서선재")
     resp_b = add_item(responders, "LEE", "이재룡")
@@ -386,9 +393,9 @@ with TestClient(app) as c:
     check("크로스탭 연도×서비스구분", r.status_code == 200 and [x["key"] for x in ct["rows"]] == ["2025", "2026"], ct["rows"])
     row26 = next(x for x in ct["rows"] if x["key"] == "2026")
     check("2026 줄: 원인 3 · 건 2", row26["total"] == 3 and row26["ticket_count"] == 2, row26)
-    check("목록의 서비스구분은 0 이어도 열로", any(col["label"] == "수리" for col in ct["cols"]), [col["label"] for col in ct["cols"]])
+    check("목록의 서비스구분은 0 이어도 열로", any(col["label"] == "구조물" for col in ct["cols"]), [col["label"] for col in ct["cols"]])
     r = c.get(f"/api/v1/service/stats/crosstab?rows=brand&cols=symptom&category_id={cat_robot['id']}", headers=H)
-    check("구분 탭 브랜드×세부분류", r.json()["cols"][0]["label"] == "그리퍼 오류" and r.json()["total_causes"] == 1, r.json())
+    check("구분 탭 브랜드×세부분류", any(col["label"] == "그리퍼 오류" for col in r.json()["cols"]) and r.json()["total_causes"] == 1, r.json())
     r = c.get("/api/v1/service/stats/crosstab?rows=store&cols=year", headers=H)
     check("매장×연도 (매장은 건수 순)", r.json()["rows"][0]["label"] == "테스트 문산점", r.json()["rows"])
     r = c.get("/api/v1/service/stats/crosstab?rows=maker&cols=year", headers=H)

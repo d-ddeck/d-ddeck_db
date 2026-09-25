@@ -263,9 +263,17 @@ def _ensure_item(
     sort: int = 0,
     active: bool = True,
 ) -> tuple[CodeItem, bool]:
-    """이름이 같은 항목이 이미 있으면 그것을 쓴다(부트스트랩 기본값과 겹칠 때)."""
+    """같은 상위 아래 이름이 같은 항목이 이미 있으면 그것을 쓴다(부트스트랩 기본값과 겹칠 때).
+
+    상위까지 봐야 한다: '로봇팔 > 엔코더'와 '전동 그리퍼 > 엔코더'는 다른 항목이다.
+    (2026-09-25 이전에는 이름만 봐서 합쳐졌고, scripts/fix_legacy_symptoms.py 로 되돌렸다.)
+    """
     existing = db.scalar(
-        select(CodeItem).where(CodeItem.group_id == group.id, CodeItem.name == value)
+        select(CodeItem).where(
+            CodeItem.group_id == group.id,
+            CodeItem.name == value,
+            CodeItem.parent_id == (parent.id if parent else None),
+        )
     )
     if existing is not None:
         return existing, False

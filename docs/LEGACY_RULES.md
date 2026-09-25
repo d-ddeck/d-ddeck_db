@@ -9,6 +9,7 @@
 | 구 서버 규칙 | 신 서버 | 어디 |
 |---|---|---|
 | 브랜드 → 매장 선택, 매장 필수 | `store_id` (브랜드는 매장에서 따라옴). 표시용 `customer_name` 은 매장 이름 | `POST/PATCH /service/tickets` |
+| 서비스구분 12종(로봇팔 · 제어박스 · 전동 그리퍼 · 비전동 그리퍼 · 모니터(태블릿) · 통신 · 미니PC · 구조물 · 전기 · 프로그램 · 기타 · 미확인) 과 구분별 세부분류 89종 | 코드 마스터 `SERVICE_CATEGORY` / `SERVICE_SYMPTOM`(`parent_id` = 구분). 그룹 이름도 **서비스구분 / 세부분류**. 새 저장소에도 이 목록이 기본값(`bootstrap.DEFAULT_CODES` · `DEFAULT_SYMPTOMS`). 관리 화면은 구 서버처럼 구분별 표로 보여 주고 ▲▼ 로 순서를 바꾼다(2026-09-25) | `services/bootstrap.py` |
 | 서비스구분 1 필수, 최대 10쌍(구분·세부분류·제조사) | `causes: [{category_id, symptom_id, maker_id}]` 최대 `max_causes`(10). 첫 항목이 대표 분류 | `ticket_rules.validate_causes` |
 | 세부분류는 그 구분에 딸린 것만 | 증상(`SERVICE_SYMPTOM`)의 `parent_id` 가 그 구분이어야 함 → `SYMPTOM_MISMATCH` | |
 | 로봇팔·제어박스·전동 그리퍼는 제조사 필수 | 설정 `SERVICE.maker_required_categories`. 제조사는 `ASSET_MAKER` 중 같은 이름 종류의 하위 → `MAKER_REQUIRED` / `MAKER_MISMATCH` | |
@@ -104,7 +105,7 @@
 | 보호 항목 | 재고 상태 중 규칙 `store`/`as`/`clear` 인 것(창고 · 사무실 · 미상 · 설치 · 렌탈 중 · AS 대기 · AS 반출)은 삭제 불가 → 400 `SYSTEM_ITEM`. 항목 JSON 의 `is_protected`. 회수·폐기(`free`)는 지울 수 있다 |
 | 되살리기 | 삭제한 항목과 같은 코드로 다시 추가하면(`POST /admin/codes/{group_id}/items`) 그 줄이 되살아나 옛 기록의 연결도 돌아온다. 함께 지워진 하위 항목도 같이 돌아온다 |
 | 하위 그룹 | 증상 → 서비스 분류, 자산 모델 · 자산 제조사 → 자산 분류 (`app/services/code_tree.py`). 그룹 JSON 의 `parent_group_code`. 하위 항목 추가 · 상위 변경 때 상위 필수 → 400 `PARENT_REQUIRED`, 다른 축의 항목이면 400 `PARENT_MISMATCH`. 관리 화면은 상위를 먼저 고르고 그 하위만 보여 준다 |
-| 기본 증상 | 새 저장소에는 기본 증상을 서비스 분류 아래에 심는다(`bootstrap.DEFAULT_SYMPTOMS`, 코드 `REPAIR_POWER` …). 이미 증상이 있는 저장소는 건드리지 않는다 |
+| 기본 세부분류 | 새 저장소에는 구 서버 세부분류 89개를 서비스구분 아래에 심는다(`bootstrap.DEFAULT_SYMPTOMS`, 코드 `ROBOT_ARM_01` …). 이미 세부분류가 있는 저장소는 건드리지 않는다 |
 | 비활성화 | `PATCH /admin/codes/items/{id}` `is_active=false`: 새 등록 선택지에서만 빠지고 목록에는 남는다(다시 사용 가능) |
 
 ## 6. 아직 옮기지 않은 것
@@ -119,5 +120,7 @@ cd backend
 .venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (207)
 .venv-linux/bin/python scripts/smoke_test_legacy.py   # 구 서버 규칙 (145)
 ```
+
+이관 자료 복구(2026-09-25): 처음 이관 때 세부분류를 이름만으로 맞춰 '로봇팔 > 엔코더'와 '전동 그리퍼 > 엔코더'가 한 항목으로 합쳐졌고, 관리 화면에서 기본 분류를 지우다 '기타' 구분이 함께 지워졌다. `scripts/fix_legacy_symptoms.py --source ../beforeserver [--apply]` 가 구 서버 lists · record_causes 를 기준으로 구분 12 · 세부 89 를 되살리고 원인 줄 278개를 다시 가리켰다(이관 스크립트의 `_ensure_item` 도 상위까지 보도록 고침).
 
 SQLite 에서 SAVEPOINT 가 제대로 롤백되도록 `app/core/database.py` 가 pysqlite 의 BEGIN 을 끄고 직접 낸다. 접수번호·자산번호 채번(`begin_nested`)과 일괄 이동의 건별 롤백이 이것에 기댄다.

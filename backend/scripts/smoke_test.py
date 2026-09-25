@@ -145,7 +145,7 @@ with TestClient(app) as c:
     check("저장값 반영", saved["ticket_prefix"] == "SVC", saved.get("ticket_prefix"))
 
     r = c.get("/api/v1/admin/codes/SERVICE_CATEGORY", headers=bearer(user_token))
-    check("분류 그룹 조회", r.status_code == 200 and len(r.json()["items"]) == 6, r.text)
+    check("분류 그룹 조회 (구 서버 서비스구분 12종)", r.status_code == 200 and len(r.json()["items"]) == 12, r.text)
     categories = {i["code"]: i["id"] for i in r.json()["items"]}
     group_id = r.json()["id"]
 
@@ -211,13 +211,13 @@ with TestClient(app) as c:
     check("다른 축의 항목을 상위로 못 씀 (PARENT_MISMATCH)",
           r.status_code == 400 and r.json()["error"]["code"] == "PARENT_MISMATCH", r.text)
     r = c.post(f"/api/v1/admin/codes/{sym_group_id}/items", headers=bearer(admin_token),
-               json={"code": "TMP_SYM", "name": "임시 증상", "parent_id": categories["REPAIR"]})
-    check("증상 추가 (상위 = 수리)", r.status_code == 201 and r.json()["parent_id"] == categories["REPAIR"], r.text)
+               json={"code": "TMP_SYM", "name": "임시 증상", "parent_id": categories["PROGRAM"]})
+    check("증상 추가 (상위 = 프로그램)", r.status_code == 201 and r.json()["parent_id"] == categories["PROGRAM"], r.text)
     tmp_sym = r.json()["id"]
     r = c.patch(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token), json={"parent_id": None})
     check("상위를 비울 수 없음", r.status_code == 400 and r.json()["error"]["code"] == "PARENT_REQUIRED", r.text)
-    r = c.patch(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token), json={"parent_id": categories["INSTALL"]})
-    check("상위 분류 옮기기", r.status_code == 200 and r.json()["parent_id"] == categories["INSTALL"], r.text)
+    r = c.patch(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token), json={"parent_id": categories["COMM"]})
+    check("상위 분류 옮기기", r.status_code == 200 and r.json()["parent_id"] == categories["COMM"], r.text)
     c.delete(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token))
     r = c.get("/api/v1/admin/codes/SERVICE_CATEGORY", headers=bearer(user_token))
     check("서비스 분류는 최상위 (parent_group_code 없음)", r.json()["parent_group_code"] is None, r.text)
@@ -246,7 +246,7 @@ with TestClient(app) as c:
 
     ticket_ids = []
     for i, (cat, sym) in enumerate(
-        [("REPAIR", "REPAIR_POWER"), ("REPAIR", "REPAIR_NOISE"), ("INSTALL", "INSTALL_ETC"), ("INSPECT", "INSPECT_ETC")]
+        [("PROGRAM", "PROGRAM_01"), ("PROGRAM", "PROGRAM_02"), ("COMM", "COMM_01"), ("STRUCTURE", "STRUCTURE_01")]
     ):
         r = c.post(
             "/api/v1/service/tickets",
@@ -331,7 +331,7 @@ with TestClient(app) as c:
     g = r.json()
     check("분류별 집계", r.status_code == 200 and g["total"] == 4, r.text)
     by_cat = {b["label"]: b["count"] for b in g["buckets"]}
-    check("수리 2건 집계", by_cat.get("수리") == 2, by_cat)
+    check("프로그램 2건 집계", by_cat.get("프로그램") == 2, by_cat)
     check("비율 산출", abs(sum(b["ratio"] for b in g["buckets"]) - 1.0) < 0.01, g["buckets"])
     check("분류 색상 전달", any(b["color"] for b in g["buckets"]), g["buckets"])
 
@@ -737,23 +737,23 @@ with TestClient(app) as c:
     check("자산 건수", st["assets_total"] == 2, st["assets_total"])
     check("테이블 목록", len(st["tables"]) == 30, len(st["tables"]))
 
-    r = c.get(f"/api/v1/admin/codes/items/{categories['REPAIR']}/usage", headers=bearer(admin_token))
-    check("쓰이는 항목의 사용처 (수리 → 대응 기록 2건 이상)",
+    r = c.get(f"/api/v1/admin/codes/items/{categories['PROGRAM']}/usage", headers=bearer(admin_token))
+    check("쓰이는 항목의 사용처 (프로그램 → 대응 기록 2건 이상)",
           r.status_code == 200 and r.json()["by"].get("대응 기록", 0) >= 2, r.text)
-    r = c.delete(f"/api/v1/admin/codes/items/{categories['REPAIR']}", headers=bearer(admin_token))
+    r = c.delete(f"/api/v1/admin/codes/items/{categories['PROGRAM']}", headers=bearer(admin_token))
     check("쓰이는 항목도 삭제되며 기존 기록 건수를 알려 줌",
           r.status_code == 200 and "기존 기록" in r.json()["message"], r.text)
     r = c.get(f"/api/v1/service/tickets/{ticket_ids[0]}", headers=bearer(user_token))
-    check("삭제한 분류를 쓰던 기록은 이름을 유지", r.status_code == 200 and r.json()["causes"][0]["category"]["name"] == "수리", r.text)
+    check("삭제한 분류를 쓰던 기록은 이름을 유지", r.status_code == 200 and r.json()["causes"][0]["category"]["name"] == "프로그램", r.text)
     r = c.post(
         f"/api/v1/admin/codes/{group_id}/items",
         headers=bearer(admin_token),
-        json={"code": "REPAIR", "name": "수리", "sort_order": 1},
+        json={"code": "PROGRAM", "name": "프로그램", "sort_order": 10},
     )
-    check("삭제한 분류를 같은 코드로 되살림", r.status_code == 201 and r.json()["id"] == categories["REPAIR"], r.text)
+    check("삭제한 분류를 같은 코드로 되살림", r.status_code == 201 and r.json()["id"] == categories["PROGRAM"], r.text)
     r = c.get("/api/v1/admin/codes/SERVICE_SYMPTOM", headers=bearer(user_token))
     check("분류를 되살리면 함께 지워졌던 증상도 돌아옴",
-          any(i["code"] == "REPAIR_POWER" for i in r.json()["items"]), [i["code"] for i in r.json()["items"]])
+          any(i["code"] == "PROGRAM_01" for i in r.json()["items"]), [i["code"] for i in r.json()["items"]])
 
     r = c.get("/api/v1/admin/audit-logs?size=100", headers=bearer(admin_token))
     logs = r.json()

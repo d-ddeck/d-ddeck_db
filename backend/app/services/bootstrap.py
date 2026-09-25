@@ -33,20 +33,26 @@ log = logging.getLogger("ddeck.bootstrap")
 # (group_code, group_name, module, [(item_code, item_name, color), ...])
 DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]]] = [
     (
-        "SERVICE_CATEGORY", "서비스 분류", ModuleKey.SERVICE,
+        # 구 서버(CS_Record)의 서비스구분 12종을 그 순서대로. 회사가 쓰던 목록이 기본값이다
+        # (2026-09-25). 세부분류는 구분의 하위 선택지라 DEFAULT_SYMPTOMS 로 따로 심는다.
+        "SERVICE_CATEGORY", "서비스구분", ModuleKey.SERVICE,
         [
-            ("INSTALL", "설치", "#3B82F6"),
-            ("REPAIR", "수리", "#EF4444"),
-            ("INSPECT", "정기점검", "#10B981"),
-            ("REPLACE", "교체", "#F59E0B"),
-            ("CONSULT", "상담", "#8B5CF6"),
+            ("ROBOT_ARM", "로봇팔", "#2563EB"),
+            ("CONTROL_BOX", "제어박스", "#7C3AED"),
+            ("E_GRIPPER", "전동 그리퍼", "#059669"),
+            ("NE_GRIPPER", "비전동 그리퍼", "#10B981"),
+            ("MONITOR", "모니터(태블릿)", "#0EA5E9"),
+            ("COMM", "통신", "#F59E0B"),
+            ("MINI_PC", "미니PC", "#6366F1"),
+            ("STRUCTURE", "구조물", "#A16207"),
+            ("ELECTRIC", "전기", "#EF4444"),
+            ("PROGRAM", "프로그램", "#14B8A6"),
             ("ETC", "기타", "#94A3B8"),
+            ("UNKNOWN", "미확인", "#6B7280"),
         ],
     ),
     (
-        # 증상은 서비스 분류의 하위 선택지라 여기 두지 않고 DEFAULT_SYMPTOMS 로
-        # 분류 아래에 심는다(_seed_default_symptoms).
-        "SERVICE_SYMPTOM", "증상 분류", ModuleKey.SERVICE, [],
+        "SERVICE_SYMPTOM", "세부분류", ModuleKey.SERVICE, [],
     ),
     (
         "SERVICE_CAUSE", "원인 분류", ModuleKey.SERVICE,
@@ -259,18 +265,32 @@ def _seed_superadmin(db: Session) -> None:
     )
 
 
-# 서비스 분류(코드) → 기본 증상. 증상 그룹이 비어 있는 새 저장소에만 심는다.
-# 코드는 '<분류코드>_<증상코드>' 로 그룹 안에서 유일하게 만든다.
-DEFAULT_SYMPTOMS: dict[str, list[tuple[str, str]]] = {
-    "REPAIR": [
-        ("POWER", "전원 불량"), ("NOISE", "소음"), ("LEAK", "누수 / 누유"),
-        ("MALFUNCTION", "오작동"), ("BROKEN", "파손"), ("ETC", "기타"),
-    ],
-    "INSTALL": [("NEW", "신규 설치"), ("MOVE", "이전 설치"), ("ETC", "기타")],
-    "INSPECT": [("REGULAR", "정기 점검"), ("REQUEST", "요청 점검"), ("ETC", "기타")],
-    "REPLACE": [("PART", "부품 교체"), ("UNIT", "본체 교체"), ("ETC", "기타")],
-    "CONSULT": [("USAGE", "사용법 문의"), ("ETC", "기타")],
-    "ETC": [("ETC", "기타")],
+# 서비스구분(코드) → 세부분류. 구 서버 lists(kind=detail) 89개를 그 순서대로 (2026-09-25).
+# 세부분류 그룹이 비어 있는 새 저장소에만 심는다. 코드는 '<구분코드>_<번호>'.
+DEFAULT_SYMPTOMS: dict[str, list[str]] = {
+    "ROBOT_ARM": ["모터보드", "모터", "엔코더", "감속기", "브레이크", "솔레노이드", "툴 플랜지",
+                  "프레임", "통신", "미확인", "기타", "테스트"],
+    "CONTROL_BOX": ["퓨즈", "파워 케이블", "전원 스위치", "I/O 보드", "로봇-제어박스 케이블", "SSD",
+                    "CAN 통신", "통신 포트", "환기팬", "필터", "PC", "LCD패널", "E-stop 스위치",
+                    "미확인", "메인보드", "기타"],
+    "E_GRIPPER": ["엔코더", "모터", "브레이크", "제어보드", "핑거베이스", "핑거파츠", "케이블",
+                  "퀵 커넥터", "미확인", "기타"],
+    "NE_GRIPPER": ["그리퍼 베이스", "손목", "핸드베이스", "핸드", "핸드픽서", "미확인", "기타"],
+    "MONITOR": ["파워 케이블", "통신단자", "화면", "스위치", "USB 포트", "스피커", "미확인", "기타"],
+    "COMM": ["로봇-모니터(태블릿)", "모니터-프린터", "로봇-PLC", "미확인", "기타"],
+    "MINI_PC": ["하드웨어", "소프트웨어", "미확인", "기타"],
+    "STRUCTURE": ["로봇 마운트 구조물", "튀김기 마운트", "시작대", "배출대", "스파이더", "바삭이",
+                  "빙고봇", "미확인", "기타"],
+    "ELECTRIC": ["히터", "PLC", "장비누전", "미확인", "기타"],
+    "PROGRAM": ["티칭", "앱", "PLC", "미확인", "기타"],
+    "ETC": ["바스켓", "로봇 옷", "글러브", "요청/문의", "미확인", "사용자 실수", "기타"],
+    "UNKNOWN": ["미확인"],
+}
+
+# 예전 기본 그룹 이름. 이 이름 그대로면 새 이름으로 바꾼다(관리자가 고친 이름은 그대로 둔다).
+_OLD_GROUP_NAMES: dict[str, set[str]] = {
+    "SERVICE_CATEGORY": {"서비스 분류"},
+    "SERVICE_SYMPTOM": {"증상 분류"},
 }
 
 
@@ -281,20 +301,20 @@ def _seed_default_symptoms(db: Session) -> None:
     if group is None or cat_group is None:
         return
     if db.scalar(select(CodeItem.id).where(CodeItem.group_id == group.id)) is not None:
-        return  # 이미 쓰는 저장소: 회사 증상 목록을 건드리지 않는다
+        return  # 이미 쓰는 저장소: 회사 세부분류 목록을 건드리지 않는다
     order = 0
-    for cat_code, items in DEFAULT_SYMPTOMS.items():
+    for cat_code, names in DEFAULT_SYMPTOMS.items():
         parent = db.scalar(
             select(CodeItem).where(CodeItem.group_id == cat_group.id, CodeItem.code == cat_code)
         )
         if parent is None:
             continue
-        for code, name in items:
+        for n, name in enumerate(names, start=1):
             order += 1
             db.add(
                 CodeItem(
                     group_id=group.id, parent_id=parent.id,
-                    code=f"{cat_code}_{code}", name=name, sort_order=order,
+                    code=f"{cat_code}_{n:02d}", name=name, sort_order=order,
                 )
             )
 
@@ -308,6 +328,8 @@ def _seed_codes(db: Session) -> None:
             )
             db.add(group)
             db.flush()
+        elif group.name in _OLD_GROUP_NAMES.get(group_code, ()):
+            group.name = group_name
         for order, (code, name, color) in enumerate(items, start=1):
             exists = db.scalar(
                 select(CodeItem.id).where(
