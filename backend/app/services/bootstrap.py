@@ -44,15 +44,9 @@ DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]
         ],
     ),
     (
-        "SERVICE_SYMPTOM", "증상 분류", ModuleKey.SERVICE,
-        [
-            ("POWER", "전원 불량", None),
-            ("NOISE", "소음", None),
-            ("LEAK", "누수 / 누유", None),
-            ("MALFUNCTION", "오작동", None),
-            ("BROKEN", "파손", None),
-            ("ETC", "기타", None),
-        ],
+        # 증상은 서비스 분류의 하위 선택지라 여기 두지 않고 DEFAULT_SYMPTOMS 로
+        # 분류 아래에 심는다(_seed_default_symptoms).
+        "SERVICE_SYMPTOM", "증상 분류", ModuleKey.SERVICE, [],
     ),
     (
         "SERVICE_CAUSE", "원인 분류", ModuleKey.SERVICE,
@@ -231,6 +225,7 @@ DEFAULT_BOARDS: list[tuple[str, str, BoardType, Role, int]] = [
 def run(db: Session) -> None:
     _seed_superadmin(db)
     _seed_codes(db)
+    _seed_default_symptoms(db)
     _seed_settings(db)
     _seed_boards(db)
     _seed_calendar(db)
@@ -262,6 +257,46 @@ def _seed_superadmin(db: Session) -> None:
         "Bootstrapped super admin %s - change this password immediately.",
         settings.FIRST_SUPERADMIN_EMAIL,
     )
+
+
+# 서비스 분류(코드) → 기본 증상. 증상 그룹이 비어 있는 새 저장소에만 심는다.
+# 코드는 '<분류코드>_<증상코드>' 로 그룹 안에서 유일하게 만든다.
+DEFAULT_SYMPTOMS: dict[str, list[tuple[str, str]]] = {
+    "REPAIR": [
+        ("POWER", "전원 불량"), ("NOISE", "소음"), ("LEAK", "누수 / 누유"),
+        ("MALFUNCTION", "오작동"), ("BROKEN", "파손"), ("ETC", "기타"),
+    ],
+    "INSTALL": [("NEW", "신규 설치"), ("MOVE", "이전 설치"), ("ETC", "기타")],
+    "INSPECT": [("REGULAR", "정기 점검"), ("REQUEST", "요청 점검"), ("ETC", "기타")],
+    "REPLACE": [("PART", "부품 교체"), ("UNIT", "본체 교체"), ("ETC", "기타")],
+    "CONSULT": [("USAGE", "사용법 문의"), ("ETC", "기타")],
+    "ETC": [("ETC", "기타")],
+}
+
+
+def _seed_default_symptoms(db: Session) -> None:
+    db.flush()
+    group = _group(db, "SERVICE_SYMPTOM")
+    cat_group = _group(db, "SERVICE_CATEGORY")
+    if group is None or cat_group is None:
+        return
+    if db.scalar(select(CodeItem.id).where(CodeItem.group_id == group.id)) is not None:
+        return  # 이미 쓰는 저장소: 회사 증상 목록을 건드리지 않는다
+    order = 0
+    for cat_code, items in DEFAULT_SYMPTOMS.items():
+        parent = db.scalar(
+            select(CodeItem).where(CodeItem.group_id == cat_group.id, CodeItem.code == cat_code)
+        )
+        if parent is None:
+            continue
+        for code, name in items:
+            order += 1
+            db.add(
+                CodeItem(
+                    group_id=group.id, parent_id=parent.id,
+                    code=f"{cat_code}_{code}", name=name, sort_order=order,
+                )
+            )
 
 
 def _seed_codes(db: Session) -> None:

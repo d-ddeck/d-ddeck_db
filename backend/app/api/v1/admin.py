@@ -56,7 +56,7 @@ from app.schemas.admin import (
     TableStat,
 )
 from app.schemas.common import Message
-from app.services import asset_rules, audit
+from app.services import asset_rules, audit, code_tree
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -211,8 +211,16 @@ def create_code_item(
     )
     if existing is not None and existing.deleted_at is None:
         raise AppError("CODE_TAKEN", "이미 사용 중인 항목 코드입니다.", status.HTTP_409_CONFLICT)
+    code_tree.resolve_parent(db, group, payload.parent_id)
     if existing is not None:
         # 같은 코드는 같은 분류다: 삭제된 줄을 되살려 옛 기록의 연결도 돌아오게 한다.
+        # 함께 지워진 하위 항목(같은 시각)도 같이 돌아온다.
+        removed_at = existing.deleted_at
+        for child in db.scalars(
+            select(CodeItem).where(CodeItem.parent_id == existing.id, CodeItem.deleted_at == removed_at)
+        ).all():
+            child.deleted_at = None
+            child.is_active = True
         for field, value in payload.model_dump().items():
             setattr(existing, field, value)
         existing.deleted_at = None
@@ -231,7 +239,10 @@ def update_code_item(
     item_id: uuid.UUID, payload: CodeItemUpdate, db: DbSession, _: AdminUser
 ) -> CodeItemOut:
     item = _load_item(db, item_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "parent_id" in changes:
+        code_tree.resolve_parent(db, item.group, changes["parent_id"])
+    for field, value in changes.items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
@@ -519,6 +530,7 @@ def _load_group_by_code(db: Session, code: str) -> CodeGroup:
 
 def _group_out(group: CodeGroup) -> CodeGroupOut:
     out = CodeGroupOut.model_validate(group)
+    out.parent_group_code = code_tree.parent_group_code(group.code)
     out.items = [
         _item_out(i, group)
         for i in sorted(group.items, key=lambda i: i.sort_order)

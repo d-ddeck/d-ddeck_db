@@ -194,6 +194,34 @@ with TestClient(app) as c:
     check("규칙 항목 삭제 거절 (SYSTEM_ITEM)",
           r.status_code == 400 and r.json()["error"]["code"] == "SYSTEM_ITEM", r.text)
 
+    # --- 하위 그룹(증상 → 서비스 분류): 상위 필수 · 같은 축만 (2026-09-25)
+    r = c.get("/api/v1/admin/codes/SERVICE_SYMPTOM", headers=bearer(user_token))
+    check("증상 그룹은 서비스 분류의 하위 (parent_group_code)",
+          r.json()["parent_group_code"] == "SERVICE_CATEGORY", r.json().get("parent_group_code"))
+    sym_group_id = r.json()["id"]
+    check("기본 증상은 모두 상위 분류 아래에 있음",
+          len(r.json()["items"]) >= 10 and all(i["parent_id"] for i in r.json()["items"]),
+          [i["code"] for i in r.json()["items"] if not i["parent_id"]])
+    r = c.post(f"/api/v1/admin/codes/{sym_group_id}/items", headers=bearer(admin_token),
+               json={"code": "TMP_SYM", "name": "임시 증상"})
+    check("증상은 상위 없이 추가 불가 (PARENT_REQUIRED)",
+          r.status_code == 400 and r.json()["error"]["code"] == "PARENT_REQUIRED", r.text)
+    r = c.post(f"/api/v1/admin/codes/{sym_group_id}/items", headers=bearer(admin_token),
+               json={"code": "TMP_SYM", "name": "임시 증상", "parent_id": statuses["설치"]["id"]})
+    check("다른 축의 항목을 상위로 못 씀 (PARENT_MISMATCH)",
+          r.status_code == 400 and r.json()["error"]["code"] == "PARENT_MISMATCH", r.text)
+    r = c.post(f"/api/v1/admin/codes/{sym_group_id}/items", headers=bearer(admin_token),
+               json={"code": "TMP_SYM", "name": "임시 증상", "parent_id": categories["REPAIR"]})
+    check("증상 추가 (상위 = 수리)", r.status_code == 201 and r.json()["parent_id"] == categories["REPAIR"], r.text)
+    tmp_sym = r.json()["id"]
+    r = c.patch(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token), json={"parent_id": None})
+    check("상위를 비울 수 없음", r.status_code == 400 and r.json()["error"]["code"] == "PARENT_REQUIRED", r.text)
+    r = c.patch(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token), json={"parent_id": categories["INSTALL"]})
+    check("상위 분류 옮기기", r.status_code == 200 and r.json()["parent_id"] == categories["INSTALL"], r.text)
+    c.delete(f"/api/v1/admin/codes/items/{tmp_sym}", headers=bearer(admin_token))
+    r = c.get("/api/v1/admin/codes/SERVICE_CATEGORY", headers=bearer(user_token))
+    check("서비스 분류는 최상위 (parent_group_code 없음)", r.json()["parent_group_code"] is None, r.text)
+
     r = c.get("/api/v1/admin/codes/SERVICE_SYMPTOM", headers=bearer(user_token))
     symptoms = {i["code"]: i["id"] for i in r.json()["items"]}
 
@@ -218,7 +246,7 @@ with TestClient(app) as c:
 
     ticket_ids = []
     for i, (cat, sym) in enumerate(
-        [("REPAIR", "POWER"), ("REPAIR", "NOISE"), ("INSTALL", "MALFUNCTION"), ("INSPECT", "ETC")]
+        [("REPAIR", "REPAIR_POWER"), ("REPAIR", "REPAIR_NOISE"), ("INSTALL", "INSTALL_ETC"), ("INSPECT", "INSPECT_ETC")]
     ):
         r = c.post(
             "/api/v1/service/tickets",
@@ -723,6 +751,9 @@ with TestClient(app) as c:
         json={"code": "REPAIR", "name": "수리", "sort_order": 1},
     )
     check("삭제한 분류를 같은 코드로 되살림", r.status_code == 201 and r.json()["id"] == categories["REPAIR"], r.text)
+    r = c.get("/api/v1/admin/codes/SERVICE_SYMPTOM", headers=bearer(user_token))
+    check("분류를 되살리면 함께 지워졌던 증상도 돌아옴",
+          any(i["code"] == "REPAIR_POWER" for i in r.json()["items"]), [i["code"] for i in r.json()["items"]])
 
     r = c.get("/api/v1/admin/audit-logs?size=100", headers=bearer(admin_token))
     logs = r.json()

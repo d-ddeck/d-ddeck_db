@@ -102,7 +102,9 @@
 | 항목 삭제 | `DELETE /admin/codes/items/{id}`: 모든 목록에서 사라짐(하위 항목도 함께). 줄은 soft delete 로 남아 **기존 기록·장비·통계는 분류 이름을 그대로** 보여 준다. 감사로그 `DELETE code_item` |
 | 삭제 전 확인 | `GET /admin/codes/items/{id}/usage` → 사용 건수(`by`: 대응 기록 · 대응 원인 · 매장 · 장비 · 장비 이동 이력 · 일정), 하위 항목 수, 보호 여부 |
 | 보호 항목 | 재고 상태 중 규칙 `store`/`as`/`clear` 인 것(창고 · 사무실 · 미상 · 설치 · 렌탈 중 · AS 대기 · AS 반출)은 삭제 불가 → 400 `SYSTEM_ITEM`. 항목 JSON 의 `is_protected`. 회수·폐기(`free`)는 지울 수 있다 |
-| 되살리기 | 삭제한 항목과 같은 코드로 다시 추가하면(`POST /admin/codes/{group_id}/items`) 그 줄이 되살아나 옛 기록의 연결도 돌아온다 |
+| 되살리기 | 삭제한 항목과 같은 코드로 다시 추가하면(`POST /admin/codes/{group_id}/items`) 그 줄이 되살아나 옛 기록의 연결도 돌아온다. 함께 지워진 하위 항목도 같이 돌아온다 |
+| 하위 그룹 | 증상 → 서비스 분류, 자산 모델 · 자산 제조사 → 자산 분류 (`app/services/code_tree.py`). 그룹 JSON 의 `parent_group_code`. 하위 항목 추가 · 상위 변경 때 상위 필수 → 400 `PARENT_REQUIRED`, 다른 축의 항목이면 400 `PARENT_MISMATCH`. 관리 화면은 상위를 먼저 고르고 그 하위만 보여 준다 |
+| 기본 증상 | 새 저장소에는 기본 증상을 서비스 분류 아래에 심는다(`bootstrap.DEFAULT_SYMPTOMS`, 코드 `REPAIR_POWER` …). 이미 증상이 있는 저장소는 건드리지 않는다 |
 | 비활성화 | `PATCH /admin/codes/items/{id}` `is_active=false`: 새 등록 선택지에서만 빠지고 목록에는 남는다(다시 사용 가능) |
 
 ## 6. 아직 옮기지 않은 것
@@ -114,7 +116,7 @@
 
 ```bash
 cd backend
-.venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (198)
+.venv-linux/bin/python scripts/smoke_test.py          # 전 모듈 (207)
 .venv-linux/bin/python scripts/smoke_test_legacy.py   # 구 서버 규칙 (145)
 ```
 

@@ -12856,6 +12856,17 @@
             "type": "boolean",
             "title": "Is System"
           },
+          "parent_group_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Group Code"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/CodeItemOut"

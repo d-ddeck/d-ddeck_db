@@ -66,6 +66,10 @@ PUT  /api/v1/admin/settings/SERVICE   → 폼 전체를 한 번에 저장(upsert
 
 서비스 분류·증상·원인·조치, 자산 분류, 일정 유형이 전부 같은 구조입니다.
 그룹당 항목 CRUD + 드래그 정렬(`POST /codes/{id}/reorder`) 화면 하나면 됩니다.
+증상은 서비스 분류의, 자산 모델·제조사는 자산 분류의 하위 선택지입니다. 이 관계는
+`services/code_tree.py` 의 표 하나에 있고 그룹 JSON 의 `parent_group_code` 로
+나가며, 하위 항목은 상위 없이(`PARENT_REQUIRED`) 또는 다른 축을 가리켜서
+(`PARENT_MISMATCH`) 만들 수 없습니다.
 
 항목 삭제(`DELETE /codes/items/{id}`)는 **목록에서 없애되 줄은 남기는 soft delete** 입니다.
 기존 AS 건·장비가 그 코드를 가리키고 있고, 통계가 그 이름을 계속 풀어낼 수 있어야

@@ -111,6 +111,9 @@ class CodeGroupOut(ORMModel):
     module: ModuleKey
     description: str | None = None
     is_system: bool
+    # 이 그룹이 어느 그룹의 하위 선택지인지 (증상 → 서비스 분류, 모델·제조사 → 자산 분류).
+    # 있으면 항목마다 parent_id 가 그 그룹의 항목을 가리켜야 한다.
+    parent_group_code: str | None = None
     items: list[CodeItemOut] = Field(default_factory=list)
 
 
