@@ -54,7 +54,7 @@
 | 구 서버 | 신 서버 |
 |---|---|
 | 폐점 저장 → 설치 장비를 회수 위치로 (브랜드 회수 / 창고 / 사무실). 렌탈 중은 안 옮김 | `POST /stores/{id}/close` (`recover_to_status_item_id`), 또는 `PATCH is_closed=true` + `recover_to_status_item_id`. 상세의 `recover_options`(첫 항목 기본) · `movable_count` · `rental_count` 로 확인 문구 |
-| 매장 장비 설정(세트마다 로봇팔·제어박스·그리퍼·툴체인저 S/N) | `POST /stores/{id}/equipment`: 없는 S/N 등록, 다른 곳 장비 이동, 있으면 세트만, 비전동 세트 S/N 없으면 NG 번호 |
+| 매장 장비 설정(세트마다 로봇팔·제어박스·그리퍼·툴체인저 S/N) | `POST /stores/{id}/equipment`: **재고에 있는 S/N 만**(설정 `equipment_requires_known_serial`, 없으면 400 `SERIAL_UNKNOWN` 로 전부 거절), 다른 곳 장비는 이동, 있으면 세트만, 비전동 세트 S/N 없으면 NG 번호. 구 서버는 없는 S/N 을 새로 등록했지만 2026-09-25 부터 장비 등록은 [장비 목록]에서만 |
 | 세트 이름·추가·삭제 | `POST/PATCH/DELETE /stores/{id}/sets[/{no}]` (장비 있는 세트는 삭제 불가) |
 | 매장 화면: 서비스구분별 발생 · 미회수 렌탈 · 대응 이력 · 첫 설치일 | `GET /stores/{id}` 의 `category_counts`, `unreturned_rentals`, `recent_tickets`, `install_date`, `open_ticket_count` |
 | 매장 검색·폐점 포함 | `GET /stores?q&include_closed` |
