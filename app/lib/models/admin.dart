@@ -1,5 +1,29 @@
 import 'common.dart';
 
+class CodeItemUsage {
+  const CodeItemUsage({
+    required this.count,
+    required this.by,
+    required this.children,
+    this.isProtected = false,
+    this.protectedReason,
+  });
+
+  final int count;
+  final Map<String, int> by;
+  final int children;
+  final bool isProtected;
+  final String? protectedReason;
+
+  factory CodeItemUsage.fromJson(Map<String, dynamic> j) => CodeItemUsage(
+        count: asInt(j['count']),
+        by: asMap(j['by']).map((key, value) => MapEntry(key, asInt(value))),
+        children: asInt(j['children']),
+        isProtected: asBool(j['is_protected']),
+        protectedReason: j['protected_reason'] as String?,
+      );
+}
+
 /// The six settings namespaces the server exposes at /admin/settings/{module}.
 enum SettingsModule {
   system('SYSTEM', '시스템'),

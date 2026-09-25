@@ -54,10 +54,15 @@ class AdminRepository {
     return CodeItem.fromJson(asMap(res));
   }
 
-  /// Deactivates rather than removes: existing tickets still point at this
-  /// code and their statistics must keep resolving its name.
-  Future<void> deleteCodeItem(String itemId) =>
-      _api.delete('/admin/codes/items/$itemId');
+  Future<CodeItemUsage> codeItemUsage(String itemId) async =>
+      CodeItemUsage.fromJson(
+          asMap(await _api.get('/admin/codes/items/$itemId/usage')));
+
+  /// Removes the item from lists while preserving names in existing records.
+  Future<String> deleteCodeItem(String itemId) async {
+    final res = await _api.delete('/admin/codes/items/$itemId');
+    return asString(asMap(res)['message']);
+  }
 
   Future<void> reorderCodeItems(String groupId, List<String> itemIds) =>
       _api.post('/admin/codes/$groupId/reorder', body: {'item_ids': itemIds});

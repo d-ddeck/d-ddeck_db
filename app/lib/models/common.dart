@@ -67,6 +67,7 @@ class CodeItem {
     this.color,
     this.sortOrder = 0,
     this.isActive = true,
+    this.isProtected = false,
     this.groupId,
     this.parentId,
     this.extra = const {},
@@ -78,6 +79,7 @@ class CodeItem {
   final String? color;
   final int sortOrder;
   final bool isActive;
+  final bool isProtected;
   final String? groupId;
   final String? parentId;
   final Map<String, dynamic> extra;
@@ -89,6 +91,7 @@ class CodeItem {
         color: j['color'] as String?,
         sortOrder: asInt(j['sort_order']),
         isActive: asBool(j['is_active'], true),
+        isProtected: asBool(j['is_protected']),
         groupId: j['group_id'] as String?,
         parentId: j['parent_id'] as String?,
         extra: asMap(j['extra']),

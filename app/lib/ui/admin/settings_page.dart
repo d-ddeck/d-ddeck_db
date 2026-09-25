@@ -278,11 +278,65 @@ class _CodeGroupCard extends StatelessWidget {
     ], child: Column(children: [
       if (group.items.isEmpty) const EmptyState(message: '아직 등록된 코드 항목이 없습니다'),
       for (final item in group.items) ListTile(
-        title: Text(item.name),
-        subtitle: Text(item.isActive ? '사용 중' : '비활성'),
+        title: Row(children: [
+          Flexible(child: Text(item.name, style: TextStyle(
+            color: item.isActive ? null : Theme.of(context).colorScheme.outline))),
+          if (item.isProtected) ...[
+            const SizedBox(width: 4),
+            const Tooltip(message: '재고 상태 규칙에 쓰이는 항목',
+              child: Icon(Icons.lock_outline, size: 14)),
+          ],
+        ]),
+        subtitle: !item.isActive
+            ? const Text('비활성 · 새 등록 때 선택 안 됨')
+            : item.code != item.name ? Text(item.code) : null,
         leading: item.color == null ? null : CircleAvatar(radius: 7, backgroundColor: parseHexColor(item.color!)),
-        trailing: item.isActive ? IconButton(tooltip: '비활성화', icon: const Icon(Icons.remove_circle_outline),
-          onPressed: () => _deactivate(context, item)) : null,
+        trailing: PopupMenuButton<String>(
+          tooltip: '항목 관리',
+          icon: const Icon(Icons.more_vert),
+          onSelected: (action) async {
+            switch (action) {
+              case 'edit':
+                await _editItem(context, item);
+                break;
+              case 'active':
+                await _setActive(context, item);
+                break;
+              case 'delete':
+                await _deleteItem(context, item);
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'edit', child: Text('이름·색 수정')),
+            PopupMenuItem(value: 'active', child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(item.isActive ? '비활성화' : '다시 사용'),
+                if (item.isActive) const Text(
+                  '새로 등록할 때 선택지에서만 빠집니다. 목록에는 남습니다.',
+                  style: TextStyle(fontSize: 12)),
+              ],
+            )),
+            PopupMenuItem(value: 'delete', enabled: !item.isProtected,
+              child: Row(children: [
+                Icon(Icons.delete_outline, color: item.isProtected
+                    ? Theme.of(context).disabledColor : AppColors.danger(context)),
+                const SizedBox(width: 8),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('삭제', style: TextStyle(color: item.isProtected
+                        ? Theme.of(context).disabledColor : AppColors.danger(context))),
+                    if (item.isProtected) const Text('재고 상태 규칙에 쓰이는 항목',
+                      style: TextStyle(fontSize: 12)),
+                  ],
+                )),
+              ])),
+          ],
+        ),
       ),
     ]));
   }
@@ -345,17 +399,121 @@ class _CodeGroupCard extends StatelessWidget {
     if (ok) onChanged();
   }
 
-  Future<void> _deactivate(BuildContext context, CodeItem item) async {
-    final confirmed = await ConfirmDialog.show(context, title: '${item.name} 비활성화',
-        message: '새로 등록할 때 선택지에서 제외됩니다.\n'
-          '기존 데이터의 분류와 통계는 그대로 유지됩니다.', confirmLabel: '비활성화', destructive: true);
+  Future<void> _editItem(BuildContext context, CodeItem item) async {
+    final formKey = GlobalKey<FormState>();
+    var name = item.name;
+    var color = item.color;
+    const palette = [
+      ('파랑', '#3B82F6'), ('하늘', '#0EA5E9'),
+      ('청록', '#14B8A6'), ('초록', '#22C55E'),
+      ('노랑', '#EAB308'), ('주황', '#F97316'),
+      ('빨강', '#EF4444'), ('보라', '#8B5CF6'),
+    ];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setState) => ConfirmDialog.form(
+        title: const Text('이름·색 수정'),
+        content: Form(key: formKey, child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              initialValue: name,
+              decoration: const InputDecoration(labelText: '표시 이름 *'),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? '이름을 입력해 주세요' : null,
+              onChanged: (value) => name = value,
+            ),
+            const SizedBox(height: 16),
+            const Text('표시 색 (선택)'),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              ChoiceChip(label: const Text('없음'), selected: color == null,
+                onSelected: (_) => setState(() => color = null)),
+              for (final (label, hex) in palette)
+                ChoiceChip(
+                  label: Text(label),
+                  avatar: CircleAvatar(backgroundColor: parseHexColor(hex), radius: 7),
+                  selected: color?.toUpperCase() == hex,
+                  onSelected: (_) => setState(() => color = hex),
+                ),
+              if (item.color != null &&
+                  !palette.any((entry) => entry.$2 == item.color!.toUpperCase()))
+                ChoiceChip(label: const Text('기존 색'),
+                  avatar: CircleAvatar(backgroundColor: parseHexColor(item.color!), radius: 7),
+                  selected: color == item.color,
+                  onSelected: (_) => setState(() => color = item.color)),
+            ]),
+          ],
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
+          FilledButton(onPressed: () {
+            if (formKey.currentState!.validate()) Navigator.of(ctx).pop(true);
+          }, child: const Text('저장')),
+        ],
+      )),
+    );
     if (confirmed != true || !context.mounted) return;
 
-    final ok = await runGuarded(
-      context,
-      () => context.read<AdminRepository>().deleteCodeItem(item.id),
-      successMessage: '비활성화되었습니다.',
-    );
-    if (ok) onChanged();
+    final ok = await runGuarded(context, () async {
+      await context.read<AdminRepository>().updateCodeItem(item.id, {
+        'name': name.trim(),
+        'color': color,
+      });
+    });
+    if (!ok || !context.mounted) return;
+    onChanged();
+    AppSnack.show(context, '저장되었습니다');
+  }
+
+  Future<void> _setActive(BuildContext context, CodeItem item) async {
+    if (item.isActive) {
+      final confirmed = await ConfirmDialog.show(context,
+        title: '${item.name} 비활성화',
+        message: '새로 등록할 때 선택지에서만 빠집니다. 목록에는 남습니다.',
+        confirmLabel: '비활성화');
+      if (!confirmed || !context.mounted) return;
+    }
+    final ok = await runGuarded(context, () async {
+      await context.read<AdminRepository>().updateCodeItem(
+        item.id, {'is_active': !item.isActive});
+    });
+    if (!ok || !context.mounted) return;
+    onChanged();
+    AppSnack.show(context, item.isActive ? '비활성화되었습니다.' : '다시 사용할 수 있습니다.');
+  }
+
+  Future<void> _deleteItem(BuildContext context, CodeItem item) async {
+    if (item.isProtected) return;
+    final repo = context.read<AdminRepository>();
+    late CodeItemUsage usage;
+    final loaded = await runGuarded(context, () async {
+      usage = await repo.codeItemUsage(item.id);
+    });
+    if (!loaded || !context.mounted) return;
+    if (usage.isProtected) {
+      AppSnack.show(context, usage.protectedReason ?? '재고 상태 규칙에 쓰이는 항목', error: true);
+      return;
+    }
+    final breakdown = usage.by.entries.map((entry) => '${entry.key} ${entry.value}').join(' · ');
+    final message = [
+      usage.count == 0 ? '이 항목을 쓰는 기록이 없습니다'
+          : '이 항목을 쓰는 기록 ${usage.count}건${breakdown.isEmpty ? '' : ' ($breakdown)'}',
+      if (usage.children > 0) '하위 항목 ${usage.children}개도 함께 삭제됩니다.',
+      '삭제해도 기존 기록의 분류 이름은 그대로 남습니다. 같은 코드로 다시 추가하면 되살아납니다.',
+    ].join('\n\n');
+    final confirmed = await ConfirmDialog.show(context,
+      title: '${item.name} 삭제', message: message,
+      confirmLabel: '삭제', destructive: true);
+    if (!confirmed || !context.mounted) return;
+
+    late String result;
+    final ok = await runGuarded(context, () async {
+      result = await repo.deleteCodeItem(item.id);
+    });
+    if (!ok || !context.mounted) return;
+    onChanged();
+    AppSnack.show(context, result);
   }
 }
