@@ -530,8 +530,11 @@ with TestClient(app) as c:
                 json={"starts_at": utc(minutes=6), "ends_at": utc(minutes=66)})
     offsets = sorted(x["offset_minutes"] for x in r.json()["reminders"])
     check("시각만 바꿔도 기존 알림 유지", offsets == [10, 60], r.json()["reminders"])
+    # 뒤의 스윕 검사(1건 발송)를 위해 기본 알림 하나로 되돌린다
     r = c.patch(f"/api/v1/calendar/events/{event_id}", headers=bearer(user_token),
-                json={"starts_at": utc(minutes=5), "ends_at": utc(minutes=65)})
+                json={"starts_at": utc(minutes=5), "ends_at": utc(minutes=65),
+                      "reminders": [{"offset_minutes": 30, "method": "PUSH"}]})
+    check("알림 하나로 되돌림", len(r.json()["reminders"]) == 1, r.json()["reminders"])
 
     r = c.post("/api/v1/calendar/reminders/run", headers=bearer(admin_token))
     check("알림 스윕 실행", r.status_code == 200 and "1건" in r.json()["message"], r.text)
