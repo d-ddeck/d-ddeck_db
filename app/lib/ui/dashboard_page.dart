@@ -13,6 +13,7 @@ import 'async_view.dart';
 import 'format.dart';
 import 'common/common.dart';
 import 'calendar/calendar_page.dart';
+import 'calendar/event_detail_sheet.dart';
 import 'theme.dart';
 import 'service/service_detail_page.dart';
 import 'service/service_page.dart';
@@ -184,7 +185,9 @@ class DashboardPage extends StatelessWidget {
                   ? const _EmptyRow(text: '아직 등록된 오늘 일정이 없습니다')
                   : Column(
                       children: [
-                        for (final e in data.todayEvents) _EventRow(event: e),
+                        for (final e in data.todayEvents) _EventRow(event: e, onChanged: () {
+                          if (context.mounted) reload();
+                        }),
                       ],
                     ),
             ),
@@ -297,12 +300,14 @@ class _TicketRow extends StatelessWidget {
 }
 
 class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event});
+  const _EventRow({required this.event, required this.onChanged});
   final CalendarEvent event;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      onTap: () => EventDetailSheet.show(context, event, onChanged: onChanged),
       dense: true,
       contentPadding: EdgeInsets.zero,
       leading: Container(

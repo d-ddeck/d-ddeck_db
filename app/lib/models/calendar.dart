@@ -113,11 +113,13 @@ class EventReminder {
   const EventReminder({
     required this.id,
     required this.offsetMinutes,
+    this.method = 'PUSH',
     this.sentAt,
   });
 
   final String id;
   final int offsetMinutes;
+  final String method;
   final DateTime? sentAt;
 
   String get label => offsetMinutes == 0 ? '시작 시각' : '$offsetMinutes분 전';
@@ -125,6 +127,7 @@ class EventReminder {
   factory EventReminder.fromJson(Map<String, dynamic> j) => EventReminder(
         id: asString(j['id']),
         offsetMinutes: asInt(j['offset_minutes']),
+        method: asString(j['method'], 'PUSH'),
         sentAt: asDate(j['sent_at']),
       );
 }

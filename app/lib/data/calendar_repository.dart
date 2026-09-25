@@ -69,6 +69,7 @@ class CalendarRepository {
     bool isPrivate = false,
     List<String> participantIds = const [],
     int? reminderMinutes,
+    List<Map<String, dynamic>>? reminders,
   }) async {
     final res = await _api.post('/calendar/events', body: {
       'calendar_id': calendarId,
@@ -81,7 +82,8 @@ class CalendarRepository {
       'all_day': allDay,
       'is_private': isPrivate,
       'participant_ids': participantIds,
-      if (reminderMinutes != null)
+      if (reminders != null) 'reminders': reminders
+      else if (reminderMinutes != null)
         'reminders': [
           {'offset_minutes': reminderMinutes, 'method': 'PUSH'}
         ],

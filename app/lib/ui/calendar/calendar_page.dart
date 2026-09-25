@@ -4,14 +4,16 @@ import 'package:provider/provider.dart';
 import '../common/common.dart';
 
 import '../../core/api_exception.dart';
-import '../../data/auth_repository.dart';
 import '../../data/calendar_repository.dart';
 import '../../models/calendar.dart';
-import '../../models/common.dart';
 import '../../state/auth_state.dart';
 import '../async_view.dart';
 import '../format.dart';
 import '../theme.dart';
+import 'event_detail_sheet.dart';
+import 'event_form_page.dart';
+
+export 'event_form_page.dart' show EventFormPage;
 
 class _MonthData {
   const _MonthData({required this.calendars, required this.events, required this.holidays});
@@ -65,7 +67,7 @@ class _CalendarPageState extends State<CalendarPage> {
               builder: (_) => EventFormPage(initialDate: _selected),
             ),
           );
-          if (created == true) _refresh();
+          if (mounted && created == true) _refresh();
         }, icon: const Icon(Icons.add), label: const Text('일정 등록'))]),
       body: PageBody(child: AsyncView<_MonthData>(
         key: _viewKey,
@@ -129,7 +131,7 @@ class _CalendarPageState extends State<CalendarPage> {
                         itemBuilder: (context, i) => _EventTile(
                           event: dayEvents[i],
                           calendarColor: colorsById[dayEvents[i].calendarId],
-                          onChanged: reload,
+                          onChanged: _refresh,
                         ),
                       ),
             ],
@@ -417,346 +419,7 @@ class _EventTile extends StatelessWidget {
                 if (ok) onChanged();
               },
             ),
-      onTap: () => showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (_) => _EventSheet(event: event),
-      ),
-    );
-  }
-}
-
-class _EventSheet extends StatelessWidget {
-  const _EventSheet({required this.event});
-  final CalendarEvent event;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: SectionCard(title: '일정 정보', child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              event.title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            _row(context, Icons.schedule,
-                Fmt.range(event.startsAt, event.endsAt, allDay: event.allDay)),
-            if (event.location != null)
-              _row(context, Icons.place_outlined, event.location!),
-            if (event.description != null)
-              _row(context, Icons.notes, event.description!),
-            if (event.reminders.isNotEmpty)
-              _row(
-                context,
-                Icons.notifications_outlined,
-                event.reminders.map((r) => r.label).join(', '),
-              ),
-            const FormGap(),
-            Text('참석자 ${Fmt.number(event.participants.length)}명',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final p in event.participants)
-                  StatusChip(
-                    label:
-                        '${p.user?.fullName ?? '?'}${p.isOrganizer ? ' (주최)' : ''}',
-                    color: p.response.color,
-                    icon: p.response.icon,
-                    dense: true,
-                  ),
-              ],
-            ),
-          ],
-        )),
-      )),
-    );
-  }
-
-  Widget _row(BuildContext context, IconData icon, String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-          ],
-        ),
-      );
-}
-
-class EventFormPage extends StatefulWidget {
-  const EventFormPage({super.key, required this.initialDate});
-  final DateTime initialDate;
-
-  @override
-  State<EventFormPage> createState() => _EventFormPageState();
-}
-
-class _EventFormPageState extends State<EventFormPage> {
-  final _title = TextEditingController();
-  final _location = TextEditingController();
-  final _description = TextEditingController();
-
-  String? _calendarId;
-  late DateTime _start;
-  late DateTime _end;
-  bool _allDay = false;
-  int _reminderMinutes = 30;
-  final Set<String> _participants = {};
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final d = widget.initialDate;
-    _start = DateTime(d.year, d.month, d.day, 9);
-    _end = _start.add(const Duration(hours: 1));
-  }
-
-  @override
-  void dispose() {
-    _title.dispose();
-    _location.dispose();
-    _description.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final calendarRepo = context.read<CalendarRepository>();
-    final authRepo = context.read<AuthRepository>();
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('일정 등록')),
-      body: PageBody(child: AsyncView<(List<AppCalendar>, List<UserBrief>)>(
-        load: () async {
-          final results = await Future.wait([
-            calendarRepo.calendars(),
-            authRepo.directory(size: 100),
-          ]);
-          return (
-            results[0] as List<AppCalendar>,
-            (results[1] as PagedList<UserBrief>).items,
-          );
-        },
-        builder: (context, data, reload) {
-          final (calendars, members) = data;
-          _calendarId ??= calendars.isNotEmpty ? calendars.first.id : null;
-
-          return Column(children: [Expanded(child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              TextField(
-                controller: _title,
-                decoration: const InputDecoration(labelText: '제목 *'),
-              ),
-              const FormGap(),
-              DropdownButtonFormField<String>(
-                initialValue: _calendarId,
-                decoration: const InputDecoration(labelText: '캘린더 *'),
-                isExpanded: true,
-                items: [
-                  for (final c in calendars)
-                    DropdownMenuItem(
-                      value: c.id,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: c.displayColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text('${c.name} (${c.type.label})'),
-                        ],
-                      ),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _calendarId = v),
-              ),
-              const FormGap(),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('종일', style: TextStyle(fontSize: 14)),
-                value: _allDay,
-                onChanged: (v) => setState(() => _allDay = v),
-              ),
-              _DateTimeRow(
-                label: '시작',
-                value: _start,
-                allDay: _allDay,
-                onChanged: (d) => setState(() {
-                  _start = d;
-                  if (_end.isBefore(_start)) {
-                    _end = _start.add(const Duration(hours: 1));
-                  }
-                }),
-              ),
-              _DateTimeRow(
-                label: '종료',
-                value: _end,
-                allDay: _allDay,
-                onChanged: (d) => setState(() => _end = d),
-              ),
-              const FormGap(),
-              TextField(
-                controller: _location,
-                decoration: const InputDecoration(labelText: '장소'),
-              ),
-              const FormGap(),
-              DropdownButtonFormField<int>(
-                initialValue: _reminderMinutes,
-                decoration: const InputDecoration(labelText: '알림'),
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 0, child: Text('시작 시각')),
-                  DropdownMenuItem(value: 10, child: Text('10분 전')),
-                  DropdownMenuItem(value: 30, child: Text('30분 전')),
-                  DropdownMenuItem(value: 60, child: Text('1시간 전')),
-                  DropdownMenuItem(value: 1440, child: Text('1일 전')),
-                ],
-                onChanged: (v) =>
-                    setState(() => _reminderMinutes = v ?? _reminderMinutes),
-              ),
-              const SizedBox(height: 16),
-              const Text('참석자',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final m in members)
-                    FilterChip(
-                      label: Text(m.fullName,
-                          style: const TextStyle(fontSize: 12)),
-                      selected: _participants.contains(m.id),
-                      onSelected: (v) => setState(() {
-                        v ? _participants.add(m.id) : _participants.remove(m.id);
-                      }),
-                    ),
-                ],
-              ),
-              const FormGap(),
-              TextField(
-                controller: _description,
-                decoration: const InputDecoration(
-                  labelText: '설명',
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 20),
-
-              const SizedBox(height: 24),
-            ],
-          )), FormActions(child: FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('등록 (참석자에게 알림 발송)'),
-              ))]);
-        },
-      )),
-    );
-  }
-
-  Future<void> _submit() async {
-    if (_title.text.trim().isEmpty || _calendarId == null) {
-      AppSnack.show(context, '제목과 캘린더를 확인해 주세요.');
-      return;
-    }
-    setState(() => _busy = true);
-    final ok = await runGuarded(
-      context,
-      () => context.read<CalendarRepository>().createEvent(
-            calendarId: _calendarId!,
-            title: _title.text.trim(),
-            startsAt: _start,
-            endsAt: _end,
-            location: _location.text,
-            description: _description.text,
-            allDay: _allDay,
-            participantIds: _participants.toList(),
-            reminderMinutes: _reminderMinutes,
-          ),
-      successMessage: '일정이 등록되었습니다.',
-    );
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (ok) Navigator.of(context).pop(true);
-  }
-}
-
-class _DateTimeRow extends StatelessWidget {
-  const _DateTimeRow({
-    required this.label,
-    required this.value,
-    required this.allDay,
-    required this.onChanged,
-  });
-
-  final String label;
-  final DateTime value;
-  final bool allDay;
-  final ValueChanged<DateTime> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(width: 44, child: Text(label)),
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () async {
-                final date = await pickDate(context, value, firstDate: DateTime(2020), lastDate: DateTime(2100));
-                if (date == null) return;
-                onChanged(DateTime(
-                    date.year, date.month, date.day, value.hour, value.minute));
-              },
-              child: Text(Fmt.date(value)),
-            ),
-          ),
-          if (!allDay) ...[
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () async {
-                  final time = await showTimePicker(
-                    context: context,
-                    initialTime: TimeOfDay.fromDateTime(value),
-                  );
-                  if (time == null) return;
-                  onChanged(DateTime(value.year, value.month, value.day,
-                      time.hour, time.minute));
-                },
-                child: Text(Fmt.time(value)),
-              ),
-            ),
-          ],
-        ],
-      ),
+      onTap: () => EventDetailSheet.show(context, event, onChanged: onChanged),
     );
   }
 }
