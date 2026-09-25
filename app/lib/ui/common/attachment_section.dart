@@ -17,10 +17,12 @@ class AttachmentSection extends StatelessWidget {
     super.key,
     required this.entityType,
     required this.entityId,
+    this.canEdit = true,
   });
 
   final String entityType;
   final String entityId;
+  final bool canEdit;
 
   @override
   Widget build(BuildContext context) => _AttachmentSectionBody(
@@ -28,6 +30,7 @@ class AttachmentSection extends StatelessWidget {
     key: ValueKey((entityType, entityId)),
     entityType: entityType,
     entityId: entityId,
+    canEdit: canEdit,
   );
 }
 
@@ -36,10 +39,12 @@ class _AttachmentSectionBody extends StatefulWidget {
     super.key,
     required this.entityType,
     required this.entityId,
+    this.canEdit = true,
   });
 
   final String entityType;
   final String entityId;
+  final bool canEdit;
 
   @override
   State<_AttachmentSectionBody> createState() => _AttachmentSectionBodyState();
@@ -67,7 +72,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
                       ? null
                       : () => _viewKey.currentState?.reload(),
                   icon: const Icon(Icons.refresh),
-                ), OutlinedButton.icon(
+                ), if (widget.canEdit) OutlinedButton.icon(
                   onPressed: _busy ? null : _add,
                   icon: const Icon(Icons.attach_file, size: 18),
                   label: const Text('추가'),
@@ -106,7 +111,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
                 // 상세 화면의 스크롤 안에 있으므로 빈 목록도 높이가 정해진 ListView를 쓰지 않는다.
                 if (attachments.isEmpty) {
                   return EmptyState(icon: Icons.attach_file, message: '아직 등록된 첨부파일이 없습니다',
-                    action: OutlinedButton(onPressed: _busy ? null : _add, child: const Text('파일 추가')));
+                    action: widget.canEdit ? OutlinedButton(onPressed: _busy ? null : _add, child: const Text('파일 추가')) : null);
                 }
                 return Column(
                   children: [
@@ -132,9 +137,9 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
                         ),
                         onTap: _busy ? null : () => _open(attachment),
                         trailing:
-                            auth.isAdmin ||
+                            widget.canEdit && (auth.isAdmin ||
                                 (auth.user != null &&
-                                    auth.user!.id == attachment.uploadedById)
+                                    auth.user!.id == attachment.uploadedById))
                             ? IconButton(
                                 tooltip: '삭제',
                                 onPressed: _busy

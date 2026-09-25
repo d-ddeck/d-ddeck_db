@@ -15,6 +15,7 @@ import 'inventory/inventory_page.dart';
 import 'notifications_page.dart';
 import 'service/service_page.dart';
 import 'store/store_page.dart';
+import 'worklog/worklog_page.dart';
 import 'theme.dart';
 import 'common/common.dart';
 import 'vpn/vpn_setup_page.dart';
@@ -164,6 +165,12 @@ class _HomeShellState extends State<HomeShell> {
           icon: Icons.store_mall_directory_outlined,
           selectedIcon: Icons.store,
           page: StorePage(),
+        ),
+        const _Destination(
+          label: '근무일지',
+          icon: Icons.edit_calendar_outlined,
+          selectedIcon: Icons.edit_calendar,
+          page: WorkLogPage(),
         ),
         const _Destination(
           label: '게시판',

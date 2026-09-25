@@ -13,6 +13,7 @@ import 'data/file_repository.dart';
 import 'data/inventory_repository.dart';
 import 'data/service_repository.dart';
 import 'data/store_repository.dart';
+import 'data/worklog_repository.dart';
 import 'services/alarm_service.dart';
 import 'services/vpn_service.dart';
 import 'state/auth_state.dart';
@@ -52,6 +53,7 @@ Future<void> main() async {
         Provider<BoardRepository>(create: (_) => BoardRepository(api)),
         Provider<CalendarRepository>.value(value: calendarRepo),
         Provider<StoreRepository>(create: (_) => StoreRepository(api)),
+        Provider<WorkLogRepository>(create: (_) => WorkLogRepository(api)),
         Provider<FileRepository>(create: (_) => FileRepository(api)),
         ChangeNotifierProvider<VpnService>(
           create: (_) => VpnService()..bootstrap(),

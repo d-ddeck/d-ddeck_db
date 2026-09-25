@@ -22,6 +22,7 @@ class FileRepository {
   static const asset = 'asset';
   static const event = 'event';
   static const store = 'store';
+  static const worklog = 'worklog';
 
   Future<List<Attachment>> listFor(String entityType, String entityId) async {
     final res = await _api.get('/files/by-entity/$entityType/$entityId');
