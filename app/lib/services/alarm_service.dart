@@ -170,14 +170,19 @@ class AlarmService with WidgetsBindingObserver {
     payload: jsonEncode(data),
   );
 
-  Future<int> sync(List<UpcomingReminder> reminders) async {
+  Future<int> sync(List<UpcomingReminder> reminders, {required String ownerUserId}) async {
     if (!isSupported) return 0;
     await init();
-    if (!_ready) return 0;
+    if (!_ready) throw StateError('알람을 초기화하지 못했습니다.');
     return _serial(() async {
+      final snapshot = await SyncedAlarmStore().load();
+      if (snapshot.syncedAt != null && snapshot.ownerUserId != ownerUserId) {
+        // 다른 계정의 울림·다시 울림 예약도 새 계정으로 교체한다.
+        await _stopAll();
+      }
       if (!prefs.enabled) {
-        await Alarm.stopAll();
-        await SyncedAlarmStore().save(reminders);
+        await _stopAll();
+        await SyncedAlarmStore().save(reminders, ownerUserId: ownerUserId);
         return 0;
       }
       final retained = <int>{};
@@ -208,17 +213,31 @@ class AlarmService with WidgetsBindingObserver {
           }
         } catch (e) { debugPrint('알람 예약 실패 (${r.title}): $e'); }
       }
-      await SyncedAlarmStore().save(reminders);
+      await SyncedAlarmStore().save(reminders, ownerUserId: ownerUserId);
       return count;
     });
   }
 
-  Future<void> cancelAll() async {
+  Future<void> _stopAll() async {
+    // 일괄 삭제를 사용자 개별 중지로 보아 즉시 재동기화하지 않는다.
+    ringingIds.value = {};
+    await Alarm.stopAll();
+    active.value = null;
+  }
+
+  Future<void> cancelAll() => _clearAll();
+
+  /// 설정의 '알람 사용'을 끌 때도 기존처럼 예약과 저장본을 지운다.
+  Future<void> applyDisabledPreference() async {
+    if (!prefs.enabled) await _clearAll();
+  }
+
+  Future<void> _clearAll() async {
     if (!isSupported) return;
     await init();
     await _serial(() async {
       try {
-        if (_ready) await Alarm.stopAll();
+        if (_ready) await _stopAll();
         active.value = null;
       } finally {
         await SyncedAlarmStore().clear();

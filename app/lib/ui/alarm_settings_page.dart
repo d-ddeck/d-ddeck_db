@@ -66,7 +66,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage> with WidgetsBindi
     setState(() => _saving = true);
     try {
       await alarms.prefs.save();
-      if (!alarms.prefs.enabled) await alarms.cancelAll();
+      if (!alarms.prefs.enabled) await alarms.applyDisabledPreference();
       await auth.syncAlarms();
       _viewKey.currentState?.reload();
     } catch (_) {

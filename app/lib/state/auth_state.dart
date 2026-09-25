@@ -10,6 +10,7 @@ import '../data/auth_repository.dart';
 import '../data/calendar_repository.dart';
 import '../models/user.dart';
 import '../services/alarm_service.dart';
+import '../services/synced_alarm_store.dart';
 
 /// Where the app is in the entry flow. The root widget switches on this.
 enum AuthPhase {
@@ -188,6 +189,7 @@ class AuthState extends ChangeNotifier {
   }
 
   int _scheduledAlarms = 0;
+  Future<void> _alarmSyncQueue = Future<void>.value();
 
   /// 예약된 일정 알람 건수. 설정 화면에서 보여준다.
   int get scheduledAlarms => _scheduledAlarms;
@@ -199,17 +201,35 @@ class AuthState extends ChangeNotifier {
   Future<void> syncAlarms() async {
     if (_phase != AuthPhase.ready || !AlarmService.isSupported) return;
     final owner = _user;
+    if (owner == null) return;
+    // 실패한 요청의 정리가 뒤늦게 성공한 동기화를 지우지 않도록 직렬화한다.
+    await (_alarmSyncQueue = _alarmSyncQueue.then((_) => _syncAlarms(owner)));
+  }
+
+  Future<void> _syncAlarms(UserProfile owner) async {
+    if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
     try {
       final reminders = await calendarRepo.upcomingReminders(days: 7);
       if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
-      final count = await alarms.sync(reminders);
+      final count = await alarms.sync(reminders, ownerUserId: owner.id);
+      if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
       if (count != _scheduledAlarms) {
         _scheduledAlarms = count;
         notifyListeners();
       }
     } catch (_) {
-      // 네트워크가 끊겨도 이미 걸어둔 알람은 그대로 울린다. 다음 폴링에서
-      // 다시 시도하면 되므로 사용자에게 알리지 않는다.
+      if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
+      try {
+        final snapshot = await SyncedAlarmStore().load();
+        if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
+        // 같은 사용자의 오프라인 알람은 유지한다. 소유자 없는 구버전
+        // 저장본은 다른 계정 여부를 확인할 수 없으므로 함께 정리한다.
+        if (snapshot.syncedAt != null && snapshot.ownerUserId != owner.id) {
+          await alarms.cancelAll();
+          _scheduledAlarms = 0;
+          notifyListeners();
+        }
+      } catch (e) { debugPrint('이전 계정 알람 정리 실패: $e'); }
     }
   }
 
@@ -233,9 +253,8 @@ class AuthState extends ChangeNotifier {
     _pollTimer?.cancel();
     _pollTimer = null;
     _scheduledAlarms = 0;
-    // 계정이 바뀌었는데 이전 사용자의 일정 알람이 울리면 안 된다.
+    // 폰의 예약·저장 목록과 현재 울림은 세션 종료와 무관하게 유지한다.
     _phase = AuthPhase.loggedOut;
-    await alarms.cancelAll();
     await tokenStore.clearSession();
     _user = null;
     _unread = 0;

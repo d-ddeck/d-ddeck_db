@@ -307,6 +307,8 @@ GET /service/stats/trend?interval=    day|week|month
 
 ### 3-8. 알림
 
+- 폰의 일정 알람은 로그아웃해도 유지하며, 다른 계정 로그인 시 교체합니다(동기화 실패 시 이전 계정 알람과 저장 목록 삭제).
+
 ```
 목록      GET  /calendar/notifications?unread_only=true&page=&size=
 뱃지      GET  /calendar/notifications/count
