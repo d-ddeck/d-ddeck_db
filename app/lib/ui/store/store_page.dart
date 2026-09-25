@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import '../common/common.dart';
 
 import '../../data/store_repository.dart';
+import '../../data/inventory_repository.dart';
+import '../../models/inventory.dart';
+import '../equipment/equipment_page.dart';
 import '../../models/store.dart';
 import '../async_view.dart';
 import '../format.dart';
@@ -18,14 +21,17 @@ import 'store_form_page.dart';
 /// "바른치킨 강남역점에 뭐가 들어가 있지"를 그 순서로 묻기 때문이다.
 ///
 /// 첫 화면은 브랜드 카드다. 매장 73곳을 한 줄로 늘어놓으면 찾을 수가 없다.
-class StorePage extends StatefulWidget {
-  const StorePage({super.key});
+class StoreTab extends StatefulWidget {
+  const StoreTab({super.key, this.initialBrandId, this.revision = 0, this.onChanged});
+  final VoidCallback? onChanged;
+  final String? initialBrandId;
+  final int revision;
 
   @override
-  State<StorePage> createState() => _StorePageState();
+  State<StoreTab> createState() => StoreTabState();
 }
 
-class _StorePageState extends State<StorePage> {
+class StoreTabState extends State<StoreTab> {
   final _searchCtl = TextEditingController();
   String? _brandId;
   String _brandName = '';
@@ -33,6 +39,20 @@ class _StorePageState extends State<StorePage> {
   bool _includeClosed = false;
 
   int _revision = 0;
+  List<BrandSummary> _brands = [];
+
+  @override
+  void initState() { super.initState(); _brandId = widget.initialBrandId == '-' ? null : widget.initialBrandId; _brandName = widget.initialBrandId == '-' ? '미지정' : widget.initialBrandId == null ? '' : '선택한 브랜드'; }
+  @override
+  void didUpdateWidget(covariant StoreTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.revision != oldWidget.revision) _revision++;
+  }
+  void selectBrand(String? id) => setState(() {
+    _brandId = id == '-' ? null : id;
+    _brandName = id == '-' ? '미지정' : id == null ? '' : _brands.where((b) => b.brandId == id).firstOrNull?.brandName ?? '선택한 브랜드';
+    _query = ''; _searchCtl.clear(); _includeClosed = false;
+  });
 
   @override
   void dispose() {
@@ -50,18 +70,22 @@ class _StorePageState extends State<StorePage> {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<StoreRepository>();
+    final inventory = context.read<InventoryRepository>();
 
     // 브랜드를 고르기 전에는 브랜드 카드만 보여 준다.
     if (_brandId == null && _brandName.isEmpty && _query.isEmpty && !_includeClosed) {
-      return PageBody(child: AsyncView<List<BrandSummary>>(
+      return PageBody(child: AsyncView<(List<BrandSummary>, InventoryOverview)>(
         key: ValueKey('brands:$_revision'),
-        load: () => inventoryLoad(context, repo.brands),
-        builder: (context, brands, reload) => _BrandGrid(
-          brands: brands,
-          onPick: _pickBrand,
+        load: () => inventoryLoad(context, () async => (await repo.brands(), await inventory.overview())),
+        builder: (context, data, reload) {
+          _brands = data.$1;
+          return _BrandGrid(
+          brands: data.$1, overview: data.$2,
+          onPick: (brand) => EquipmentPage.open(context, tab: EquipmentTab.stores, brandId: brand.brandId ?? '-'),
           searchField: _buildSearch(),
           onRefresh: reload,
-        ),
+        );
+        },
       ));
     }
 
@@ -98,6 +122,7 @@ class _StorePageState extends State<StorePage> {
                 items.addAll(page.items.where((s) => _brandId != null || _brandName.isEmpty || s.brandId == null));
                 if (!page.hasMore) break;
               }
+              if (_brandId != null && items.isNotEmpty) _brandName = items.first.brandName;
               return PagedStores(items, items.length);
             }),
             emptyCheck: (d) => d.items.isEmpty,
@@ -105,7 +130,7 @@ class _StorePageState extends State<StorePage> {
             builder: (context, data, reload) => _StoreList(
               stores: data.items,
               total: data.total,
-              onRefresh: reload,
+              onRefresh: () { reload(); widget.onChanged?.call(); },
             ),
           ),
         ),
@@ -117,7 +142,7 @@ class _StorePageState extends State<StorePage> {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const StoreFormPage()),
     );
-    if (saved == true && mounted) setState(() => _revision++);
+    if (saved == true && mounted) { setState(() => _revision++); widget.onChanged?.call(); }
   }
 
   Widget _buildSearch() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -168,12 +193,14 @@ class PagedStores {
 class _BrandGrid extends StatelessWidget {
   const _BrandGrid({
     required this.brands,
+    required this.overview,
     required this.onPick,
     required this.searchField,
     required this.onRefresh,
   });
 
   final List<BrandSummary> brands;
+  final InventoryOverview overview;
   final ValueChanged<BrandSummary> onPick;
   final Widget searchField;
   final VoidCallback onRefresh;
@@ -218,12 +245,12 @@ class _BrandGrid extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
             crossAxisCount: wide ? 4 : 2,
-            mainAxisExtent: 154 * MediaQuery.textScalerOf(context).scale(14) / 14,
+            mainAxisExtent: 220 * MediaQuery.textScalerOf(context).scale(14) / 14,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
             children: [
               for (final brand in brands)
-                _BrandCard(brand: brand, onTap: () => onPick(brand)),
+                _BrandCard(brand: brand, breakdown: [for (final row in overview.byBrand.where((r) => r.key == (brand.brandId ?? '-'))) for (final kind in overview.kinds) if ((row.counts[kind.id] ?? 0) > 0) '${kind.name} ${row.counts[kind.id]}'].join(' · '), onTap: () => onPick(brand)),
             ],
           ),
         ],
@@ -233,9 +260,10 @@ class _BrandGrid extends StatelessWidget {
 }
 
 class _BrandCard extends StatelessWidget {
-  const _BrandCard({required this.brand, required this.onTap});
+  const _BrandCard({required this.brand, required this.breakdown, required this.onTap});
 
   final BrandSummary brand;
+  final String breakdown;
   final VoidCallback onTap;
 
   @override
@@ -287,6 +315,7 @@ class _BrandCard extends StatelessWidget {
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 6),
+              Text(breakdown.isEmpty ? '설치 장비 없음' : breakdown, maxLines: 3, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
               Row(
                 children: [
                   Icon(Icons.precision_manufacturing,
@@ -362,7 +391,7 @@ class _StoreList extends StatelessWidget {
                 Text('장비 ${Fmt.number(store.assetCount)}대',
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(fontWeight: FontWeight.w600)),
-                Text('AS ${Fmt.number(store.ticketCount)}건',
+                Text('미종결 ${Fmt.number(store.openTicketCount)}건',
                     style: theme.textTheme.bodySmall),
               ],
             ), const SizedBox(width: AppSpace.sm), const Icon(Icons.chevron_right)]),

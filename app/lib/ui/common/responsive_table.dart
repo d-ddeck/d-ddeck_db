@@ -5,8 +5,9 @@ import 'states.dart';
 
 class TableColumn<T> {
   const TableColumn({required this.label, required this.cell,
-    this.numeric = false, this.flex = 1}) : assert(flex > 0);
+    this.numeric = false, this.flex = 1, this.header}) : assert(flex > 0);
   final String label;
+  final Widget? header;
   final Widget Function(T row) cell;
   final bool numeric;
   final int flex;
@@ -23,7 +24,8 @@ class ResponsiveTable<T> extends StatelessWidget {
   static Widget fromDataRows({required List<DataColumn> columns, required List<DataRow> rows}) =>
       ResponsiveTable<DataRow>(
         columns: [for (final entry in columns.indexed) TableColumn<DataRow>(
-          label: (entry.$2.label as Text).data ?? '',
+          label: entry.$2.label is Text ? (entry.$2.label as Text).data ?? '' : '',
+          header: entry.$2.label is Text ? null : entry.$2.label,
           numeric: entry.$2.numeric,
           cell: (row) {
             final cell = row.cells[entry.$1];
@@ -50,7 +52,7 @@ class ResponsiveTable<T> extends StatelessWidget {
             showCheckboxColumn: false,
             border: TableBorder(horizontalInside: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
             columns: [for (final column in columns) DataColumn(
-              label: Text(column.label), numeric: column.numeric,
+              label: column.header ?? Text(column.label), numeric: column.numeric,
               columnWidth: IntrinsicColumnWidth(flex: column.flex.toDouble()),
             )],
             rows: [for (final row in rows) DataRow(
@@ -77,7 +79,7 @@ class ResponsiveTable<T> extends StatelessWidget {
               for (final column in columns.skip(1)) Padding(
                 padding: const EdgeInsets.only(top: AppSpace.sm),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: Text('${column.label}:', style: TextStyle(color: AppColors.muted(context)))),
+                  Expanded(child: column.header ?? Text('${column.label}:', style: TextStyle(color: AppColors.muted(context)))),
                   const SizedBox(width: AppSpace.sm),
                   Expanded(flex: column.flex, child: Align(
                     alignment: column.numeric ? Alignment.centerRight : Alignment.centerLeft,

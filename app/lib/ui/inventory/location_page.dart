@@ -9,9 +9,12 @@ import '../../models/inventory.dart';
 import '../../state/auth_state.dart';
 import '../async_view.dart';
 import 'asset_destination.dart';
+import '../equipment/equipment_page.dart';
 
 class LocationPage extends StatefulWidget {
-  const LocationPage({super.key});
+  const LocationPage({super.key, this.embedded = false, this.onChanged});
+  final bool embedded;
+  final VoidCallback? onChanged;
   @override
   State<LocationPage> createState() => _LocationPageState();
 }
@@ -35,14 +38,14 @@ class _LocationPageState extends State<LocationPage> {
     final ok = await runGuarded(context, () => context.read<InventoryRepository>().deleteLocation(location.id));
     if (!mounted) return;
     setState(() => _busy = false);
-    if (ok) _key.currentState?.reload();
+    if (ok) { _key.currentState?.reload(); widget.onChanged?.call(); }
   }
 
   @override
   Widget build(BuildContext context) {
     final admin = context.watch<AuthState>().isAdmin;
     return Scaffold(
-      appBar: AppBar(title: const Text('위치 관리')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('위치 관리')),
       body: PageBody(child: AsyncView<List<StorageLocation>>(
         key: _key,
         load: () => inventoryLoad(context, context.read<InventoryRepository>().tree),
@@ -55,7 +58,7 @@ class _LocationPageState extends State<LocationPage> {
                 final added = await Navigator.push<bool>(context, MaterialPageRoute(
                   builder: (_) => _LocationForm(locations: rows.map((r) => r.$1).toList()),
                 ));
-                if (added == true && mounted) reload();
+                if (added == true && mounted) { reload(); widget.onChanged?.call(); }
               },
             )),
             if (rows.isEmpty) const EmptyState(message: '아직 등록된 위치가 없습니다'),
@@ -63,6 +66,7 @@ class _LocationPageState extends State<LocationPage> {
               // Keep labels usable on phones even for very deep trees.
               padding: EdgeInsets.only(left: (row.$2 * 16.0).clamp(0.0, 96.0)),
               child: ListTile(
+                onTap: () => EquipmentPage.open(context, tab: EquipmentTab.assets, locationId: row.$1.id),
                 leading: Icon(row.$1.type.icon),
                 title: Text(row.$1.name),
                 subtitle: Text('${row.$1.code} · ${row.$1.type.label} · 자산 ${Fmt.number(row.$1.assetCount)}개'),

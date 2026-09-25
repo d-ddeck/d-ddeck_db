@@ -11,10 +11,9 @@ import 'auth/signup_page.dart';
 import 'board/board_page.dart';
 import 'calendar/calendar_page.dart';
 import 'dashboard_page.dart';
-import 'inventory/inventory_page.dart';
+import 'equipment/equipment_page.dart';
 import 'notifications_page.dart';
 import 'service/service_page.dart';
-import 'store/store_page.dart';
 import 'worklog/worklog_page.dart';
 import 'theme.dart';
 import 'common/common.dart';
@@ -25,14 +24,16 @@ import 'vpn/vpn_setup_page.dart';
 /// Uses a NavigationRail above [AppTheme.wideBreakpoint] and a bottom bar
 /// below it, so the same build runs on a Windows window and an Android phone.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({super.key, this.equipmentTab});
+  final EquipmentTab? equipmentTab;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
+  late int _index = widget.equipmentTab == null ? 0 : 2;
+  final _equipmentKey = GlobalKey<EquipmentPageState>();
   bool _railExpanded = false;
   final _pagesKey = GlobalKey();
 
@@ -45,11 +46,14 @@ class _HomeShellState extends State<HomeShell> {
     final index = _index.clamp(0, destinations.length - 1);
     final wide = AppTheme.isWide(context);
 
-    final body = IndexedStack(
+    final body = EquipmentNavigation(open: (tab, filters) {
+      setState(() => _index = 2);
+      _equipmentKey.currentState?.show(tab, filters);
+    }, child: IndexedStack(
       key: _pagesKey,
       index: index,
       children: destinations.map((d) => d.page).toList(),
-    );
+    ));
 
     return Scaffold(
       appBar: AppBar(
@@ -134,9 +138,20 @@ class _HomeShellState extends State<HomeShell> {
             leading: Icon(destinations[i].icon), title: Text(destinations[i].label),
             selected: _index == i, onTap: () => Navigator.pop(context, i),
           ),
+          ListTile(leading: const Icon(Icons.alarm), title: const Text('알람'),
+            onTap: () => Navigator.pop(context, -1)),
+          ListTile(leading: const Icon(Icons.person_outline), title: const Text('내 정보'),
+            onTap: () => Navigator.pop(context, -2)),
         ]),
       )));
-    if (selected != null && mounted) setState(() => _index = selected);
+    if (selected == null || !mounted) return;
+    if (selected < 0) {
+      await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => selected == -1
+        ? const SyncedAlarmsPage() : Scaffold(appBar: AppBar(title: const Text('내 정보')),
+          body: ListTile(title: Text(context.read<AuthState>().user?.display ?? '-'),
+            subtitle: Text(context.read<AuthState>().user?.email ?? ''),
+            trailing: _AccountMenu(user: context.read<AuthState>().user)))));
+    } else { setState(() => _index = selected); }
   }
 
   List<_Destination> _destinationsFor(Role role) => [
@@ -152,19 +167,11 @@ class _HomeShellState extends State<HomeShell> {
           selectedIcon: Icons.build,
           page: ServicePage(),
         ),
-        const _Destination(
-          label: '재고',
-          icon: Icons.inventory_2_outlined,
-          selectedIcon: Icons.inventory_2,
-          page: InventoryPage(),
-        ),
-        const _Destination(
-          label: '매장',
-          // storefront_outlined(0xf3ef) 대신 store(0xe60a). 코드포인트가 낮아
-          // 글리프가 빠질 여지가 없다.
-          icon: Icons.store_mall_directory_outlined,
-          selectedIcon: Icons.store,
-          page: StorePage(),
+        _Destination(
+          label: '장비·매장',
+          icon: Icons.precision_manufacturing_outlined,
+          selectedIcon: Icons.precision_manufacturing,
+          page: EquipmentPage(key: _equipmentKey, tab: widget.equipmentTab ?? EquipmentTab.overview),
         ),
         const _Destination(
           label: '근무일지',
@@ -173,16 +180,16 @@ class _HomeShellState extends State<HomeShell> {
           page: WorkLogPage(),
         ),
         const _Destination(
-          label: '게시판',
-          icon: Icons.forum_outlined,
-          selectedIcon: Icons.forum,
-          page: BoardPage(),
-        ),
-        const _Destination(
           label: '캘린더',
           icon: Icons.calendar_month_outlined,
           selectedIcon: Icons.calendar_month,
           page: CalendarPage(),
+        ),
+        const _Destination(
+          label: '게시판',
+          icon: Icons.forum_outlined,
+          selectedIcon: Icons.forum,
+          page: BoardPage(),
         ),
         if (role.atLeast(Role.admin))
           const _Destination(

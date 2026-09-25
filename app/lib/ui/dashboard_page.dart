@@ -1,3 +1,4 @@
+import 'equipment/equipment_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -131,6 +132,7 @@ class DashboardPage extends StatelessWidget {
                 ),
                 StatTile(
                   label: '보유 자산',
+                  onTap: () => EquipmentPage.open(context, tab: EquipmentTab.overview),
                   value: '${Fmt.number(data.inventory.totalAssets)}건',
                   hint: data.inventory.belowMinCount > 0
                       ? '안전재고 미만 ${Fmt.number(data.inventory.belowMinCount)}건'
