@@ -6,7 +6,9 @@ import '../../data/store_repository.dart';
 import '../../models/store.dart';
 import '../../models/service.dart';
 import '../../state/auth_state.dart';
+import '../inventory/asset_actions.dart';
 import '../inventory/asset_destination.dart';
+import '../inventory/inventory_page.dart';
 import '../service/service_detail_page.dart';
 import 'store_equipment_page.dart';
 import '../async_view.dart';
@@ -159,7 +161,7 @@ class _StoreBody extends StatelessWidget {
                   categoryId: group.categoryId, categoryName: group.categoryName, color: group.color,
                   count: group.assets.where((a) => a.setNo == number).length,
                   assets: group.assets.where((a) => a.setNo == number).toList(),
-                )),
+                ), onRefresh: onRefresh),
             ],
           const SizedBox(height: 20),
           Text('서비스구분별 발생', style: theme.textTheme.titleMedium),
@@ -260,8 +262,9 @@ class _InfoCard extends StatelessWidget {
 }
 
 class _AssetGroupCard extends StatelessWidget {
-  const _AssetGroupCard({required this.group});
+  const _AssetGroupCard({required this.group, required this.onRefresh});
   final StoreAssetGroup group;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -295,7 +298,12 @@ class _AssetGroupCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             for (final asset in group.assets)
-              Padding(
+              InkWell(
+                onTap: () async {
+                  await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => AssetDetailPage(assetId: asset.id)));
+                  if (context.mounted) onRefresh();
+                },
+                child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,24 +326,19 @@ class _AssetGroupCard extends StatelessWidget {
                               asset.modelName!,
                               style: theme.textTheme.bodySmall,
                             ),
+                          Wrap(spacing: 8, runSpacing: 4, children: [
+                            if (asset.setNo > 0) Text('세트 ${asset.setNo}', style: theme.textTheme.bodySmall),
+                            StatusChip(label: asset.statusLabel, color: asset.status.color),
+                          ]),
                         ],
                       ),
                     ),
-                    if (asset.setNo > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Text(
-                          '세트 ${asset.setNo}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                    StatusChip(
-                      label: asset.statusLabel,
-                      color: asset.status.color,
-                    ),
+                    AssetActionsMenu(key: ValueKey(asset.id), assetId: asset.id,
+                      label: '${asset.name} S/N ${asset.serialNo ?? asset.assetNo}',
+                      atStore: true, onChanged: onRefresh),
                   ],
                 ),
-              ),
+              )),
           ],
         ),
       ),

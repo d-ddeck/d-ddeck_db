@@ -12,6 +12,7 @@ import '../common/download.dart';
 import '../format.dart';
 import '../service/service_detail_page.dart';
 import '../theme.dart';
+import 'asset_actions.dart';
 import 'asset_destination.dart';
 import 'asset_form_page.dart';
 import 'location_page.dart';
@@ -309,10 +310,11 @@ class _InventoryListState extends State<_InventoryList> {
     return ListView(children: [for (final key in keys) ...[
       Padding(padding: const EdgeInsets.all(12), child: Text('$key (${groups[key]!.length}대)', style: const TextStyle(fontWeight: FontWeight.w700))),
       SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
-        columns: const [DataColumn(label: Text('S/N')), DataColumn(label: Text('품명')), DataColumn(label: Text('상태')), DataColumn(label: Text('세트'))],
+        columns: const [DataColumn(label: Text('S/N')), DataColumn(label: Text('품명')), DataColumn(label: Text('상태')), DataColumn(label: Text('세트')), DataColumn(label: Text('작업'))],
         rows: [for (final a in groups[key]!) DataRow(cells: [
           DataCell(Text(a.serialNo ?? a.assetNo), onTap: () => _detail(a, reload)),
           DataCell(Text(a.modelName ?? a.name)), DataCell(StatusChip(label: _statusLabel(a), color: a.status.color)), DataCell(Text('${a.setNo}')),
+          DataCell(_actions(a)),
         ])],
       )),
     ]]);
@@ -327,8 +329,14 @@ class _InventoryListState extends State<_InventoryList> {
       if (v == true) { _selected.add(a.id); } else { _selected.remove(a.id); }
     })) : null,
     title: Text('${a.serialNo ?? a.assetNo} · ${a.name}'),
-    subtitle: Text('${_placeLabel(a)} · 세트 ${a.setNo}'),
-    trailing: StatusChip(label: _statusLabel(a), color: a.status.color), onTap: () => _detail(a, reload));
+    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${_placeLabel(a)} · 세트 ${a.setNo}'),
+      StatusChip(label: _statusLabel(a), color: a.status.color),
+    ]),
+    trailing: _actions(a), onTap: () => _detail(a, reload));
+  Widget _actions(Asset a) => AssetActionsMenu(key: ValueKey(a.id), assetId: a.id,
+    label: '${a.name} S/N ${a.serialNo ?? a.assetNo}', atStore: a.storeId != null,
+    onChanged: widget.onChanged);
   Future<void> _detail(Asset a, VoidCallback reload) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => AssetDetailPage(assetId: a.id)));
     if (mounted) widget.onChanged();
@@ -341,7 +349,8 @@ class AssetDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<InventoryRepository>();
-    return Scaffold(appBar: AppBar(title: const Text('자산 상세')),
+    return Scaffold(appBar: AppBar(title: const Text('자산 상세'),
+      actions: [AssetDeleteButton(assetId: assetId)]),
       body: AsyncView<(Asset, List<AssetMovement>, List<CodeItem>, List<Store>)>(
         load: () => inventoryLoad(context, () async {
           final data = await Future.wait([repo.get(assetId),
@@ -367,7 +376,10 @@ class AssetDetailPage extends StatelessWidget {
             Text('설치일 ${Fmt.date(a.purchaseDate)}'), if (a.note != null) Text(a.note!),
             const SizedBox(height: 16),
             FilledButton.icon(icon: const Icon(Icons.swap_horiz), label: const Text('이동 / 상태 변경'), onPressed: () async {
-              if (await showAssetMoveDialog(context, [a.id]) && context.mounted) reload();
+              if (await performAssetAction(context, AssetAction.move,
+                  assetId: a.id, label: '${a.name} S/N ${a.serialNo ?? a.assetNo}') && context.mounted) {
+                reload();
+              }
             }),
             const SizedBox(height: 16), Text('이동 이력 (${movements.length}건)'),
             for (final m in movements) ListTile(contentPadding: EdgeInsets.zero,

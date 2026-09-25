@@ -9,6 +9,7 @@ import '../../models/inventory.dart';
 import '../../models/store.dart';
 import '../async_view.dart';
 import '../format.dart';
+import '../inventory/asset_actions.dart';
 import '../inventory/asset_destination.dart';
 import '../theme.dart';
 
@@ -171,13 +172,15 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
         const SizedBox(height: 24), Text('현재 설치 장비', style: Theme.of(context).textTheme.titleMedium),
         const Text('장비별 세트를 바꾸면 입력 중인 장비 설정은 현재 설치 정보로 갱신됩니다.'),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
-          columns: const [DataColumn(label: Text('세트')), DataColumn(label: Text('종류')), DataColumn(label: Text('S/N')), DataColumn(label: Text('상태')), DataColumn(label: Text('세트 바꾸기'))],
+          columns: const [DataColumn(label: Text('세트')), DataColumn(label: Text('종류')), DataColumn(label: Text('S/N')), DataColumn(label: Text('상태')), DataColumn(label: Text('세트 바꾸기')), DataColumn(label: Text('작업'))],
           rows: [for (final a in _assets) DataRow(cells: [
             DataCell(Text('${a.setNo}')), DataCell(Text(a.category?.name ?? a.name)),
             DataCell(Text(a.serialNo ?? a.assetNo)), DataCell(Text(a.statusLabel)),
             DataCell(DropdownButton<int>(value: a.setNo,
               items: [for (final n in {0, a.setNo, ..._store!.sets.map((s) => s.setNo)}) DropdownMenuItem(value: n, child: Text(n == 0 ? '미지정' : '세트 $n'))],
               onChanged: (v) { if (v != null && v != a.setNo) _moveSet(a, v); })),
+            DataCell(AssetActionsMenu(key: ValueKey(a.id), assetId: a.id,
+              label: '${a.name} S/N ${a.serialNo ?? a.assetNo}', atStore: true, onChanged: _load)),
           ])],
         )),
       ])),
