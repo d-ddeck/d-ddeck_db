@@ -58,6 +58,7 @@ jobs:
         run: |
           pip install -r requirements.txt
           python scripts/smoke_test.py
+          python scripts/smoke_test_legacy.py
 
       - uses: subosito/flutter-action@v2
         with:

@@ -18,6 +18,9 @@ psycopg[binary]>=3.2.0
 PyJWT>=2.10.0
 bcrypt>=4.2.0
 
+# --- Excel export (구 서버와 같은 엑셀 내려받기) ---
+openpyxl>=3.1.5
+
 # --- Scheduler (calendar reminders -> notifications) ---
 APScheduler>=3.11.0
 

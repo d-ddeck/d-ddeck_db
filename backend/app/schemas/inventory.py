@@ -227,3 +227,80 @@ class InventorySummary(BaseModel):
 
 
 LocationNode.model_rebuild()
+
+
+# ---------------------------------------------------------------- 구 서버 재고 화면용
+class AssetBulkCreate(BaseModel):
+    """S/N 여러 개를 한 번에 등록 (구 서버 '입고·등록'). 나머지 칸은 공통."""
+
+    serial_nos: list[str] = Field(min_length=1, description="S/N 목록. 공백·쉼표로 나눠 보내도 된다")
+    name: str | None = Field(None, max_length=200, description="비우면 '종류 품명'")
+    category_id: uuid.UUID | None = None
+    model_name: str | None = Field(None, max_length=150)
+    manufacturer: str | None = Field(None, max_length=150)
+    status_item_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+    store_id: uuid.UUID | None = None
+    set_no: int = Field(0, ge=0)
+    purchase_date: date | None = Field(None, description="설치일")
+    note: str | None = None
+
+
+class BulkCreateResult(BaseModel):
+    created: list[AssetOut]
+    duplicates: list[str] = Field(description="이미 있는 S/N 이라 건너뜀")
+
+
+class AssetBulkMoveRequest(AssetMoveRequest):
+    """목록에서 고른 장비 여러 대를 한 번에 옮기거나 상태만 바꿈 (한 대씩과 같은 규칙·같은 이력)."""
+
+    asset_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+class BulkMoveResult(BaseModel):
+    moved: list[str] = Field(description="옮긴 장비 (종류 S/N)")
+    skipped: list[str] = Field(description="이미 그 상태·그 자리라 그대로 둔 장비")
+    errors: list[str] = Field(default_factory=list)
+
+
+class OverviewRow(BaseModel):
+    key: str
+    label: str
+    color: str | None = None
+    counts: dict[str, int] = Field(description="종류(category_id) -> 대수")
+    total: int
+
+
+class AttentionAsset(BaseModel):
+    id: uuid.UUID
+    asset_no: str
+    name: str
+    category_id: uuid.UUID | None = None
+    category_name: str | None = None
+    serial_no: str | None = None
+    status_name: str | None = None
+    store_id: uuid.UUID | None = None
+    store_name: str | None = None
+    location_name: str | None = None
+    note: str | None = None
+
+
+class RentalAsset(AttentionAsset):
+    ticket_id: uuid.UUID | None = None
+    ticket_no: str | None = None
+    rented_at: datetime | None = None
+    due_date: date | None = None
+    dday: int | None = None
+
+
+class InventoryOverview(BaseModel):
+    """구 서버 재고 › 현황: 상태×종류 · 브랜드×종류(매장에 있는 것) · 장소×종류(미설치) · 확인 목록 · 렌탈 중."""
+
+    total: int
+    kinds: list[CodeItemBrief]
+    statuses: list[CodeItemBrief]
+    by_status: list[OverviewRow]
+    by_brand: list[OverviewRow]
+    by_place: list[OverviewRow]
+    attention: list[AttentionAsset] = Field(description="AS 대기 · AS 반출 · 미상")
+    rentals: list[RentalAsset]

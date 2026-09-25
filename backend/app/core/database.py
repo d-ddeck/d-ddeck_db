@@ -25,13 +25,26 @@ engine: Engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def _sqlite_pragmas(dbapi_conn, _record):  # pragma: no cover - driver level
-    """SQLite ignores FK constraints unless asked; WAL keeps reads unblocked."""
+    """SQLite ignores FK constraints unless asked; WAL keeps reads unblocked.
+
+    또 pysqlite 의 기본 트랜잭션 처리는 SAVEPOINT 를 망가뜨린다(RELEASE 때 통째로
+    COMMIT 해 버려, 뒤에 오류가 나도 앞의 INSERT 가 남는다). SQLAlchemy 문서의
+    처방대로 드라이버의 BEGIN 을 끄고 우리가 직접 BEGIN 을 낸다(아래 _sqlite_begin).
+    접수번호·자산번호 채번의 begin_nested() 와 일괄 이동의 건별 롤백이 이것에 기댄다.
+    """
     if not settings.is_sqlite:
         return
+    dbapi_conn.isolation_level = None
     cur = dbapi_conn.cursor()
     cur.execute("PRAGMA foreign_keys=ON")
     cur.execute("PRAGMA journal_mode=WAL")
     cur.close()
+
+
+@event.listens_for(engine, "begin")
+def _sqlite_begin(conn):  # pragma: no cover - driver level
+    if settings.is_sqlite:
+        conn.exec_driver_sql("BEGIN")
 
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)

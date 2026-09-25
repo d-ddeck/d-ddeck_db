@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
+from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -49,9 +50,29 @@ from app.schemas.calendar import (
 )
 from app.schemas.common import Message, Page, UserBrief
 from app.services import audit, notifications, settings_store
+from app.services.holidays import korean_holidays
 from app.services.scheduler import dispatch_due_reminders
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
+
+
+class HolidayOut(BaseModel):
+    date: date
+    name: str
+
+
+@router.get("/holidays", response_model=list[HolidayOut])
+def holidays(
+    db: DbSession,
+    _: CurrentUser,
+    year: Annotated[int, Query(ge=2000, le=2100)],
+) -> list[HolidayOut]:
+    """그 해의 한국 공휴일 · 대체공휴일 (구 서버 캘린더와 같은 계산). 추가 휴일은 설정 CALENDAR.extra_holidays."""
+    extra = settings_store.get(db, ModuleKey.CALENDAR, "extra_holidays", "") or ""
+    return [
+        HolidayOut(date=date.fromisoformat(d), name=n)
+        for d, n in korean_holidays(year, str(extra)).items()
+    ]
 
 
 # ================================================================== calendars

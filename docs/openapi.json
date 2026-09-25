@@ -1314,26 +1314,10 @@
                   "type": "null"
                 }
               ],
-              "description": "ticket no / title / serial / customer",
+              "description": "번호 · 제목 · 내용 · 시리얼 · 매장 · 분류 · 대응인원 · 댓글",
               "title": "Q"
             },
-            "description": "ticket no / title / serial / customer"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ServiceStatus"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status"
-            }
+            "description": "번호 · 제목 · 내용 · 시리얼 · 매장 · 분류 · 대응인원 · 댓글"
           },
           {
             "name": "priority",
@@ -1368,98 +1352,49 @@
             }
           },
           {
-            "name": "assignee_id",
+            "name": "sort",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
+              "enum": [
+                "received_desc",
+                "received_asc",
+                "due_asc",
+                "priority_desc",
+                "created_desc",
+                "updated_desc"
               ],
-              "title": "Assignee Id"
+              "type": "string",
+              "default": "received_desc",
+              "title": "Sort"
             }
           },
           {
-            "name": "customer_id",
+            "name": "page",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Customer Id"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-based page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "1-based page number"
           },
           {
-            "name": "category_id",
+            "name": "size",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Category Id"
-            }
-          },
-          {
-            "name": "department_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Department Id"
-            }
-          },
-          {
-            "name": "is_warranty",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Is Warranty"
-            }
-          },
-          {
-            "name": "only_open",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Only Open"
-            }
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "rows per page",
+              "default": 20,
+              "title": "Size"
+            },
+            "description": "rows per page"
           },
           {
             "name": "date_from",
@@ -1496,47 +1431,286 @@
             }
           },
           {
-            "name": "sort",
+            "name": "year",
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "received_desc",
-                "received_asc",
-                "due_asc",
-                "priority_desc"
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "type": "string",
-              "default": "received_desc",
-              "title": "Sort"
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee Id"
             }
           },
           {
-            "name": "page",
+            "name": "department_id",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "1-based page number",
-              "default": 1,
-              "title": "Page"
-            },
-            "description": "1-based page number"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
           },
           {
-            "name": "size",
+            "name": "category_id",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "description": "rows per page",
-              "default": 20,
-              "title": "Size"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서비스구분 - 원인 중 하나라도",
+              "title": "Category Id"
             },
-            "description": "rows per page"
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
+            "name": "is_warranty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Warranty"
+            }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
           }
         ],
         "responses": {
@@ -1590,6 +1764,458 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServiceTicketDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/tickets/export.xlsx": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Export Tickets",
+        "description": "검색 조건 그대로 엑셀. 열 구성은 구 서버 '대응기록_날짜.xlsx' 와 같다.",
+        "operationId": "export_tickets_api_v1_service_tickets_export_xlsx_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServicePriority"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceChannel"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee Id"
+            }
+          },
+          {
+            "name": "department_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서비스구분 - 원인 중 하나라도",
+              "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
+            "name": "is_warranty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Warranty"
+            }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/dashboard": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Dashboard",
+        "description": "미종결(오래된 것부터) · 렌탈 미회수 D-day · 최근 기록 · 연도별 건수.",
+        "operationId": "dashboard_api_v1_service_dashboard_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDashboard"
                 }
               }
             }
@@ -1763,7 +2389,7 @@
           "service"
         ],
         "summary": "Change Status",
-        "description": "The only way status moves. Keeps the timeline fields and log in sync.",
+        "description": "The only way status moves. Keeps the timeline fields and log in sync.\n\n종결(COMPLETED)은 구 서버 규칙대로 대응 내용과 대응인원이 있어야 한다.",
         "operationId": "change_status_api_v1_service_tickets__ticket_id__status_post",
         "security": [
           {
@@ -1996,7 +2622,7 @@
           "service"
         ],
         "summary": "Stats Summary",
-        "description": "총건수 / 완료율 / 평균 처리시간 / 상태별·우선순위별 분포.",
+        "description": "총건수 / 완료율 / 평균 처리시간 / 상태별·우선순위별 분포. 목록과 같은 조건.",
         "operationId": "stats_summary_api_v1_service_stats_summary_get",
         "security": [
           {
@@ -2037,6 +2663,46 @@
               ],
               "title": "Date To"
             }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
           },
           {
             "name": "assignee_id",
@@ -2086,7 +2752,77 @@
                   "type": "null"
                 }
               ],
+              "description": "서비스구분 - 원인 중 하나라도",
               "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
             }
           },
           {
@@ -2107,6 +2843,66 @@
             }
           },
           {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
             "name": "is_warranty",
             "in": "query",
             "required": false,
@@ -2121,6 +2917,34 @@
               ],
               "title": "Is Warranty"
             }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
           }
         ],
         "responses": {
@@ -2153,7 +2977,7 @@
           "service"
         ],
         "summary": "Stats Grouped",
-        "description": "분류별 자동 집계. 파이/바 차트가 바로 그릴 수 있는 형태로 반환합니다.",
+        "description": "분류별 자동 집계. 파이/바 차트가 바로 그릴 수 있는 형태로 반환합니다.\n\n분류 · 증상 · 제조사 · 대응인원 축은 원인(사람) 행을 세므로 `total_causes` 가\n분모다. category_id 를 주면 그 서비스구분 탭이 된다(그 구분의 원인만).",
         "operationId": "stats_grouped_api_v1_service_stats_grouped_get",
         "security": [
           {
@@ -2179,7 +3003,8 @@
                 "channel",
                 "department",
                 "store",
-                "brand"
+                "brand",
+                "responder"
               ],
               "type": "string",
               "description": "classification axis",
@@ -2223,6 +3048,46 @@
             }
           },
           {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -2270,7 +3135,77 @@
                   "type": "null"
                 }
               ],
+              "description": "서비스구분 - 원인 중 하나라도",
               "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
             }
           },
           {
@@ -2291,6 +3226,66 @@
             }
           },
           {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
             "name": "is_warranty",
             "in": "query",
             "required": false,
@@ -2305,6 +3300,34 @@
               ],
               "title": "Is Warranty"
             }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
           }
         ],
         "responses": {
@@ -2337,7 +3360,7 @@
           "service"
         ],
         "summary": "Stats Trend",
-        "description": "기간별 접수/완료 추이.",
+        "description": "기간별 접수/완료 추이 (한국 시각 기준).",
         "operationId": "stats_trend_api_v1_service_stats_trend_get",
         "security": [
           {
@@ -2353,7 +3376,8 @@
               "enum": [
                 "day",
                 "week",
-                "month"
+                "month",
+                "year"
               ],
               "type": "string",
               "default": "day",
@@ -2395,6 +3419,46 @@
             }
           },
           {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -2442,7 +3506,77 @@
                   "type": "null"
                 }
               ],
+              "description": "서비스구분 - 원인 중 하나라도",
               "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
             }
           },
           {
@@ -2463,6 +3597,66 @@
             }
           },
           {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
             "name": "is_warranty",
             "in": "query",
             "required": false,
@@ -2477,6 +3671,34 @@
               ],
               "title": "Is Warranty"
             }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
           }
         ],
         "responses": {
@@ -2501,6 +3723,829 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/service/stats/crosstab": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Stats Crosstab",
+        "description": "구 서버 통계 표: 연도×브랜드, 연도×매장, 브랜드×세부구분, 매장×세부구분, 제조사×연도 …\n\n칸은 원인 수다. category_id 를 주면 그 서비스구분 탭이 되고 cols=symptom 이\n그 구분의 증상(세부분류) 열이 된다.",
+        "operationId": "stats_crosstab_api_v1_service_stats_crosstab_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rows",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "year",
+                "brand",
+                "store",
+                "category",
+                "symptom",
+                "maker"
+              ],
+              "type": "string",
+              "default": "year",
+              "title": "Rows"
+            }
+          },
+          {
+            "name": "cols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "year",
+                "brand",
+                "store",
+                "category",
+                "symptom",
+                "maker"
+              ],
+              "type": "string",
+              "default": "category",
+              "title": "Cols"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee Id"
+            }
+          },
+          {
+            "name": "department_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서비스구분 - 원인 중 하나라도",
+              "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
+            "name": "is_warranty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Warranty"
+            }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Crosstab"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/stats/crosstab.xlsx": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Stats Crosstab Xlsx",
+        "operationId": "stats_crosstab_xlsx_api_v1_service_stats_crosstab_xlsx_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rows",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "year",
+                "brand",
+                "store",
+                "category",
+                "symptom",
+                "maker"
+              ],
+              "type": "string",
+              "default": "year",
+              "title": "Rows"
+            }
+          },
+          {
+            "name": "cols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "year",
+                "brand",
+                "store",
+                "category",
+                "symptom",
+                "maker"
+              ],
+              "type": "string",
+              "default": "category",
+              "title": "Cols"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee Id"
+            }
+          },
+          {
+            "name": "department_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서비스구분 - 원인 중 하나라도",
+              "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
+            "name": "is_warranty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Warranty"
+            }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/stats/store-years": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Stats Store Years",
+        "description": "연도별 운영 매장 · 브랜드별 운영 매장 (구 서버 통계 메인 탭).",
+        "operationId": "stats_store_years_api_v1_service_stats_store_years_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreYears"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/inventory/locations": {
@@ -2760,10 +4805,10 @@
                   "type": "null"
                 }
               ],
-              "description": "name / asset no / serial / barcode",
+              "description": "name / asset no / serial / model / note / 매장 / 위치",
               "title": "Q"
             },
-            "description": "name / asset no / serial / barcode"
+            "description": "name / asset no / serial / model / note / 매장 / 위치"
           },
           {
             "name": "status",
@@ -2780,6 +4825,25 @@
               ],
               "title": "Status"
             }
+          },
+          {
+            "name": "status_item_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "세부 상태 코드",
+              "title": "Status Item Id"
+            },
+            "description": "세부 상태 코드"
           },
           {
             "name": "category_id",
@@ -2871,6 +4935,24 @@
             "description": "이 브랜드의 매장에 있는 자산만"
           },
           {
+            "name": "at_store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true: 매장에 있는 것만 / false: 미설치(창고 등)만",
+              "title": "At Store"
+            },
+            "description": "true: 매장에 있는 것만 / false: 미설치(창고 등)만"
+          },
+          {
             "name": "include_sublocations",
             "in": "query",
             "required": false,
@@ -2888,6 +4970,22 @@
               "type": "boolean",
               "default": false,
               "title": "Below Min Only"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "created_desc",
+                "serial_asc",
+                "kind_serial",
+                "updated_desc"
+              ],
+              "type": "string",
+              "default": "created_desc",
+              "title": "Sort"
             }
           },
           {
@@ -2984,6 +5082,207 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/inventory/assets/export.xlsx": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Export Assets",
+        "description": "재고 엑셀 (구 서버 '재고_날짜.xlsx'): 조건 없이 전체면 요약 시트 + 종류마다 시트 하나.",
+        "operationId": "export_assets_api_v1_inventory_assets_export_xlsx_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "status_item_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Item Id"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "location_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "at_store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At Store"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory/assets/bulk": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Create Assets Bulk",
+        "description": "S/N 여러 개를 한 번에 (구 서버 입고·등록 화면). 이미 있는 S/N 은 건너뛰고 알려 준다.",
+        "operationId": "create_assets_bulk_api_v1_inventory_assets_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetBulkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkCreateResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/inventory/assets/{asset_id}": {
@@ -3142,7 +5441,7 @@
           "inventory"
         ],
         "summary": "Move Asset",
-        "description": "위치/보관자/상태 변경의 단일 경로. 자산 현재값과 이력을 함께 갱신합니다.",
+        "description": "위치/매장/보관자/상태 변경의 단일 경로. 자산 현재값과 이력을 함께 갱신합니다.\n\n세부 상태(`to_status_item_id`)를 주면 그 규칙이 매장·위치를 정리한다:\n설치·렌탈 중은 매장 필수, 창고·사무실·미상은 매장을 비우고 그 이름의 위치로,\nAS 대기·AS 반출은 매장에 둔 채 상태만. 상태 없이 자리만 옮기면 자리에 맞는\n상태를 서버가 고른다(매장 → 설치, 창고 위치 → 창고).",
         "operationId": "move_asset_api_v1_inventory_assets__asset_id__move_post",
         "security": [
           {
@@ -3193,6 +5492,53 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/inventory/assets/bulk-move": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Move Assets Bulk",
+        "description": "목록에서 고른 장비 여러 대를 한 번에 (한 대씩과 같은 규칙 · 같은 이력).",
+        "operationId": "move_assets_bulk_api_v1_inventory_assets_bulk_move_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetBulkMoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkMoveResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/inventory/assets/{asset_id}/movements": {
@@ -3268,6 +5614,33 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/inventory/overview": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Overview",
+        "description": "구 서버 재고 › 현황. 상태×종류, 브랜드×종류(매장 설치), 장소×종류(미설치), 확인 목록(AS·미상), 렌탈 중.",
+        "operationId": "overview_api_v1_inventory_overview_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryOverview"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/inventory/summary": {
@@ -3354,10 +5727,10 @@
                   "type": "null"
                 }
               ],
-              "description": "매장명",
+              "description": "매장명 · 메모",
               "title": "Q"
             },
-            "description": "매장명"
+            "description": "매장명 · 메모"
           },
           {
             "name": "brand_id",
@@ -3490,7 +5863,7 @@
           "stores"
         ],
         "summary": "Get Store",
-        "description": "매장 하나와 그 매장에 나가 있는 우리 자산 전부(종류별로 묶어서).",
+        "description": "매장 하나와 그 매장에 나가 있는 우리 자산 전부(종류별로 묶어서), 그리고 구 서버 매장\n화면이 보여 주던 것들: 서비스구분별 발생, 미회수 렌탈, 대응 이력, 폐점 회수 안내.",
         "operationId": "get_store_api_v1_stores__store_id__get",
         "security": [
           {
@@ -3618,6 +5991,304 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stores/{store_id}/close": {
+      "post": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Close Store",
+        "description": "폐점 처리 (구 서버 매장 화면의 [매장 상태 저장]): 설치 · AS 장비를 고른 회수 위치로.\n\n렌탈 중 장비는 건드리지 않는다 - 대응 기록에서 회수 처리하면 창고로 돌아온다.",
+        "operationId": "close_store_api_v1_stores__store_id__close_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreCloseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCloseResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stores/{store_id}/sets": {
+      "post": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Add Set",
+        "operationId": "add_set_api_v1_stores__store_id__sets_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSetIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stores/{store_id}/sets/{set_no}": {
+      "patch": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Rename Set",
+        "operationId": "rename_set_api_v1_stores__store_id__sets__set_no__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "set_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Set No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreSetIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Delete Set",
+        "operationId": "delete_set_api_v1_stores__store_id__sets__set_no__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "set_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Set No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stores/{store_id}/equipment": {
+      "post": {
+        "tags": [
+          "stores"
+        ],
+        "summary": "Setup Equipment",
+        "description": "납품 장비 세트를 한 화면에서 저장. 없는 S/N 은 등록, 다른 곳의 장비는 이 매장으로,\n이미 있으면 세트만 맞춘다. 비전동 세트에 S/N 없는 비전동 그리퍼는 관리 번호를 붙인다.",
+        "operationId": "setup_equipment_api_v1_stores__store_id__equipment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Store Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EquipmentSetupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentSetupResult"
                 }
               }
             }
@@ -4257,6 +6928,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendar/holidays": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Holidays",
+        "description": "그 해의 한국 공휴일 · 대체공휴일 (구 서버 캘린더와 같은 계산). 추가 휴일은 설정 CALENDAR.extra_holidays.",
+        "operationId": "holidays_api_v1_calendar_holidays_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2100,
+              "minimum": 2000,
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HolidayOut"
+                  },
+                  "title": "Response Holidays Api V1 Calendar Holidays Get"
                 }
               }
             }
@@ -6370,6 +9095,304 @@
         "title": "ApproveRequest",
         "description": "Step 2 of the entry flow. Role is set at approval time, not at signup."
       },
+      "AssetBulkCreate": {
+        "properties": {
+          "serial_nos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Serial Nos",
+            "description": "S/N 목록. 공백·쉼표로 나눠 보내도 된다"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "비우면 '종류 품명'"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manufacturer"
+          },
+          "status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Item Id"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "set_no": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Set No",
+            "default": 0
+          },
+          "purchase_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Date",
+            "description": "설치일"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serial_nos"
+        ],
+        "title": "AssetBulkCreate",
+        "description": "S/N 여러 개를 한 번에 등록 (구 서버 '입고·등록'). 나머지 칸은 공통."
+      },
+      "AssetBulkMoveRequest": {
+        "properties": {
+          "movement_type": {
+            "$ref": "#/components/schemas/MovementType",
+            "default": "MOVE"
+          },
+          "to_location_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Location Id"
+          },
+          "to_holder_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Holder Id"
+          },
+          "to_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssetStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Store Id"
+          },
+          "to_set_no": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Set No",
+            "description": "매장 납품 세트 번호"
+          },
+          "to_status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Status Item Id",
+            "description": "세부 상태 코드(설치 / 렌탈 중 / AS 대기 ...)"
+          },
+          "clear_store": {
+            "type": "boolean",
+            "title": "Clear Store",
+            "description": "매장에서 거두어들일 때 true - 매장 연결을 끊는다",
+            "default": false
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "moved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved At",
+            "description": "defaults to now in UTC"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reference_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Type"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "asset_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Asset Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_ids"
+        ],
+        "title": "AssetBulkMoveRequest",
+        "description": "목록에서 고른 장비 여러 대를 한 번에 옮기거나 상태만 바꿈 (한 대씩과 같은 규칙·같은 이력)."
+      },
       "AssetCreate": {
         "properties": {
           "asset_no": {
@@ -7837,6 +10860,120 @@
         "title": "AssetUpdate",
         "description": "Location and holder changes should go through /move so history is kept."
       },
+      "AttentionAsset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "asset_no": {
+            "type": "string",
+            "title": "Asset No"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "serial_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial No"
+          },
+          "status_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Name"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "asset_no",
+          "name"
+        ],
+        "title": "AttentionAsset"
+      },
       "AuditAction": {
         "type": "string",
         "enum": [
@@ -7975,6 +11112,35 @@
           "action"
         ],
         "title": "AuditLogOut"
+      },
+      "AxisKey": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AxisKey"
       },
       "BoardCreate": {
         "properties": {
@@ -8366,6 +11532,27 @@
         "title": "BrandSummary",
         "description": "브랜드별 매장·자산 현황. 재고 화면의 1차 분류."
       },
+      "BrandYearRow": {
+        "properties": {
+          "brand": {
+            "type": "string",
+            "title": "Brand"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brand",
+          "counts"
+        ],
+        "title": "BrandYearRow"
+      },
       "BroadcastRequest": {
         "properties": {
           "title": {
@@ -8400,6 +11587,64 @@
         ],
         "title": "BroadcastRequest",
         "description": "Admin push. Empty user_ids means everyone with an APPROVED account."
+      },
+      "BulkCreateResult": {
+        "properties": {
+          "created": {
+            "items": {
+              "$ref": "#/components/schemas/AssetOut"
+            },
+            "type": "array",
+            "title": "Created"
+          },
+          "duplicates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Duplicates",
+            "description": "이미 있는 S/N 이라 건너뜀"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "duplicates"
+        ],
+        "title": "BulkCreateResult"
+      },
+      "BulkMoveResult": {
+        "properties": {
+          "moved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Moved",
+            "description": "옮긴 장비 (종류 S/N)"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "description": "이미 그 상태·그 자리라 그대로 둔 장비"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moved",
+          "skipped"
+        ],
+        "title": "BulkMoveResult"
       },
       "CalendarCreate": {
         "properties": {
@@ -8654,6 +11899,171 @@
         },
         "type": "object",
         "title": "CalendarUpdate"
+      },
+      "CategoryCount": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "count"
+        ],
+        "title": "CategoryCount"
+      },
+      "CauseIn": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "symptom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symptom Id"
+          },
+          "maker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maker Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id"
+        ],
+        "title": "CauseIn",
+        "description": "원인 한 쌍. 구 서버의 (서비스구분, 세부분류, 제조사).\n\n로봇팔 · 제어박스 · 전동 그리퍼(설정 `maker_required_categories`)는 제조사가\n필수다. 증상은 그 서비스구분에 딸린 것이어야 한다."
+      },
+      "CauseOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "symptom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symptom Id"
+          },
+          "maker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maker Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "symptom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "seq"
+        ],
+        "title": "CauseOut"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -9215,6 +12625,114 @@
         ],
         "title": "CountBucket"
       },
+      "Crosstab": {
+        "properties": {
+          "rows_axis": {
+            "type": "string",
+            "title": "Rows Axis"
+          },
+          "cols_axis": {
+            "type": "string",
+            "title": "Cols Axis"
+          },
+          "cols": {
+            "items": {
+              "$ref": "#/components/schemas/AxisKey"
+            },
+            "type": "array",
+            "title": "Cols"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CrosstabRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "col_totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Col Totals"
+          },
+          "total_causes": {
+            "type": "integer",
+            "title": "Total Causes"
+          },
+          "total_tickets": {
+            "type": "integer",
+            "title": "Total Tickets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows_axis",
+          "cols_axis",
+          "cols",
+          "rows",
+          "col_totals",
+          "total_causes",
+          "total_tickets"
+        ],
+        "title": "Crosstab",
+        "description": "구 서버 통계의 표 하나: 행 축 × 열 축, 칸은 원인 수.\n\n한 건에 원인이 여러 개면 각각 센다(구 서버와 같다). 그래서 칸 합은 대응\n건수보다 클 수 있고, `total_tickets` 를 옆에 같이 보여 줘야 한다."
+      },
+      "CrosstabRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "cells": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Cells",
+            "description": "열 key -> 원인 수"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "ticket_count": {
+            "type": "integer",
+            "title": "Ticket Count",
+            "description": "이 줄에 걸린 대응 건수(중복 제거)"
+          },
+          "ratio": {
+            "type": "number",
+            "title": "Ratio",
+            "description": "전체 원인 수 대비 비율, 0.0~1.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "cells",
+          "total",
+          "ticket_count",
+          "ratio"
+        ],
+        "title": "CrosstabRow"
+      },
       "CustomerCreate": {
         "properties": {
           "name": {
@@ -9763,6 +13281,180 @@
           "push_token"
         ],
         "title": "DeviceRegister"
+      },
+      "EquipmentSetIn": {
+        "properties": {
+          "set_no": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set No",
+            "description": "비우면 순서대로 1, 2, …"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "gripper_type": {
+            "type": "string",
+            "title": "Gripper Type",
+            "description": "전동 / 비전동"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/EquipmentSlotIn"
+            },
+            "type": "array",
+            "title": "Slots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gripper_type"
+        ],
+        "title": "EquipmentSetIn"
+      },
+      "EquipmentSetupRequest": {
+        "properties": {
+          "install_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Install Date"
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/EquipmentSetIn"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sets"
+        ],
+        "title": "EquipmentSetupRequest",
+        "description": "매장 장비 설정 (구 서버 store_equipment): 납품 세트 여러 개의 S/N 을 한 화면에서.\n\n- 없는 S/N 은 이 매장에 '설치'로 새로 등록, 다른 곳에 있던 장비는 이 매장으로 이동,\n  이미 이 매장에 있으면 세트 번호만 맞춘다.\n- 비전동 세트에 비전동 그리퍼 S/N 이 없으면 관리 번호(NG-0001 …)를 붙여 재고에 넣는다."
+      },
+      "EquipmentSetupResult": {
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "moved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Moved"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "store": {
+            "$ref": "#/components/schemas/StoreDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "moved",
+          "kept",
+          "store"
+        ],
+        "title": "EquipmentSetupResult"
+      },
+      "EquipmentSlotIn": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "serial_no": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial No"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manufacturer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id"
+        ],
+        "title": "EquipmentSlotIn",
+        "description": "세트의 장비 한 칸: 종류 + S/N (+ 품명 · 제조사). S/N 이 없는 칸은 건너뛴다."
       },
       "EventCreate": {
         "properties": {
@@ -10520,6 +14212,96 @@
         ],
         "title": "HealthOut"
       },
+      "HolidayOut": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "name"
+        ],
+        "title": "HolidayOut"
+      },
+      "InventoryOverview": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/CodeItemBrief"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/CodeItemBrief"
+            },
+            "type": "array",
+            "title": "Statuses"
+          },
+          "by_status": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewRow"
+            },
+            "type": "array",
+            "title": "By Status"
+          },
+          "by_brand": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewRow"
+            },
+            "type": "array",
+            "title": "By Brand"
+          },
+          "by_place": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewRow"
+            },
+            "type": "array",
+            "title": "By Place"
+          },
+          "attention": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionAsset"
+            },
+            "type": "array",
+            "title": "Attention",
+            "description": "AS 대기 · AS 반출 · 미상"
+          },
+          "rentals": {
+            "items": {
+              "$ref": "#/components/schemas/RentalAsset"
+            },
+            "type": "array",
+            "title": "Rentals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "kinds",
+          "statuses",
+          "by_status",
+          "by_brand",
+          "by_place",
+          "attention",
+          "rentals"
+        ],
+        "title": "InventoryOverview",
+        "description": "구 서버 재고 › 현황: 상태×종류 · 브랜드×종류(매장에 있는 것) · 장소×종류(미설치) · 확인 목록 · 렌탈 중."
+      },
       "InventorySummary": {
         "properties": {
           "total_assets": {
@@ -11211,6 +14993,49 @@
           "SYSTEM"
         ],
         "title": "NotificationType"
+      },
+      "OverviewRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts",
+            "description": "종류(category_id) -> 대수"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "counts",
+          "total"
+        ],
+        "title": "OverviewRow"
       },
       "Page_AssetMovementOut_": {
         "properties": {
@@ -11983,6 +15808,254 @@
         ],
         "title": "ReminderOut"
       },
+      "RentalAsset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "asset_no": {
+            "type": "string",
+            "title": "Asset No"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "serial_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial No"
+          },
+          "status_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Name"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "ticket_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket No"
+          },
+          "rented_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rented At"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "dday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dday"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "asset_no",
+          "name"
+        ],
+        "title": "RentalAsset"
+      },
+      "RentalRow": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "ticket_no": {
+            "type": "string",
+            "title": "Ticket No"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "rental_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Type"
+          },
+          "serials": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "dday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dday",
+            "description": "회수 예정일까지 남은 날. 음수면 지남"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "ticket_no"
+        ],
+        "title": "RentalRow"
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -12003,6 +16076,63 @@
           "INTERNAL"
         ],
         "title": "ServiceChannel"
+      },
+      "ServiceDashboard": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "this_year": {
+            "type": "integer",
+            "title": "This Year"
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count"
+          },
+          "open_tickets": {
+            "items": {
+              "$ref": "#/components/schemas/TicketBrief"
+            },
+            "type": "array",
+            "title": "Open Tickets",
+            "description": "미종결, 오래된 것부터"
+          },
+          "unreturned_rentals": {
+            "items": {
+              "$ref": "#/components/schemas/RentalRow"
+            },
+            "type": "array",
+            "title": "Unreturned Rentals"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceTicketOut"
+            },
+            "type": "array",
+            "title": "Recent",
+            "description": "최근 등록·수정 순"
+          },
+          "by_year": {
+            "items": {
+              "$ref": "#/components/schemas/YearCount"
+            },
+            "type": "array",
+            "title": "By Year"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "this_year",
+          "open_count",
+          "open_tickets",
+          "unreturned_rentals",
+          "recent",
+          "by_year"
+        ],
+        "title": "ServiceDashboard"
       },
       "ServiceGrouped": {
         "properties": {
@@ -12139,6 +16269,16 @@
               }
             ],
             "title": "Author Id"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -12340,6 +16480,34 @@
             ],
             "title": "Result Note",
             "description": "required when moving to COMPLETED"
+          },
+          "responder_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responder Ids"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "대응일. 비우면 지금"
           }
         },
         "type": "object",
@@ -12462,6 +16630,71 @@
       },
       "ServiceTicketCreate": {
         "properties": {
+          "is_rental": {
+            "type": "boolean",
+            "title": "Is Rental",
+            "default": false
+          },
+          "rental_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Type Id"
+          },
+          "rental_serials": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Serials",
+            "description": "쉼표 구분 S/N"
+          },
+          "rental_due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Due Date"
+          },
+          "rental_returned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Returned"
+          },
+          "rental_return_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Return Date"
+          },
           "title": {
             "type": "string",
             "maxLength": 250,
@@ -12515,6 +16748,18 @@
               }
             ],
             "title": "Site Address"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
           },
           "product_name": {
             "anyOf": [
@@ -12612,6 +16857,48 @@
             ],
             "title": "Action Id"
           },
+          "fault_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fault Id",
+            "description": "과실"
+          },
+          "causes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CauseIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causes"
+          },
+          "responder_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responder Ids"
+          },
           "priority": {
             "$ref": "#/components/schemas/ServicePriority",
             "default": "NORMAL"
@@ -12655,7 +16942,7 @@
               }
             ],
             "title": "Received At",
-            "description": "defaults to now in UTC"
+            "description": "발생일시. 비우면 지금(UTC)"
           },
           "due_at": {
             "anyOf": [
@@ -12710,6 +16997,17 @@
             "type": "string",
             "title": "Ticket No"
           },
+          "legacy_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legacy No"
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -12758,6 +17056,18 @@
               }
             ],
             "title": "Site Address"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
           },
           "product_name": {
             "anyOf": [
@@ -12851,6 +17161,18 @@
               }
             ],
             "title": "Action Id"
+          },
+          "fault_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fault Id"
           },
           "status": {
             "$ref": "#/components/schemas/ServiceStatus"
@@ -12977,6 +17299,63 @@
             ],
             "title": "Total Cost"
           },
+          "is_rental": {
+            "type": "boolean",
+            "title": "Is Rental",
+            "default": false
+          },
+          "rental_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Type Id"
+          },
+          "rental_serials": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Serials"
+          },
+          "rental_due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Due Date"
+          },
+          "rental_returned": {
+            "type": "boolean",
+            "title": "Rental Returned",
+            "default": false
+          },
+          "rental_return_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Return Date"
+          },
           "description": {
             "anyOf": [
               {
@@ -13020,10 +17399,66 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "cause_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cause Labels"
+          },
+          "responder_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Responder Names"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "attachment_count": {
+            "type": "integer",
+            "title": "Attachment Count",
+            "default": 0
+          },
+          "log_count": {
+            "type": "integer",
+            "title": "Log Count",
+            "default": 0
+          },
           "customer": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CustomerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "store": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreRef"
               },
               {
                 "type": "null"
@@ -13039,6 +17474,40 @@
                 "type": "null"
               }
             ]
+          },
+          "fault": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rental_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "causes": {
+            "items": {
+              "$ref": "#/components/schemas/CauseOut"
+            },
+            "type": "array",
+            "title": "Causes"
+          },
+          "responders": {
+            "items": {
+              "$ref": "#/components/schemas/CodeItemBrief"
+            },
+            "type": "array",
+            "title": "Responders"
           },
           "parts": {
             "items": {
@@ -13064,6 +17533,13 @@
               }
             ],
             "title": "Resolution Minutes"
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices"
           }
         },
         "type": "object",
@@ -13093,6 +17569,17 @@
             "type": "string",
             "title": "Ticket No"
           },
+          "legacy_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legacy No"
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -13141,6 +17628,18 @@
               }
             ],
             "title": "Site Address"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
           },
           "product_name": {
             "anyOf": [
@@ -13234,6 +17733,18 @@
               }
             ],
             "title": "Action Id"
+          },
+          "fault_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fault Id"
           },
           "status": {
             "$ref": "#/components/schemas/ServiceStatus"
@@ -13360,6 +17871,63 @@
             ],
             "title": "Total Cost"
           },
+          "is_rental": {
+            "type": "boolean",
+            "title": "Is Rental",
+            "default": false
+          },
+          "rental_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Type Id"
+          },
+          "rental_serials": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Serials"
+          },
+          "rental_due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Due Date"
+          },
+          "rental_returned": {
+            "type": "boolean",
+            "title": "Rental Returned",
+            "default": false
+          },
+          "rental_return_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Return Date"
+          },
           "description": {
             "anyOf": [
               {
@@ -13402,6 +17970,52 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "cause_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cause Labels"
+          },
+          "responder_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Responder Names"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "attachment_count": {
+            "type": "integer",
+            "title": "Attachment Count",
+            "default": 0
+          },
+          "log_count": {
+            "type": "integer",
+            "title": "Log Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -13421,6 +18035,77 @@
       },
       "ServiceTicketUpdate": {
         "properties": {
+          "is_rental": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Rental"
+          },
+          "rental_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Type Id"
+          },
+          "rental_serials": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Serials",
+            "description": "쉼표 구분 S/N"
+          },
+          "rental_due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Due Date"
+          },
+          "rental_returned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Returned"
+          },
+          "rental_return_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Return Date"
+          },
           "title": {
             "anyOf": [
               {
@@ -13481,6 +18166,18 @@
             ],
             "title": "Site Address"
           },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          },
           "product_name": {
             "anyOf": [
               {
@@ -13577,6 +18274,47 @@
             ],
             "title": "Action Id"
           },
+          "fault_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fault Id"
+          },
+          "causes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CauseIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causes"
+          },
+          "responder_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responder Ids"
+          },
           "priority": {
             "anyOf": [
               {
@@ -13620,6 +18358,18 @@
               }
             ],
             "title": "Department Id"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
           },
           "due_at": {
             "anyOf": [
@@ -14195,6 +18945,76 @@
         "title": "StoreBrief",
         "description": "자산 화면에서 \"어느 매장에 있나\"를 보여 줄 만큼만."
       },
+      "StoreCloseRequest": {
+        "properties": {
+          "closed_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "recover_to_status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover To Status Item Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "StoreCloseRequest",
+        "description": "폐점 처리. 설치 장비를 고른 상태로 옮긴다 (구 서버 recover_closed_store_assets).\n\nrecover_to_status_item_id 가 비어 있으면 장비는 그대로 두고 남은 수만 알려 준다."
+      },
+      "StoreCloseResult": {
+        "properties": {
+          "store": {
+            "$ref": "#/components/schemas/StoreDetail"
+          },
+          "moved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Moved",
+            "description": "옮긴 장비 (종류 S/N)"
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "store",
+          "moved"
+        ],
+        "title": "StoreCloseResult"
+      },
       "StoreCreate": {
         "properties": {
           "name": {
@@ -14404,6 +19224,66 @@
             "type": "array",
             "title": "Asset Groups",
             "default": []
+          },
+          "open_ticket_count": {
+            "type": "integer",
+            "title": "Open Ticket Count",
+            "default": 0
+          },
+          "install_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Install Date",
+            "description": "보유 장비 중 가장 이른 설치일"
+          },
+          "category_counts": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryCount"
+            },
+            "type": "array",
+            "title": "Category Counts",
+            "description": "서비스구분별 원인 수"
+          },
+          "unreturned_rentals": {
+            "items": {
+              "$ref": "#/components/schemas/StoreRentalRow"
+            },
+            "type": "array",
+            "title": "Unreturned Rentals"
+          },
+          "recent_tickets": {
+            "items": {
+              "$ref": "#/components/schemas/StoreTicketBrief"
+            },
+            "type": "array",
+            "title": "Recent Tickets"
+          },
+          "recover_options": {
+            "items": {
+              "$ref": "#/components/schemas/CodeItemBrief"
+            },
+            "type": "array",
+            "title": "Recover Options",
+            "description": "폐점 때 장비를 보낼 수 있는 상태. 첫 항목이 기본값"
+          },
+          "movable_count": {
+            "type": "integer",
+            "title": "Movable Count",
+            "description": "폐점 때 회수될 장비 수 (설치 · AS 대기 · AS 반출)",
+            "default": 0
+          },
+          "rental_count": {
+            "type": "integer",
+            "title": "Rental Count",
+            "description": "렌탈 중 장비 수 - 폐점 때 옮기지 않음",
+            "default": 0
           }
         },
         "type": "object",
@@ -14530,6 +19410,136 @@
         ],
         "title": "StoreOut"
       },
+      "StoreRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "is_closed": {
+            "type": "boolean",
+            "title": "Is Closed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "StoreRef",
+        "description": "접수 화면이 매장으로 건너갈 만큼만."
+      },
+      "StoreRentalRow": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "ticket_no": {
+            "type": "string",
+            "title": "Ticket No"
+          },
+          "rental_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental Type"
+          },
+          "serials": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serials"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "dday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dday"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "ticket_no"
+        ],
+        "title": "StoreRentalRow"
+      },
+      "StoreSetIn": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "title": "StoreSetIn"
+      },
       "StoreSetOut": {
         "properties": {
           "id": {
@@ -14560,6 +19570,61 @@
         ],
         "title": "StoreSetOut"
       },
+      "StoreTicketBrief": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ticket_no": {
+            "type": "string",
+            "title": "Ticket No"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "cause_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cause Labels",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ticket_no",
+          "title",
+          "status",
+          "received_at"
+        ],
+        "title": "StoreTicketBrief"
+      },
       "StoreUpdate": {
         "properties": {
           "name": {
@@ -14574,6 +19639,18 @@
               }
             ],
             "title": "Name"
+          },
+          "recover_to_status_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover To Status Item Id"
           },
           "brand_id": {
             "anyOf": [
@@ -14661,6 +19738,118 @@
         "type": "object",
         "title": "StoreUpdate"
       },
+      "StoreYearRow": {
+        "properties": {
+          "year": {
+            "type": "string",
+            "title": "Year"
+          },
+          "operating": {
+            "type": "integer",
+            "title": "Operating",
+            "description": "그 해에 운영된 매장 수"
+          },
+          "opened": {
+            "type": "integer",
+            "title": "Opened",
+            "description": "그 해 개점(또는 첫 확인)"
+          },
+          "closed": {
+            "type": "integer",
+            "title": "Closed",
+            "description": "그 해 폐점"
+          },
+          "year_end": {
+            "type": "integer",
+            "title": "Year End",
+            "description": "연말 운영 매장"
+          },
+          "active": {
+            "type": "integer",
+            "title": "Active",
+            "description": "대응이 발생한 매장 수"
+          },
+          "tickets": {
+            "type": "integer",
+            "title": "Tickets",
+            "description": "대응 건수"
+          },
+          "per_store": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Store",
+            "description": "매장당 건수"
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "operating",
+          "opened",
+          "closed",
+          "year_end",
+          "active",
+          "tickets"
+        ],
+        "title": "StoreYearRow"
+      },
+      "StoreYears": {
+        "properties": {
+          "years": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Years"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StoreYearRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "by_brand": {
+            "items": {
+              "$ref": "#/components/schemas/BrandYearRow"
+            },
+            "type": "array",
+            "title": "By Brand"
+          },
+          "total_stores": {
+            "type": "integer",
+            "title": "Total Stores"
+          },
+          "closed_stores": {
+            "type": "integer",
+            "title": "Closed Stores"
+          },
+          "unknown_open": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Open",
+            "description": "개점 연도를 알 수 없는 매장"
+          }
+        },
+        "type": "object",
+        "required": [
+          "years",
+          "rows",
+          "by_brand",
+          "total_stores",
+          "closed_stores",
+          "unknown_open"
+        ],
+        "title": "StoreYears"
+      },
       "SystemStats": {
         "properties": {
           "users_total": {
@@ -14745,6 +19934,73 @@
         ],
         "title": "TableStat"
       },
+      "TicketBrief": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ticket_no": {
+            "type": "string",
+            "title": "Ticket No"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "store_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Name"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ServiceStatus"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          },
+          "days_open": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ticket_no",
+          "title",
+          "status",
+          "received_at"
+        ],
+        "title": "TicketBrief"
+      },
       "TokenPair": {
         "properties": {
           "access_token": {
@@ -14783,7 +20039,7 @@
           "period": {
             "type": "string",
             "title": "Period",
-            "description": "YYYY-MM-DD, YYYY-Www or YYYY-MM per interval"
+            "description": "YYYY-MM-DD, YYYY-Www, YYYY-MM or YYYY per interval"
           },
           "received": {
             "type": "integer",
@@ -15409,6 +20665,24 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "YearCount": {
+        "properties": {
+          "year": {
+            "type": "string",
+            "title": "Year"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "count"
+        ],
+        "title": "YearCount"
       }
     },
     "securitySchemes": {

@@ -77,8 +77,14 @@ DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]
         ],
     ),
     (
+        # 구 서버 재고 장비 종류 5종을 앞에, 일반 자산 분류를 뒤에.
         "ASSET_CATEGORY", "자산 분류", ModuleKey.INVENTORY,
         [
+            ("ROBOT_ARM", "로봇팔", "#2563EB"),
+            ("CONTROL_BOX", "제어박스", "#7C3AED"),
+            ("E_GRIPPER", "전동 그리퍼", "#059669"),
+            ("NE_GRIPPER", "비전동 그리퍼", "#10B981"),
+            ("TOOL_CHANGER", "툴체인저", "#F59E0B"),
             ("IT", "IT 장비", "#3B82F6"),
             ("OFFICE", "사무기기", "#8B5CF6"),
             ("TOOL", "공구 / 계측기", "#F59E0B"),
@@ -114,6 +120,21 @@ DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]
         "SERVICE_RENTAL_TYPE", "렌탈 장비 종류", ModuleKey.SERVICE, [],
     ),
     (
+        # 재고 세부 상태 13종 (구 서버). 규칙(매장 필수 / 매장 유지 / 매장 자동 비움)은
+        # 항목 extra 에 들어가며 _seed_status_rules 가 채운다.
+        "ASSET_STATUS", "자산 상태", ModuleKey.INVENTORY,
+        [
+            ("WAREHOUSE", "창고", "#64748B"), ("OFFICE", "사무실", "#94A3B8"),
+            ("INSTALLED", "설치", "#2563EB"), ("RENTED", "렌탈 중", "#8B5CF6"),
+            ("AS_WAIT", "AS 대기", "#F59E0B"), ("AS_OUT", "AS 반출", "#F97316"),
+            ("RECOVER_BAREUN", "바른 회수", "#A16207"), ("RECOVER_JADAM", "자담 회수", "#A16207"),
+            ("RECOVER_SAMSUNG", "삼성 회수", "#A16207"), ("RECOVER_OVERSEAS", "해외 회수", "#A16207"),
+            ("RECOVER_ETC", "기타 회수", "#A16207"), ("DISPOSED", "폐기", "#6B7280"), ("UNKNOWN", "미상", "#EF4444"),
+        ],
+    ),
+    ("ASSET_MODEL", "자산 모델", ModuleKey.INVENTORY, []),
+    ("ASSET_MAKER", "자산 제조사", ModuleKey.INVENTORY, []),
+    (
         # 브랜드 - per-company, so no defaults.
         "STORE_BRAND", "매장 브랜드", ModuleKey.STORE, [],
     ),
@@ -129,6 +150,14 @@ DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]
         ],
     ),
 ]
+
+# 종류 이름 -> 딸린 항목. (하위 코드군, [(code, name)])  구 서버 ASSET_MODELS / ASSET_MAKERS.
+DEFAULT_CHILD_CODES: dict[str, dict[str, list[tuple[str, str]]]] = {
+    "로봇팔": {"ASSET_MODEL": [("RB5_850EN", "RB5-850EN")], "ASSET_MAKER": [("RAINBOW", "레인보우로보틱스")]},
+    "제어박스": {"ASSET_MODEL": [("CB_04", "CB-04"), ("CB_06", "CB-06")], "ASSET_MAKER": [("RAINBOW", "레인보우로보틱스")]},
+    "전동 그리퍼": {"ASSET_MODEL": [("2FG7", "2FG7")], "ASSET_MAKER": [("ONROBOT", "OnRobot")]},
+    "툴체인저": {"ASSET_MODEL": [("QC_RSV3", "QC-RSv3")]},
+}
 
 # (module, key, value, value_type, label, is_public)
 DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
@@ -148,11 +177,21 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
     (ModuleKey.SERVICE, "require_result_note", True, "bool", "완료 시 처리내용 필수", True),
     (ModuleKey.SERVICE, "auto_deduct_parts", True, "bool", "부품 사용 시 재고 자동 차감", False),
     (ModuleKey.SERVICE, "notify_on_assign", True, "bool", "담당자 배정 시 알림", False),
+    # 구 서버(CS_Record) 대응 기록 규칙
+    (ModuleKey.SERVICE, "require_category", True, "bool", "서비스구분 1 필수", True),
+    (ModuleKey.SERVICE, "max_causes", 10, "int", "한 건에 넣을 수 있는 서비스구분 수", True),
+    (ModuleKey.SERVICE, "maker_required_categories", ["로봇팔", "제어박스", "전동 그리퍼"], "list",
+     "제조사를 반드시 고르는 서비스구분", True),
+    (ModuleKey.SERVICE, "rental_serial_must_exist", True, "bool", "렌탈 시리얼은 재고 S/N 만", True),
+    (ModuleKey.SERVICE, "require_responder_on_complete", True, "bool", "종결 시 대응인원 필수", True),
 
     (ModuleKey.INVENTORY, "asset_no_prefix", "AST", "string", "자산번호 접두어", True),
     (ModuleKey.INVENTORY, "low_stock_alert", True, "bool", "안전재고 미만 경고", True),
     (ModuleKey.INVENTORY, "require_location", True, "bool", "등록 시 위치 필수", True),
     (ModuleKey.INVENTORY, "warranty_alert_days", 30, "int", "보증만료 경고 기준(일)", True),
+    (ModuleKey.INVENTORY, "maker_required_categories", ["로봇팔", "제어박스", "전동 그리퍼"], "list",
+     "제조사를 반드시 적는 장비 종류", True),
+    (ModuleKey.INVENTORY, "nonelectric_serial_prefix", "NG-", "string", "비전동 그리퍼 관리 번호 접두어", True),
 
     (ModuleKey.BOARD, "attachment_max_mb", 25, "int", "첨부파일 최대 크기(MB)", True),
     (ModuleKey.BOARD, "default_page_size", 20, "int", "기본 목록 개수", True),
@@ -162,6 +201,8 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
     (ModuleKey.CALENDAR, "business_hours_start", "09:00", "string", "업무 시작", True),
     (ModuleKey.CALENDAR, "business_hours_end", "18:00", "string", "업무 종료", True),
     (ModuleKey.CALENDAR, "allow_personal_calendar", True, "bool", "개인 캘린더 허용", True),
+    (ModuleKey.CALENDAR, "extra_holidays", "", "string",
+     "추가 휴일 (05-01:노동절, 2028-04-12:선거 처럼 쉼표로)", True),
 
     (ModuleKey.STORE, "default_gripper_type", "전동", "string", "기본 그리퍼 종류", True),
     (ModuleKey.STORE, "show_closed_stores", False, "bool", "폐점 매장 목록에 표시", True),
@@ -182,6 +223,8 @@ def run(db: Session) -> None:
     _seed_boards(db)
     _seed_calendar(db)
     _seed_location(db)
+    _seed_child_codes(db)
+    _seed_status_rules(db)
     db.commit()
 
 
@@ -221,7 +264,8 @@ def _seed_codes(db: Session) -> None:
         for order, (code, name, color) in enumerate(items, start=1):
             exists = db.scalar(
                 select(CodeItem.id).where(
-                    CodeItem.group_id == group.id, CodeItem.code == code
+                    CodeItem.group_id == group.id,
+                    (CodeItem.code == code) | (CodeItem.name == name),
                 )
             )
             if exists is None:
@@ -287,9 +331,80 @@ def _seed_calendar(db: Session) -> None:
 
 
 def _seed_location(db: Session) -> None:
-    if db.scalar(select(Location.id).where(Location.code == "HQ")) is None:
-        db.add(
-            Location(
-                code="HQ", name="본사", type=LocationType.SITE, path="본사", sort_order=1
-            )
+    hq = db.scalar(select(Location).where(Location.code == "HQ"))
+    if hq is None:
+        hq = Location(code="HQ", name="본사", type=LocationType.SITE, path="본사", sort_order=1)
+        db.add(hq)
+        db.flush()
+    # 구 서버의 보관 장소. 재고 상태 '창고' · '사무실' 규칙이 이 이름의 위치로 보낸다.
+    for order, (code, name, ltype) in enumerate(
+        [("WAREHOUSE", "창고", LocationType.ROOM), ("OFFICE", "사무실", LocationType.ROOM)], start=2
+    ):
+        exists = db.scalar(
+            select(Location.id).where(Location.name == name, Location.deleted_at.is_(None))
         )
+        if exists is None and db.scalar(select(Location.id).where(Location.code == code)) is None:
+            db.add(
+                Location(
+                    code=code, name=name, type=ltype, parent_id=hq.id,
+                    path=f"{hq.name} > {name}", sort_order=order,
+                )
+            )
+
+
+def _group(db: Session, code: str) -> CodeGroup | None:
+    return db.scalar(select(CodeGroup).where(CodeGroup.code == code))
+
+
+def _seed_child_codes(db: Session) -> None:
+    """종류(ASSET_CATEGORY)에 딸린 기본 품명 · 제조사. 이름이 있으면 건너뛴다."""
+    cat_group = _group(db, "ASSET_CATEGORY")
+    if cat_group is None:
+        return
+    for kind_name, groups in DEFAULT_CHILD_CODES.items():
+        parent = db.scalar(
+            select(CodeItem).where(CodeItem.group_id == cat_group.id, CodeItem.name == kind_name)
+        )
+        if parent is None:
+            continue
+        for group_code, items in groups.items():
+            group = _group(db, group_code)
+            if group is None:
+                continue
+            for order, (code, name) in enumerate(items, start=1):
+                exists = db.scalar(
+                    select(CodeItem.id).where(
+                        CodeItem.group_id == group.id,
+                        CodeItem.parent_id == parent.id,
+                        CodeItem.name == name,
+                    )
+                )
+                if exists is None:
+                    db.add(
+                        CodeItem(
+                            group_id=group.id,
+                            parent_id=parent.id,
+                            code=f"{parent.code}_{code}"[:60],
+                            name=name,
+                            sort_order=order,
+                        )
+                    )
+
+
+def _seed_status_rules(db: Session) -> None:
+    """ASSET_STATUS 항목 extra 에 규칙(store / as / clear / free + enum)을 채운다.
+
+    이관된 저장소의 항목은 extra 가 비어 있다. 이름으로 한 번 채워 두면 이후 이름을
+    바꿔도 규칙이 따라간다 (app/services/asset_rules.py 참고).
+    """
+    from app.services import asset_rules
+
+    group = _group(db, asset_rules.STATUS_GROUP)
+    if group is None:
+        return
+    for item in db.scalars(select(CodeItem).where(CodeItem.group_id == group.id)).all():
+        extra = item.extra if isinstance(item.extra, dict) else {}
+        if extra.get("rule") in ("store", "as", "clear", "free"):
+            continue
+        rule = asset_rules.rule_by_name(item.name)
+        item.extra = {**extra, **rule.as_extra()}

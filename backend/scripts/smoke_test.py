@@ -213,6 +213,23 @@ with TestClient(app) as c:
     )
     check("처리내용 없이 완료 차단", r.status_code == 400 and r.json()["error"]["code"] == "RESULT_NOTE_REQUIRED", r.text)
 
+    # 구 서버 규칙: 종결에는 대응인원이 있어야 한다.
+    r = c.get("/api/v1/admin/codes/SERVICE_RESPONDER", headers=bearer(user_token))
+    r = c.post(
+        f"/api/v1/admin/codes/{r.json()['id']}/items",
+        headers=bearer(admin_token),
+        json={"code": "KIM", "name": "김테스트", "sort_order": 1},
+    )
+    check("대응인원 항목 추가", r.status_code == 201, r.text)
+    responder_id = r.json()["id"]
+
+    r = c.post(
+        f"/api/v1/service/tickets/{ticket_ids[0]}/status",
+        headers=bearer(user_token),
+        json={"status": "COMPLETED", "result_note": "부품 교체 완료"},
+    )
+    check("대응인원 없이 종결 차단", r.status_code == 400 and r.json()["error"]["code"] == "RESPONDER_REQUIRED", r.text)
+
     for tid in ticket_ids[:3]:
         c.post(
             f"/api/v1/service/tickets/{tid}/status",
@@ -222,9 +239,11 @@ with TestClient(app) as c:
         r = c.post(
             f"/api/v1/service/tickets/{tid}/status",
             headers=bearer(user_token),
-            json={"status": "COMPLETED", "result_note": "부품 교체 완료", "work_minutes": 90},
+            json={"status": "COMPLETED", "result_note": "부품 교체 완료", "work_minutes": 90,
+                  "responder_ids": [responder_id]},
         )
         check(f"완료 처리 {tid[:8]}", r.status_code == 200 and r.json()["status"] == "COMPLETED", r.text)
+    check("종결 건에 대응인원 기록", r.json()["responders"][0]["name"] == "김테스트", r.json()["responders"])
 
     detail = c.get(f"/api/v1/service/tickets/{ticket_ids[0]}", headers=bearer(user_token)).json()
     check("완료 시각 기록", detail["completed_at"] is not None)
