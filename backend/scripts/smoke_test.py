@@ -522,6 +522,16 @@ with TestClient(app) as c:
     )
     check("일정 시간 변경", r.status_code == 200, r.text)
     check("알림 재계산", r.json()["reminders"][0]["sent_at"] is None, r.json()["reminders"])
+    # 사용자가 정한 알림은 시각만 바꿔도 남아야 한다
+    r = c.patch(f"/api/v1/calendar/events/{event_id}", headers=bearer(user_token),
+                json={"reminders": [{"offset_minutes": 10, "method": "PUSH"}, {"offset_minutes": 60, "method": "INAPP"}]})
+    check("알림 두 개로 변경", r.status_code == 200 and len(r.json()["reminders"]) == 2, r.text)
+    r = c.patch(f"/api/v1/calendar/events/{event_id}", headers=bearer(user_token),
+                json={"starts_at": utc(minutes=6), "ends_at": utc(minutes=66)})
+    offsets = sorted(x["offset_minutes"] for x in r.json()["reminders"])
+    check("시각만 바꿔도 기존 알림 유지", offsets == [10, 60], r.json()["reminders"])
+    r = c.patch(f"/api/v1/calendar/events/{event_id}", headers=bearer(user_token),
+                json={"starts_at": utc(minutes=5), "ends_at": utc(minutes=65)})
 
     r = c.post("/api/v1/calendar/reminders/run", headers=bearer(admin_token))
     check("알림 스윕 실행", r.status_code == 200 and "1건" in r.json()["message"], r.text)

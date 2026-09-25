@@ -287,7 +287,17 @@ def update_event(
     # Any time change invalidates the precomputed reminder times.
     if payload.reminders is not None or "starts_at" in data:
         calendar = _load_calendar(db, event.calendar_id)
-        _set_reminders(db, event, payload.reminders, calendar, replace=True)
+        specs = payload.reminders
+        if specs is None:
+            # 시각만 바뀐 경우: 기존 알림(시점 · 방법)을 그대로 새 시각에 맞춰 다시 계산한다.
+            # 기본값으로 되돌리면 사용자가 정해 둔 알림이 사라진다.
+            specs = [
+                ReminderIn(offset_minutes=r.offset_minutes, method=r.method)
+                for r in db.scalars(
+                    select(EventReminder).where(EventReminder.event_id == event.id)
+                ).all()
+            ]
+        _set_reminders(db, event, specs, calendar, replace=True)
 
     existing = db.scalars(
         select(EventParticipant.user_id).where(EventParticipant.event_id == event.id)
