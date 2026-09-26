@@ -74,11 +74,23 @@ class AdminPage extends StatelessWidget {
             Expanded(
               child: TabBarView(
                 children: [
-                  const _ApprovalTab(),
-                  if (isAdmin) const AccountsTab(),
-                  const _SettingsHubTab(),
-                  const _AuditTab(),
-                  const _HealthTab(),
+                  // Floating input labels paint above the field's bounds.
+                  // Keep that space inside each page, where TabBarView clips.
+                  for (final tab in <Widget>[
+                    const _ApprovalTab(),
+                    if (isAdmin) const AccountsTab(),
+                    const _SettingsHubTab(),
+                    const _AuditTab(),
+                    const _HealthTab(),
+                  ])
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: MediaQuery.textScalerOf(
+                          context,
+                        ).scale(AppSpace.md),
+                      ),
+                      child: tab,
+                    ),
                 ],
               ),
             ),

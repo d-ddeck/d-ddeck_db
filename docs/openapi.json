@@ -3,7 +3,7 @@
   "info": {
     "title": "d-ddeck DB Server",
     "description": "사내 통합 DB 서버 API.\n\n**진입 순서**: 회원가입 → 관리자 승인 → 로그인 → 이용\n\n| 모듈 | prefix | 내용 |\n|---|---|---|\n| 인증 | `/auth` | 가입 · 로그인 · 토큰 · 세션 · 기기 등록 |\n| 사용자 | `/users` | 승인 대기열 · 권한 · 구성원 목록 |\n| 서비스(AS) | `/service` | 접수 · 처리 이력 · 부품 · **자동 통계** |\n| 재고관리 | `/inventory` | 자산 · 위치 트리 · 이동 이력 |\n| 게시판 | `/board` | 게시판 설정 · 게시글 · 댓글 |\n| 캘린더 | `/calendar` | 일정 공유 · 참석자 · 알림 |\n| 관리기능 | `/admin` | **모듈별 설정** · 분류 코드 · 부서 · 감사로그 · 상태 |\n| 첨부 | `/files` | 공통 파일 업로드/다운로드 |\n\n인증은 `Authorization: Bearer <access_token>` 헤더를 사용합니다.",
-    "version": "1.0.6"
+    "version": "1.0.7"
   },
   "paths": {
     "/api/v1/auth/signup": {

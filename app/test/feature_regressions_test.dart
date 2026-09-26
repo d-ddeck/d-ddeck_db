@@ -1,3 +1,6 @@
+import 'package:ddeck_app/data/admin_repository.dart';
+import 'package:ddeck_app/ui/admin/admin_page.dart';
+import 'package:ddeck_app/ui/theme.dart';
 import 'package:alarm/alarm.dart';
 import 'package:ddeck_app/services/alarm_service.dart';
 import 'package:ddeck_app/ui/calendar/calendar_range_selection.dart';
@@ -301,4 +304,88 @@ void main() {
     expect(find.text('권한이 없습니다.'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+  for (final width in [1440.0, 390.0]) {
+    for (final scale in [1.0, 2.0]) {
+      for (final dark in [false, true]) {
+        testWidgets('관리 검색 제목이 탭/스크롤 경계에서 잘리지 않음 $width/$scale/$dark', (
+          tester,
+        ) async {
+          tester.view.physicalSize = Size(width, 1100);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final auth = _Auth();
+          addTearDown(auth.dispose);
+          final api = ApiClient(
+            tokenStore: TokenStore(),
+            adapter: _Adapter(
+              (_) => _json({'items': [], 'total': 0, 'page': 1, 'size': 50}),
+            ),
+          );
+          await tester.pumpWidget(
+            MultiProvider(
+              providers: [
+                ChangeNotifierProvider<AuthState>.value(value: auth),
+                Provider<AuthRepository>.value(value: AuthRepository(api)),
+                Provider<AdminRepository>.value(value: AdminRepository(api)),
+              ],
+              child: MaterialApp(
+                theme: dark ? AppTheme.dark() : AppTheme.light(),
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: const Scaffold(body: AdminPage()),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          for (final entry in {
+            '계정 관리': '이름·이메일 검색',
+            '감사 로그': '감사 로그 검색',
+          }.entries) {
+            final tab = find.widgetWithText(Tab, entry.key);
+            await tester.ensureVisible(tab);
+            await tester.tap(tab);
+            await tester.pumpAndSettle();
+            if (entry.key == '계정 관리' && width < 900) {
+              await tester.tap(find.text('검색 조건 0개 적용'));
+              await tester.pumpAndSettle();
+            }
+            final field = find.widgetWithText(TextField, entry.value);
+            await tester.ensureVisible(field);
+            await tester.tap(field);
+            await tester.enterText(field, '검색');
+            await tester.pumpAndSettle();
+            final label = find.text(entry.value);
+            final labelTop = tester.getTopLeft(label).dy;
+            expect(
+              labelTop,
+              greaterThanOrEqualTo(
+                tester.getTopLeft(find.byType(TabBarView)).dy,
+              ),
+              reason: '검색 제목이 탭 위로 잘림',
+            );
+            for (final viewport
+                in find
+                    .ancestor(
+                      of: label,
+                      matching: find.byType(SingleChildScrollView),
+                    )
+                    .evaluate()) {
+              expect(
+                labelTop,
+                greaterThanOrEqualTo(
+                  tester.getTopLeft(find.byWidget(viewport.widget)).dy,
+                ),
+                reason: '검색 제목이 스크롤 위로 잘림',
+              );
+            }
+            expect(tester.takeException(), isNull);
+          }
+        });
+      }
+    }
+  }
 }

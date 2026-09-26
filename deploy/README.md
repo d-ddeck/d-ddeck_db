@@ -21,24 +21,24 @@ Windows PC 에서 서버용 설치 파일을 만듭니다.
 python installer/build_server_package.py
 ```
 
-`dist/ddeck-server-1.0.6.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
+`dist/ddeck-server-1.0.7.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
 
 ```powershell
-scp dist/ddeck-server-1.0.6.run 사용자명@미니PC주소:~/
+scp dist/ddeck-server-1.0.7.run 사용자명@미니PC주소:~/
 ```
 
 미니PC 에서:
 
 ```bash
-chmod +x ddeck-server-1.0.6.run
-sudo ./ddeck-server-1.0.6.run
+chmod +x ddeck-server-1.0.7.run
+sudo ./ddeck-server-1.0.7.run
 ```
 
 끝입니다. 아래 "파일 옮기기" 와 "설치" 를 한 번에 처리합니다.
 옵션도 그대로 전달됩니다:
 
 ```bash
-sudo ./ddeck-server-1.0.6.run --port 8080 --admin it@mycompany.co.kr
+sudo ./ddeck-server-1.0.7.run --port 8080 --admin it@mycompany.co.kr
 ```
 
 > 프로젝트 폴더 전체가 아니라 `backend/` 와 `deploy/` 만 담기며,

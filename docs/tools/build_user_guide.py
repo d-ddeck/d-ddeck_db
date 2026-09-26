@@ -51,7 +51,7 @@ button { cursor:pointer; padding:7px 18px; border:0; border-radius:5px; }
 @media(max-width:700px) { main { margin:0; padding:24px 18px; } table { font-size:12px; }
 th,td { padding:6px; } }
 @page { size:A4; margin:15mm 14mm;
- @bottom-left { content:'d-ddeck 사용자 가이드 · 1.0.6'; font-size:8pt; color:#526376; }
+ @bottom-left { content:'d-ddeck 사용자 가이드 · 1.0.7'; font-size:8pt; color:#526376; }
  @bottom-right { content:counter(page) ' / ' counter(pages); font-size:8pt; color:#526376; }
 }
 @media print {
@@ -92,7 +92,7 @@ def build() -> Path:
     output = DOCS / '사용자-가이드.html'
     output.write_text('<!doctype html>\n<html lang="ko"><head><meta charset="utf-8">'
                       '<meta name="viewport" content="width=device-width,initial-scale=1">'
-                      '<title>d-ddeck 사용자 가이드 · 1.0.6</title><style>' + CSS +
+                      '<title>d-ddeck 사용자 가이드 · 1.0.7</title><style>' + CSS +
                       '</style></head><body><div class="toolbar"><span>d-ddeck · 사용자 가이드</span>'
                       '<button onclick="window.print()">인쇄 / PDF 저장</button></div><main>' +
                       body + '</main></body></html>\n', encoding='utf-8')

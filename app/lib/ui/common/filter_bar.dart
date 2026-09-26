@@ -86,6 +86,9 @@ class FilterBar extends StatelessWidget {
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.only(
+              top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
+            ),
             child: Row(
               children: [
                 for (final child in children)
@@ -123,6 +126,10 @@ class FilterBar extends StatelessWidget {
                   maxHeight: MediaQuery.sizeOf(context).height * 0.4,
                 ),
                 child: SingleChildScrollView(
+                  // Leave room inside the scroll clip for floating labels.
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
