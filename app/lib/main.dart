@@ -15,6 +15,8 @@ import 'data/service_repository.dart';
 import 'data/store_repository.dart';
 import 'data/worklog_repository.dart';
 import 'services/alarm_service.dart';
+import 'services/alarm_widget_service.dart';
+import 'ui/alarm_widget_page.dart';
 import 'services/vpn_service.dart';
 import 'state/auth_state.dart';
 import 'state/theme_state.dart';
@@ -46,6 +48,7 @@ Future<void> main() async {
   // 앱 시작 시 준비해 둔다.
   final alarms = AlarmService();
   await alarms.init();
+  await AlarmWidgetService.initialize();
 
   runApp(
     MultiProvider(
@@ -92,6 +95,37 @@ class _DdeckAppState extends State<DdeckApp> {
   String? _updateServer;
 
   @override
+  void initState() {
+    super.initState();
+    AlarmWidgetService.launch.addListener(_openWidget);
+  }
+
+  @override
+  void dispose() {
+    AlarmWidgetService.launch.removeListener(_openWidget);
+    super.dispose();
+  }
+
+  void _openWidget() {
+    if (AlarmWidgetService.launch.value == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || context.read<AuthState>().phase == AuthPhase.loading) {
+        return;
+      }
+      final id = AlarmWidgetService.launch.value;
+      final navigator = _navigator.currentState;
+      if (id == null || navigator == null) return;
+      AlarmWidgetService.launch.value = null;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => AlarmWidgetPage(reminderId: id),
+        ),
+      );
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final phase = context.select<AuthState, AuthPhase>((s) => s.phase);
     if (_previous != phase &&
@@ -104,6 +138,7 @@ class _DdeckAppState extends State<DdeckApp> {
       });
     }
     _previous = phase;
+    if (AlarmWidgetService.launch.value != null) _openWidget();
     final server = context.read<ApiClient>().serverUrl;
     if (phase != AuthPhase.loading && _updateServer != server) {
       _updateServer = server;

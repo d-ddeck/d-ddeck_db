@@ -11,8 +11,31 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var widgetChannel: MethodChannel? = null
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == AlarmWidgetProvider.OPEN) widgetChannel?.invokeMethod("launchAvailable", null)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        widgetChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ddeck/alarm_widget").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "refresh" -> { AlarmWidgetProvider.updateAll(this); result.success(null) }
+                    "takeLaunch" -> {
+                        if (intent.action == AlarmWidgetProvider.OPEN) {
+                            val reminderId = intent.getStringExtra("reminder_id") ?: ""
+                            intent.action = null
+                            intent.removeExtra("reminder_id")
+                            result.success(reminderId)
+                        } else result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ddeck/updates")
             .setMethodCallHandler { call, result ->
                 try {

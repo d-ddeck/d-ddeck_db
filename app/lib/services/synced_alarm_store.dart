@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/calendar.dart';
+import 'alarm_widget_service.dart';
 
 class SyncedAlarmSnapshot {
   const SyncedAlarmSnapshot({
@@ -49,10 +50,12 @@ class SyncedAlarmStore {
       }),
     );
     if (!saved) throw StateError('동기화된 알람을 저장하지 못했습니다.');
+    await AlarmWidgetService.refresh();
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     if (!await prefs.remove(_key)) throw StateError('저장된 알람을 지우지 못했습니다.');
+    await AlarmWidgetService.refresh();
   }
 }

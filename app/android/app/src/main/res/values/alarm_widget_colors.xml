@@ -1,0 +1,7 @@
+<resources>
+    <color name="alarm_widget_background">#F5F7FC</color>
+    <color name="alarm_widget_card">#FFFFFF</color>
+    <color name="alarm_widget_text">#192131</color>
+    <color name="alarm_widget_secondary">#526078</color>
+    <color name="alarm_widget_accent">#2457B8</color>
+</resources>

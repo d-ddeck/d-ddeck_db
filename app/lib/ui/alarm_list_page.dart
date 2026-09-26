@@ -256,8 +256,38 @@ class _SyncedAlarmsPageState extends State<SyncedAlarmsPage>
           ),
           PopupMenuButton<String>(
             enabled: !_deleting && !_syncing,
-            onSelected: (_) => _deleteAll(),
+            onSelected: (value) {
+              if (value == 'deleteAll') {
+                _deleteAll();
+              } else {
+                showDialog<void>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('홈 화면 위젯 사용법'),
+                    content: const SingleChildScrollView(
+                      child: Text(
+                        '홈 화면의 빈 곳을 길게 누른 뒤 위젯 → d-ddeck 일정 알람을 선택하세요.\n\n'
+                        '앞으로 울릴 저장된 알람을 최대 50개까지 시간순으로 표시합니다. 항목을 누르면 오프라인에서도 저장된 상세를 볼 수 있습니다.\n\n'
+                        '새로고침은 휴대폰의 저장 목록을 다시 읽습니다. 서버의 변경 사항은 이 화면에서 다시 동기화해 주세요.\n\n'
+                        '기존 알람과 마찬가지로 로그아웃 후에도 목록이 유지됩니다. 지우려면 이 폰의 알람 모두 지우기를 사용하세요.',
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('확인'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            },
             itemBuilder: (_) => [
+              if (AlarmService.isSupported)
+                const PopupMenuItem(
+                  value: 'widgetHelp',
+                  child: Text('홈 화면 위젯 사용법'),
+                ),
               PopupMenuItem(
                 value: 'deleteAll',
                 child: Text(
