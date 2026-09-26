@@ -140,6 +140,7 @@ class ServiceTicketCreate(_RentalFields):
     title: str = Field(min_length=1, max_length=250)
     customer_id: uuid.UUID | None = None
     customer_name: str | None = Field(None, max_length=150)
+    contact_name: str | None = Field(None, max_length=150)
     contact_phone: str | None = Field(None, max_length=50)
     site_address: str | None = Field(None, max_length=300)
     # 매장 - 구 서버의 브랜드 → 매장. 브랜드는 매장에서 따라온다.
@@ -192,6 +193,7 @@ class ServiceTicketUpdate(_RentalFields, PatchModel):
     title: str | None = Field(None, max_length=250)
     customer_id: uuid.UUID | None = None
     customer_name: str | None = Field(None, max_length=150)
+    contact_name: str | None = Field(None, max_length=150)
     contact_phone: str | None = Field(None, max_length=50)
     site_address: str | None = Field(None, max_length=300)
     store_id: uuid.UUID | None = None
@@ -242,6 +244,7 @@ class ServiceTicketOut(ORMModel):
     title: str
     customer_id: uuid.UUID | None = None
     customer_name: str | None = None
+    contact_name: str | None = Field(None, max_length=150)
     contact_phone: str | None = None
     site_address: str | None = None
     store_id: uuid.UUID | None = None

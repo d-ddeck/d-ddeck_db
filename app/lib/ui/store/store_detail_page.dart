@@ -388,6 +388,15 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rows = <(String, String)>[
       ('브랜드', store.brandName),
+      (
+        '매장 담당자',
+        store.contactName?.isNotEmpty == true ? store.contactName! : '미등록',
+      ),
+      (
+        '연락처',
+        store.contactPhone?.isNotEmpty == true ? store.contactPhone! : '미등록',
+      ),
+      ('주소', store.address?.isNotEmpty == true ? store.address! : '미등록'),
       ('폐점 여부', store.isClosed ? '폐점' : '운영'),
       ('설치일', Fmt.date(store.installDate)),
       if (store.openDate != null) ('개점일', Fmt.date(store.openDate)),

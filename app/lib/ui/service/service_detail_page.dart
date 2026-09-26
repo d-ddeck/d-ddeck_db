@@ -363,6 +363,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                           title: '접수 정보',
                           rows: [
                             ('거래처', t.customerLabel),
+                            ('매장 담당자', t.contactName ?? '-'),
                             ('연락처', t.contactPhone ?? '-'),
                             ('현장 주소', t.siteAddress ?? '-'),
                             ('접수 경로', t.channel.label),

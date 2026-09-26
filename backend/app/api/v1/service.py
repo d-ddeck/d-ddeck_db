@@ -617,6 +617,14 @@ def create_ticket(
     store = ticket_rules.resolve_store(db, data.get("store_id"))
     if store is not None and not data.get("customer_name"):
         data["customer_name"] = store.name
+    if store is not None:
+        for field, source in (
+            ("contact_name", "contact_name"),
+            ("contact_phone", "contact_phone"),
+            ("site_address", "address"),
+        ):
+            if field not in payload.model_fields_set:
+                data[field] = getattr(store, source)
     ticket_rules.check_code(
         db, data.get("work_type_id"), "SERVICE_WORK_TYPE", "업무 구분"
     )
@@ -731,6 +739,15 @@ def update_ticket(
 
     if "store_id" in data:
         store = ticket_rules.resolve_store(db, data["store_id"])
+        if data["store_id"] != ticket.store_id:
+            for field, source in (
+                ("contact_name", "contact_name"),
+                ("contact_phone", "contact_phone"),
+                ("site_address", "address"),
+            ):
+                if field not in data:
+                    before[field] = getattr(ticket, field)
+                    data[field] = getattr(store, source) if store else None
         # 매장이 바뀌면 표시용 거래처 이름도 따라간다 - 손으로 다른 이름을 적어 둔 건은 그대로.
         prev_store = db.get(Store, before["store_id"]) if before["store_id"] else None
         follows_store = not ticket.customer_name or (

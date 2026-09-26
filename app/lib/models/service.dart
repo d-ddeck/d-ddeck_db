@@ -169,6 +169,7 @@ class ServiceTicket {
     required this.receivedAt,
     this.customerId,
     this.customerName,
+    this.contactName,
     this.contactPhone,
     this.siteAddress,
     this.productName,
@@ -229,6 +230,7 @@ class ServiceTicket {
   final DateTime receivedAt;
   final String? customerId;
   final String? customerName;
+  final String? contactName;
   final String? contactPhone;
   final String? siteAddress;
   final String? productName;
@@ -299,6 +301,7 @@ class ServiceTicket {
     receivedAt: asDate(j['received_at']) ?? DateTime.now(),
     customerId: j['customer_id'] as String?,
     customerName: j['customer_name'] as String?,
+    contactName: j['contact_name'] as String?,
     contactPhone: j['contact_phone'] as String?,
     siteAddress: j['site_address'] as String?,
     productName: j['product_name'] as String?,

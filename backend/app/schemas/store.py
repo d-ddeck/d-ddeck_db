@@ -25,6 +25,9 @@ class StoreCreate(BaseModel):
     is_closed: bool = False
     closed_date: date | None = None
     gripper_type: str | None = Field(None, max_length=20)
+    contact_name: str | None = Field(None, max_length=150)
+    contact_phone: str | None = Field(None, max_length=50)
+    address: str | None = Field(None, max_length=300)
     note: str | None = None
     customer_id: uuid.UUID | None = None
 
@@ -41,6 +44,9 @@ class StoreUpdate(PatchModel):
     is_closed: bool | None = None
     closed_date: date | None = None
     gripper_type: str | None = Field(None, max_length=20)
+    contact_name: str | None = Field(None, max_length=150)
+    contact_phone: str | None = Field(None, max_length=50)
+    address: str | None = Field(None, max_length=300)
     note: str | None = None
     customer_id: uuid.UUID | None = None
 
@@ -55,6 +61,9 @@ class StoreOut(ORMModel):
     is_closed: bool
     closed_date: date | None = None
     gripper_type: str | None = None
+    contact_name: str | None = Field(None, max_length=150)
+    contact_phone: str | None = Field(None, max_length=50)
+    address: str | None = Field(None, max_length=300)
     note: str | None = None
     created_at: datetime
     updated_at: datetime

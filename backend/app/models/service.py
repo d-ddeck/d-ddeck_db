@@ -67,6 +67,7 @@ class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Bas
     customer_name: Mapped[str | None] = mapped_column(
         String(150)
     )  # walk-in, no master row
+    contact_name: Mapped[str | None] = mapped_column(String(150))
     contact_phone: Mapped[str | None] = mapped_column(String(50))
     site_address: Mapped[str | None] = mapped_column(String(300))
     # 매장 - the site the equipment is installed at. Distinct from customer_id:

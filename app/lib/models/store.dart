@@ -135,6 +135,9 @@ class Store {
     this.closedDate,
     this.gripperType,
     this.note,
+    this.contactName,
+    this.contactPhone,
+    this.address,
     this.assetCount = 0,
     this.ticketCount = 0,
     this.sets = const [],
@@ -160,6 +163,9 @@ class Store {
   final DateTime? closedDate;
   final String? gripperType;
   final String? note;
+  final String? contactName;
+  final String? contactPhone;
+  final String? address;
   final int assetCount;
   final int ticketCount;
 
@@ -189,6 +195,9 @@ class Store {
     closedDate: asDate(j['closed_date']),
     gripperType: j['gripper_type'] as String?,
     note: j['note'] as String?,
+    contactName: j['contact_name'] as String?,
+    contactPhone: j['contact_phone'] as String?,
+    address: j['address'] as String?,
     assetCount: asInt(j['asset_count']),
     ticketCount: asInt(j['ticket_count']),
     sets: asList(j['sets'], StoreSet.fromJson),

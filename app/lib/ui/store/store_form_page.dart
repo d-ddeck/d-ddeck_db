@@ -29,6 +29,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _note;
+  late final TextEditingController _contactName, _contactPhone, _address;
 
   String? _brandId;
   String? _gripperType;
@@ -50,6 +51,9 @@ class _StoreFormPageState extends State<StoreFormPage> {
     final s = widget.store;
     _name = TextEditingController(text: s?.name ?? '');
     _note = TextEditingController(text: s?.note ?? '');
+    _contactName = TextEditingController(text: s?.contactName ?? '');
+    _contactPhone = TextEditingController(text: s?.contactPhone ?? '');
+    _address = TextEditingController(text: s?.address ?? '');
     _brandId = s?.brandId;
     _gripperType = s?.gripperType;
     _isClosed = s?.isClosed ?? false;
@@ -63,6 +67,9 @@ class _StoreFormPageState extends State<StoreFormPage> {
   void dispose() {
     _name.dispose();
     _note.dispose();
+    _contactName.dispose();
+    _contactPhone.dispose();
+    _address.dispose();
     super.dispose();
   }
 
@@ -195,6 +202,9 @@ class _StoreFormPageState extends State<StoreFormPage> {
       if (_isNew) {
         final created = await repo.create(
           name: _name.text.trim(),
+          contactName: _contactName.text.trim(),
+          contactPhone: _contactPhone.text.trim(),
+          address: _address.text.trim(),
           openDate: _openDate,
           brandId: _brandId,
           gripperType: _gripperType,
@@ -210,6 +220,9 @@ class _StoreFormPageState extends State<StoreFormPage> {
       } else {
         await repo.update(widget.store!.id, {
           'name': _name.text.trim(),
+          'contact_name': _contactName.text.trim(),
+          'contact_phone': _contactPhone.text.trim(),
+          'address': _address.text.trim(),
           'brand_id': _brandId,
           'gripper_type': _gripperType,
           'note': _note.text.trim(),
@@ -285,6 +298,36 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                 ),
                               ),
                             if (_error != null) const FormGap(),
+                            FormSection(
+                              title: '매장 연락 정보',
+                              children: [
+                                TextFormField(
+                                  controller: _contactName,
+                                  maxLength: 150,
+                                  decoration: const InputDecoration(
+                                    labelText: '매장 담당자',
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _contactPhone,
+                                  maxLength: 50,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: const InputDecoration(
+                                    labelText: '연락처',
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _address,
+                                  maxLength: 300,
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(
+                                    labelText: '주소',
+                                    alignLabelWithHint: true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const FormGap(),
                             FormSection(
                               title: '기본 정보',
                               children: [

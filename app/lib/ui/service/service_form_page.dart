@@ -65,6 +65,7 @@ class ServiceFormPage extends StatefulWidget {
 class _ServiceFormPageState extends State<ServiceFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _customerName = TextEditingController();
+  final _contactName = TextEditingController();
   final _phone = TextEditingController();
   final _address = TextEditingController();
   final _product = TextEditingController();
@@ -87,6 +88,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   bool _storesLoading = false;
   int _storeRequest = 0;
   bool _defaultsLoaded = false;
+  bool _storeContactDefaultsLoaded = false;
   final _sectionKeys = {
     for (final name in ['매장', '발생', '원인', '대응', '렌탈', '기타']) name: GlobalKey(),
   };
@@ -106,6 +108,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     if (t != null) {
       _workTypeId = t.workTypeId;
       _customerName.text = t.customerName ?? '';
+      _contactName.text = t.contactName ?? '';
       _phone.text = t.contactPhone ?? '';
       _address.text = t.siteAddress ?? '';
       _product.text = t.productName ?? '';
@@ -158,6 +161,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     _rentalController.dispose();
     for (final c in [
       _customerName,
+      _contactName,
       _phone,
       _address,
       _product,
@@ -247,6 +251,10 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     if (selected != null && !_stores.any((s) => s.id == selected!.id)) {
       _stores = [..._stores, selected];
     }
+    if (!_storeContactDefaultsLoaded) {
+      if (!_isEdit && selected != null) _applyStoreContact(selected);
+      _storeContactDefaultsLoaded = true;
+    }
     return _FormOptions(
       codes,
       results[1] as List<BrandSummary>,
@@ -255,11 +263,18 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     );
   }
 
+  void _applyStoreContact(Store? store) {
+    _contactName.text = store?.contactName ?? '';
+    _phone.text = store?.contactPhone ?? '';
+    _address.text = store?.address ?? '';
+  }
+
   Future<void> _changeBrand(String? brand) async {
     final request = ++_storeRequest;
     setState(() {
       _brandId = brand;
       _storeId = null;
+      _applyStoreContact(null);
       _stores = [];
       _storesLoading = true;
     });
@@ -452,6 +467,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             busy: _busy,
             snapshot: () => [
               _customerName.text,
+              _contactName.text,
               _phone.text,
               _address.text,
               _product.text,
@@ -592,9 +608,42 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   ],
                                   onChanged: _storesLoading
                                       ? null
-                                      : (v) => setState(() => _storeId = v),
+                                      : (v) => setState(() {
+                                          if (_storeId != v) {
+                                            _storeId = v;
+                                            _applyStoreContact(
+                                              _stores
+                                                  .where((s) => s.id == v)
+                                                  .firstOrNull,
+                                            );
+                                          }
+                                        }),
                                   validator: (v) =>
                                       v == null ? '매장을 선택해 주세요.' : null,
+                                ),
+                                TextFormField(
+                                  controller: _contactName,
+                                  maxLength: 150,
+                                  decoration: const InputDecoration(
+                                    labelText: '매장 담당자',
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _phone,
+                                  maxLength: 50,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: const InputDecoration(
+                                    labelText: '연락처',
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _address,
+                                  maxLength: 300,
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(
+                                    labelText: '현장 주소',
+                                    alignLabelWithHint: true,
+                                  ),
                                 ),
                               ],
                             ),
@@ -772,7 +821,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                     _customerId = v;
                                     // Pre-fill contact details from the chosen customer so the
                                     // technician does not retype them.
-                                    if (v != null) {
+                                    if (v != null && _storeId == null) {
                                       final c = options.customers.firstWhere(
                                         (x) => x.id == v,
                                       );
@@ -789,21 +838,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                     ),
                                   ),
                                 ],
-
-                                TextFormField(
-                                  controller: _phone,
-                                  decoration: const InputDecoration(
-                                    labelText: '연락처',
-                                  ),
-                                  keyboardType: TextInputType.phone,
-                                ),
-
-                                TextFormField(
-                                  controller: _address,
-                                  decoration: const InputDecoration(
-                                    labelText: '현장 주소',
-                                  ),
-                                ),
 
                                 TextFormField(
                                   controller: _product,
@@ -1022,6 +1056,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             'customer_name': _customerId == null
                 ? _nullIfBlank(_customerName.text)
                 : null,
+            'contact_name': _nullIfBlank(_contactName.text),
             'contact_phone': _nullIfBlank(_phone.text),
             'site_address': _nullIfBlank(_address.text),
             'product_name': _nullIfBlank(_product.text),
@@ -1053,6 +1088,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             customerName: _customerId == null
                 ? _nullIfBlank(_customerName.text)
                 : null,
+            contactName: _nullIfBlank(_contactName.text),
             contactPhone: _nullIfBlank(_phone.text),
             siteAddress: _nullIfBlank(_address.text),
             productName: _nullIfBlank(_product.text),

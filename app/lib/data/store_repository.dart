@@ -56,11 +56,17 @@ class StoreRepository {
     DateTime? openDate,
     String? gripperType,
     String? note,
+    String? contactName,
+    String? contactPhone,
+    String? address,
   }) async {
     final res = await _api.post(
       '/stores',
       body: {
         'name': name,
+        'contact_name': contactName,
+        'contact_phone': contactPhone,
+        'address': address,
         if (openDate != null) 'open_date': ServiceRepository.dateOnly(openDate),
         if (brandId != null) 'brand_id': brandId,
         if (gripperType != null) 'gripper_type': gripperType,

@@ -68,9 +68,9 @@ def defaults(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
         "recipient": {
             **empty,
             "company": store.name if store else (t.customer_name or ""),
-            "contact": t.customer_name or "",
-            "phone": t.contact_phone or "",
-            "address": t.site_address or "",
+            "contact": t.contact_name or (store.contact_name if store else None) or "",
+            "phone": t.contact_phone or (store.contact_phone if store else None) or "",
+            "address": t.site_address or (store.address if store else None) or "",
         },
         "bank_account": settings_store.get(
             db, ModuleKey.SERVICE, "quotation_bank_account", ""

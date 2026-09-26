@@ -31,8 +31,16 @@ SERIAL_INDEXES = {"uq_assets_category_serial_live", "uq_assets_serial_no_categor
 def metadata_at_baseline(revision="2cca8909675d"):
     metadata = MetaData()
     for table in Base.metadata.sorted_tables:
-        if table.name != "quotation_revisions":
+        if revision == "c43194e8a260" or table.name != "quotation_revisions":
             table.to_metadata(metadata)
+    for name, columns in {
+        "stores": ["contact_name", "contact_phone", "address"],
+        "service_tickets": ["contact_name"],
+    }.items():
+        for column in columns:
+            metadata.tables[name]._columns.remove(metadata.tables[name].c[column])
+    if revision == "c43194e8a260":
+        return metadata
     removed = {
         "audit_logs": ["hidden_at"],
         "asset_movements": ["hidden_at"],
@@ -118,6 +126,7 @@ def main() -> None:
                 differences = [("missing_or_changed_serial_indexes",)]
             if differences:
                 for baseline in (
+                    "c43194e8a260",
                     "b9a381e076cf",
                     "ecdd8d8aea3c",
                     "83c49d102fa1",
