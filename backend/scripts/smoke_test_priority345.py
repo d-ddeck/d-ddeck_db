@@ -220,7 +220,19 @@ def main():
             response = client.get("/api/v1/service/stats/all.xlsx", headers=headers)
             assert response.status_code == 200, response.text
             workbook = openpyxl.load_workbook(io.BytesIO(response.content))
-            assert len(workbook.sheetnames) == 10
+            assert set(workbook.sheetnames) == {
+                "업무 구분",
+                "서비스구분",
+                "세부분류",
+                "제조사",
+                "브랜드",
+                "매장",
+                "대응인원",
+                "연도별 서비스구분",
+                "제조사 연도별",
+                "브랜드 연도별",
+                "매장 연도별",
+            }
             assert call("GET", f"/inventory/assets/{asset['id']}/tickets")["total"] == 0
             assert call("GET", "/service/tickets?missing=maker")["total"] == 1
             call("GET", "/service/tickets?missing=invalid", status=400)
@@ -263,7 +275,7 @@ def main():
                 exported.text if exported.status_code != 200 else ""
             )
             sheets = load_workbook(io.BytesIO(exported.content))
-            assert len(sheets.worksheets) == 10
+            assert sheets.sheetnames == workbook.sheetnames
             sheets.close()
             calendar = call("POST", "/calendar/calendars", {"name": "반복 검사"}, 201)
             start = now_utc() + timedelta(days=1)
