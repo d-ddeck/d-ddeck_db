@@ -66,7 +66,7 @@ def _extras(db: Session, tickets: list[ServiceTicket]) -> dict[uuid.UUID, dict]:
         if r.responder_id:
             code_ids.add(r.responder_id)
     for t in tickets:
-        code_ids |= {x for x in (t.fault_id, t.rental_type_id) if x}
+        code_ids |= {x for x in (t.fault_id, t.rental_type_id, t.work_type_id) if x}
 
     store_ids = {t.store_id for t in tickets if t.store_id}
     stores = (
@@ -113,6 +113,8 @@ def _extras(db: Session, tickets: list[ServiceTicket]) -> dict[uuid.UUID, dict]:
             e["brand_id"] = s.brand_id
             e["brand_name"] = name(s.brand_id)
             e["store_closed"] = s.is_closed
+        item = codes.get(t.work_type_id)
+        e["work_type"] = CodeItemBrief.model_validate(item) if item else None
         e["fault_name"] = name(t.fault_id)
         e["rental_type"] = name(t.rental_type_id)
 
@@ -143,6 +145,7 @@ def _cause_label(c: dict) -> str:
 
 
 def _apply_extras(out: ServiceTicketOut, e: dict) -> ServiceTicketOut:
+    out.work_type = e["work_type"]
     out.cause_labels = [_cause_label(c) for c in e["causes"]]
     out.responder_names = list(e["responders"])
     out.store_name = e["store_name"]

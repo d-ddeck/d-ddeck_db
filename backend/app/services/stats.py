@@ -62,6 +62,7 @@ from app.services import code_master
 
 Interval = Literal["day", "week", "month", "year"]
 GroupBy = Literal[
+    "work_type",
     "category",
     "symptom",
     "maker",
@@ -203,6 +204,7 @@ def apply_filters(
     month: int | None = None,
     assignee_id: uuid.UUID | None = None,
     department_id: uuid.UUID | None = None,
+    work_type_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
     symptom_id: uuid.UUID | None = None,
     maker_id: uuid.UUID | None = None,
@@ -237,7 +239,7 @@ def apply_filters(
                     .where(column.is_(None))
                 )
             )
-        elif axis in {"store", "fault", "assignee", "department", "customer"}:
+        elif axis in {"work_type", "store", "fault", "assignee", "department", "customer"}:
             stmt = stmt.where(getattr(ServiceTicket, axis + "_id").is_(None))
         elif axis == "brand":
             stmt = stmt.where(
@@ -270,6 +272,8 @@ def apply_filters(
         stmt = stmt.where(ServiceTicket.assignee_id == assignee_id)
     if department_id is not None:
         stmt = stmt.where(ServiceTicket.department_id == department_id)
+    if work_type_id is not None:
+        stmt = stmt.where(ServiceTicket.work_type_id == work_type_id)
     if category_id is not None:
         stmt = stmt.where(
             or_(
@@ -444,6 +448,7 @@ def summary(db: Session, **filters) -> ServiceSummary:
 
 # 한 건에 값이 하나뿐인 축. 티켓 행을 그대로 센다.
 _CODE_AXES = {
+    "work_type": ServiceTicket.work_type_id,
     "cause": ServiceTicket.cause_id,
     "action": ServiceTicket.action_id,
     "fault": ServiceTicket.fault_id,

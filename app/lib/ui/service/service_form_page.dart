@@ -1,7 +1,10 @@
 import '../common/save_attachment_button.dart';
 import 'service_detail_page.dart';
+
 import 'package:flutter/services.dart';
+
 import '../common/form_attachments_page.dart';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -72,6 +75,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   String get _rentalSerials => _rentalController.text;
   set _rentalSerials(String value) => _rentalController.text = value;
   String? _customerId, _assigneeId, _brandId, _storeId, _faultId, _rentalTypeId;
+  String? _workTypeId;
   DateTime _receivedAt = DateTime.now();
   DateTime? _rentalDueDate, _rentalReturnDate;
   bool _isRental = false, _rentalReturned = false;
@@ -99,6 +103,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     _brandId = t?.store?.brandId ?? widget.initialBrandId;
     _storeId = t?.storeId ?? widget.initialStoreId;
     if (t != null) {
+      _workTypeId = t.workTypeId;
       _customerName.text = t.customerName ?? '';
       _phone.text = t.contactPhone ?? '';
       _address.text = t.siteAddress ?? '';
@@ -171,6 +176,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     final auth = context.read<AuthRepository>();
     final userName = context.read<AuthState>().user?.fullName;
     const groups = [
+      'SERVICE_WORK_TYPE',
       'SERVICE_CATEGORY',
       'SERVICE_SYMPTOM',
       'ASSET_CATEGORY',
@@ -205,8 +211,24 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             }
           }),
     ]);
+    final previousType = widget.ticket?.workType;
+    if (previousType != null &&
+        !codes['SERVICE_WORK_TYPE']!.any((c) => c.id == previousType.id)) {
+      codes['SERVICE_WORK_TYPE']!.add(
+        CodeItem(
+          id: previousType.id,
+          code: previousType.code,
+          name: previousType.name,
+          isActive: false,
+        ),
+      );
+    }
     if (!_defaultsLoaded) {
       if (!_isEdit) {
+        _workTypeId = codes['SERVICE_WORK_TYPE']!
+            .where((c) => c.code == 'AS' && c.isActive)
+            .firstOrNull
+            ?.id;
         _responders.addAll(
           (codes['SERVICE_RESPONDER'] ?? [])
               .where((c) => c.isActive && c.name == userName)
@@ -271,7 +293,14 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
         items: [
           const DropdownMenuItem<String>(value: '', child: Text('선택 안 함')),
           for (final c in choices)
-            DropdownMenuItem(value: c.id, child: Text(c.name)),
+            DropdownMenuItem(
+              value: c.id,
+              child: Text(
+                label == '업무 구분'
+                    ? '${c.code} · ${c.name}${c.isActive ? '' : ' (사용 중지)'}'
+                    : c.name,
+              ),
+            ),
         ],
         onChanged: enabled ? (v) => changed(v == '' ? null : v) : null,
         validator: (v) =>
@@ -578,6 +607,12 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   _receivedAt,
                                   (v) => _receivedAt = v,
                                   required: true,
+                                ),
+                                _code(
+                                  '업무 구분',
+                                  _workTypeId,
+                                  options.items('SERVICE_WORK_TYPE'),
+                                  (v) => setState(() => _workTypeId = v),
                                 ),
                                 TextFormField(
                                   controller: _description,
@@ -950,6 +985,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
         if (_isEdit) {
           saved = await repo.update(widget.ticket!.id, {
             'store_id': _storeId,
+            'work_type_id': _workTypeId,
             'fault_id': _faultId,
             'received_at': _receivedAt,
             'description': _description.text.trim(),
@@ -982,6 +1018,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
         } else {
           saved = await repo.create(
             storeId: _storeId,
+            workTypeId: _workTypeId,
             faultId: _faultId,
             receivedAt: _receivedAt,
             description: _description.text.trim(),

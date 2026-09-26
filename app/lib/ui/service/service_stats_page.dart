@@ -31,12 +31,15 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
   final _viewKey = GlobalKey<AsyncViewState<_StatsData>>();
 
   CodeItem? _category;
+  String? _workTypeId;
   String? _brandId;
   StatAxis _axis = StatAxis.category;
   String _interval = 'month';
   String _section = '요약';
 
   Map<String, dynamic> get _filters => {
+    if (_workTypeId == '-') 'missing': 'work_type',
+    if (_workTypeId != null && _workTypeId != '-') 'work_type_id': _workTypeId,
     if (_category != null) 'category_id': _category!.id,
     if (_brandId != null) 'brand_id': _brandId,
   };
@@ -83,7 +86,8 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                 for (final t in tables)
                   repo.crosstab(t.$2, t.$3, filters: filters),
               ]),
-              if (_category == null) repo.storeYears(),
+              admin.codeGroup('SERVICE_WORK_TYPE'),
+              if (_category == null && _workTypeId == null) repo.storeYears(),
             ]);
             return _StatsData(
               summary: results[0] as ServiceSummary,
@@ -93,7 +97,8 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               brands: (results[4] as CodeGroup).selectable,
               tables: tables,
               crosses: results[5] as List<Crosstab>,
-              stores: results.length > 6 ? results[6] as StoreYears : null,
+              workTypes: (results[6] as CodeGroup).items,
+              stores: results.length > 7 ? results[7] as StoreYears : null,
             );
           } on ApiException catch (e) {
             if (context.mounted) AppSnack.show(context, e.message, error: true);
@@ -114,6 +119,14 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                   children: [
                     FilterBar(
                       appliedFilters: [
+                        if (_workTypeId != null)
+                          _workTypeId == '-'
+                              ? '업무 구분 미분류'
+                              : data.workTypes
+                                        .where((c) => c.id == _workTypeId)
+                                        .firstOrNull
+                                        ?.name ??
+                                    '업무 구분',
                         if (_brandId != null)
                           data.brands
                                   .where((b) => b.id == _brandId)
@@ -126,10 +139,41 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                         setState(() {
                           _brandId = null;
                           _category = null;
+                          _workTypeId = null;
                         });
                         _refresh();
                       },
                       children: [
+                        SizedBox(
+                          width: wide ? 260 : double.infinity,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('work-type:$_workTypeId'),
+                            initialValue: _workTypeId ?? '',
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: '업무 구분',
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Text('전체 업무'),
+                              ),
+                              const DropdownMenuItem(
+                                value: '-',
+                                child: Text('미분류'),
+                              ),
+                              for (final c in data.workTypes)
+                                DropdownMenuItem(
+                                  value: c.id,
+                                  child: Text('${c.code} · ${c.name}'),
+                                ),
+                            ],
+                            onChanged: (v) {
+                              setState(() => _workTypeId = v == '' ? null : v);
+                              _refresh();
+                            },
+                          ),
+                        ),
                         SizedBox(
                           width: wide ? 280 : double.infinity,
                           child: DropdownButtonFormField<String>(
@@ -317,9 +361,9 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                                 '한 대응에 여러 원인이 포함될 수 있으며, 차트와 비율은 전체 원인 수 기준입니다.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
                                 ),
                               ),
                               const SizedBox(height: 12),

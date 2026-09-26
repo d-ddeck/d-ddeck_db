@@ -174,6 +174,8 @@ class ServiceTicket {
     this.productName,
     this.modelName,
     this.serialNo,
+    this.workTypeId,
+    this.workType,
     this.categoryId,
     this.symptomId,
     this.causeId,
@@ -232,6 +234,10 @@ class ServiceTicket {
   final String? productName;
   final String? modelName;
   final String? serialNo;
+  final String? workTypeId;
+  final CodeItem? workType;
+  String get workTypeLabel =>
+      workType == null ? '미분류' : '${workType!.code} · ${workType!.name}';
   final String? categoryId;
   final String? symptomId;
   final String? causeId;
@@ -298,6 +304,10 @@ class ServiceTicket {
     productName: j['product_name'] as String?,
     modelName: j['model_name'] as String?,
     serialNo: j['serial_no'] as String?,
+    workTypeId: j['work_type_id'] as String?,
+    workType: j['work_type'] is Map
+        ? CodeItem.fromJson(asMap(j['work_type']))
+        : null,
     categoryId: j['category_id'] as String?,
     symptomId: j['symptom_id'] as String?,
     causeId: j['cause_id'] as String?,

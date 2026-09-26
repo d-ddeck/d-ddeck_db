@@ -6,6 +6,7 @@ class _StatsData {
     required this.grouped,
     required this.trend,
     required this.categories,
+    required this.workTypes,
     required this.brands,
     required this.tables,
     required this.crosses,
@@ -15,7 +16,7 @@ class _StatsData {
   final ServiceSummary summary;
   final ServiceGrouped grouped;
   final ServiceTrend trend;
-  final List<CodeItem> categories, brands;
+  final List<CodeItem> categories, brands, workTypes;
   final List<(String, String, String)> tables;
   final List<Crosstab> crosses;
   final StoreYears? stores;

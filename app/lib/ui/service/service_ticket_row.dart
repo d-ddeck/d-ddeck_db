@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../models/service.dart';
 import '../format.dart';
 import '../theme.dart';
@@ -53,14 +54,16 @@ class ServiceTicketRow extends StatelessWidget {
               ),
             ),
             subtitle: Text(
-              '${t.displayNo} · ${Fmt.date(t.receivedAt.toLocal())}${t.isRental && !t.rentalReturned ? ' · 렌탈 미회수' : ''}',
+              '${t.workTypeLabel} · ${t.displayNo} · ${Fmt.date(t.receivedAt.toLocal())}${t.isRental && !t.rentalReturned ? ' · 렌탈 미회수' : ''}',
             ),
             trailing: status,
           ),
         );
       }
       final cells = <Widget>[
-        _text(t?.displayNo ?? '접수번호'),
+        _text(
+          t == null ? '접수번호 / 업무 구분' : '${t.displayNo}\n${t.workTypeLabel}',
+        ),
         _text(
           t == null
               ? '매장 / 브랜드'

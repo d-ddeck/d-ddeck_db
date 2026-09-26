@@ -1,6 +1,7 @@
 import '../../core/api_exception.dart';
 import '../../state/auth_state.dart';
 import '../../services/filter_memory.dart';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -148,6 +149,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
         stores.brands(),
         stores.all(brandId: brand, includeClosed: true),
         for (final g in [
+          'SERVICE_WORK_TYPE',
           'SERVICE_CATEGORY',
           'SERVICE_SYMPTOM',
           'SERVICE_FAULT',
@@ -162,7 +164,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
           _stores = results[1] as List<Store>;
           _storesLoading = false;
         }
-        for (final group in results.skip(3).cast<CodeGroup>()) {
+        for (final group in results.skip(2).cast<CodeGroup>()) {
           _codes[group.code] = group.items;
         }
         _lookupsReady = true;
@@ -416,6 +418,44 @@ class _ServiceListTabState extends State<ServiceListTab> {
                             enabled: !_storesLoading,
                           ),
                           _select(
+                            '업무 구분',
+                            'work_type_id',
+                            {
+                              for (final c
+                                  in _codes['SERVICE_WORK_TYPE'] ??
+                                      <CodeItem>[])
+                                c.id: '${c.code} · ${c.name}',
+                            },
+                            update,
+                            after: (value) {
+                              if (value != null) {
+                                update(() {
+                                  final missing =
+                                      (_filters['missing'] as String? ?? '')
+                                          .split(',')
+                                        ..remove('work_type');
+                                  _set(
+                                    'missing',
+                                    missing
+                                        .where((s) => s.isNotEmpty)
+                                        .join(','),
+                                  );
+                                });
+                              }
+                            },
+                          ),
+                          _select(
+                            '업무 구분 미지정',
+                            'missing',
+                            const {'work_type': '미분류만'},
+                            update,
+                            after: (value) {
+                              if (value == 'work_type') {
+                                update(() => _filters.remove('work_type_id'));
+                              }
+                            },
+                          ),
+                          _select(
                             '서비스구분',
                             'category_id',
                             _codeChoices('SERVICE_CATEGORY'),
@@ -552,6 +592,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
     if (key == 'status') return ServiceStatus.parse(value.toString()).label;
     if (key == 'is_rental') return '렌탈만';
     if (key == 'rental_unreturned') return '렌탈 미회수';
+    if (key == 'missing' && value == 'work_type') return '업무 구분 미분류';
     if (key == 'brand_id') {
       return _brands.where((b) => b.brandId == value).firstOrNull?.brandName ??
           '브랜드';

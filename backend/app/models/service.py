@@ -83,6 +83,10 @@ class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Bas
         Uuid, ForeignKey("assets.id", ondelete="SET NULL")
     )  # when the serviced unit is our own asset
 
+    work_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("code_items.id", ondelete="SET NULL"), index=True
+    )
+
     # --- classification: the statistics axes ---
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("code_items.id", ondelete="SET NULL"), index=True

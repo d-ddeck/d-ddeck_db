@@ -39,8 +39,10 @@ def check_data(db: Path) -> None:
                 0,
             )
             assert conn.execute(
-                text("SELECT title, is_rental, rental_returned FROM service_tickets")
-            ).one() == ("기존 접수", 0, 0)
+                text(
+                    "SELECT title, is_rental, rental_returned, work_type_id FROM service_tickets"
+                )
+            ).one() == ("기존 접수", 0, 0, None)
             assert (
                 conn.execute(text("SELECT content FROM service_logs")).scalar_one()
                 == "기존 이력"
@@ -164,6 +166,36 @@ with patch.object(Base.metadata, 'create_all', side_effect=AssertionError('produ
         print(
             "PASS: legacy create_all baseline is stamped at its real revision then upgraded",
             flush=True,
+        )
+
+        # The last shipped schema is also adoptable after adding work types.
+        previous = Path(tmp) / "previous.db"
+        alembic(previous, "upgrade", "ecdd8d8aea3c")
+        previous_env = {
+            **baseline_env,
+            "DATABASE_URL": f"sqlite+pysqlite:///{previous.as_posix()}",
+        }
+        previous_engine = create_engine(previous_env["DATABASE_URL"])
+        with previous_engine.begin() as conn:
+            conn.execute(text("DROP TABLE alembic_version"))
+        subprocess.run(
+            [sys.executable, "scripts/adopt_schema.py", "--stamp"],
+            cwd=ROOT,
+            env=previous_env,
+            check=True,
+        )
+        with previous_engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "ecdd8d8aea3c"
+            )
+        previous_engine.dispose()
+        alembic(previous, "upgrade", "head")
+        alembic(previous, "check")
+        print(
+            "PASS: previous release schema adoption and work type upgrade", flush=True
         )
 
         # A create_all installation can only be adopted when its full schema matches.

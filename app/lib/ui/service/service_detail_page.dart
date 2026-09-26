@@ -2,6 +2,7 @@ import '../../data/inventory_repository.dart';
 import '../../models/inventory.dart' show Asset;
 import '../../core/api_client.dart';
 import '../inventory/inventory_page.dart';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -233,9 +234,9 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                           t.displayNo,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -247,7 +248,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                               '${t.storeName ?? t.store?.name ?? '매장 미지정'} · ${t.brandName ?? t.store?.brandName ?? '-'}',
                             ),
                             subtitle: Text(
-                              '발생일 ${Fmt.date(t.receivedAt.toLocal())} · 과실 ${t.fault?.name ?? '-'}',
+                              '${t.workTypeLabel} · 발생일 ${Fmt.date(t.receivedAt.toLocal())} · 과실 ${t.fault?.name ?? '-'}',
                             ),
                             trailing: t.storeId == null
                                 ? null
@@ -280,11 +281,8 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                         AsyncView<List<Map<String, dynamic>>>(
                           load: () async =>
                               (await context.read<ApiClient>().get(
-                                        '/service/tickets/${t.id}/assets',
-                                      )
-                                      as List)
-                                  .map(asMap)
-                                  .toList(),
+                                '/service/tickets/${t.id}/assets',
+                              ) as List).map(asMap).toList(),
                           builder: (context, assets, reload) => Wrap(
                             runSpacing: 12,
                             spacing: 8,
@@ -486,8 +484,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                                                   if (!await ConfirmDialog.show(
                                                     context,
                                                     title: '처리 이력 삭제',
-                                                    message:
-                                                        '이 내용과 기록된 작업 시간을 삭제합니다.',
+                                                    message: '이 내용과 기록된 작업 시간을 삭제합니다.',
                                                     confirmLabel: '삭제',
                                                   )) {
                                                     return;

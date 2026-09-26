@@ -40,7 +40,10 @@ def metadata_at_baseline(revision="2cca8909675d"):
         "notifications": ["push_pending", "push_attempts", "push_after"],
         "service_parts": ["stock_deducted"],
         "stores": ["is_active"],
+        "service_tickets": ["work_type_id"],
     }
+    if revision == "ecdd8d8aea3c":
+        removed = {"service_tickets": ["work_type_id"]}
     if revision == "2cca8909675d":
         removed.update({"refresh_tokens": ["session_id"], "devices": ["session_id"]})
     for name, columns in removed.items():
@@ -53,6 +56,8 @@ def metadata_at_baseline(revision="2cca8909675d"):
                 table.constraints.remove(constraint)
         for column in columns:
             table._columns.remove(table.c[column])
+    if revision == "ecdd8d8aea3c":
+        return metadata
     for table in metadata.tables.values():
         Index(f"ix_{table.name}_id", table.c.id)
     if revision == "2cca8909675d":
@@ -109,7 +114,7 @@ def main() -> None:
             if not differences and not serial_indexes_match(connection):
                 differences = [("missing_or_changed_serial_indexes",)]
             if differences:
-                for baseline in ("83c49d102fa1", "2cca8909675d"):
+                for baseline in ("ecdd8d8aea3c", "83c49d102fa1", "2cca8909675d"):
                     baseline_differences = compare_metadata(
                         context, metadata_at_baseline(baseline)
                     )

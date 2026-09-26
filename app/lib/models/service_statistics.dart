@@ -109,6 +109,7 @@ class ServiceTrend {
 
 /// The statistics axes the server supports, with their Korean labels.
 enum StatAxis {
+  workType('work_type', '업무 구분'),
   category('category', '서비스 분류'),
   symptom('symptom', '증상'),
   cause('cause', '원인'),
@@ -201,9 +202,8 @@ class Crosstab {
     colsAxis: asString(j['cols_axis']),
     cols: asList(j['cols'], AxisKey.fromJson),
     rows: asList(j['rows'], CrosstabRow.fromJson),
-    colTotals: asMap(
-      j['col_totals'],
-    ).map((key, value) => MapEntry(key, asInt(value))),
+    colTotals: asMap(j['col_totals'])
+        .map((key, value) => MapEntry(key, asInt(value))),
     totalCauses: asInt(j['total_causes']),
     totalTickets: asInt(j['total_tickets']),
     ticketsWithoutCause: asInt(j['tickets_without_cause']),

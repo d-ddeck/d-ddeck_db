@@ -201,7 +201,8 @@ with TestClient(app) as c:
     )
     check(
         "설정창에 분류 코드 동봉",
-        len(r.json()["code_groups"]) == 7,
+        len(r.json()["code_groups"]) == 8
+        and any(g["code"] == "SERVICE_WORK_TYPE" for g in r.json()["code_groups"]),
         len(r.json()["code_groups"]),
     )
 

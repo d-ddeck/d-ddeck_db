@@ -14,6 +14,7 @@ class ServiceFilter {
     this.faultId,
     this.responderId,
     this.categoryId,
+    this.workTypeId,
     this.assigneeId,
     this.customerId,
     this.departmentId,
@@ -38,6 +39,7 @@ class ServiceFilter {
   final String? faultId;
   final String? responderId;
   final String? categoryId;
+  final String? workTypeId;
   final String? assigneeId;
   final String? customerId;
   final String? departmentId;
@@ -62,6 +64,7 @@ class ServiceFilter {
     'fault_id': faultId,
     'responder_id': responderId,
     'category_id': categoryId,
+    'work_type_id': workTypeId,
     'assignee_id': assigneeId,
     'customer_id': customerId,
     'department_id': departmentId,

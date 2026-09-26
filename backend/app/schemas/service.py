@@ -150,6 +150,7 @@ class ServiceTicketCreate(_RentalFields):
     serial_no: str | None = Field(None, max_length=120)
     asset_id: uuid.UUID | None = None
 
+    work_type_id: uuid.UUID | None = None
     # 대표 분류. `causes` 를 보내면 그 첫 항목으로 덮어쓴다.
     category_id: uuid.UUID | None = None
     symptom_id: uuid.UUID | None = None
@@ -198,6 +199,7 @@ class ServiceTicketUpdate(_RentalFields, PatchModel):
     model_name: str | None = Field(None, max_length=150)
     serial_no: str | None = Field(None, max_length=120)
     asset_id: uuid.UUID | None = None
+    work_type_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     symptom_id: uuid.UUID | None = None
     cause_id: uuid.UUID | None = None
@@ -248,6 +250,7 @@ class ServiceTicketOut(ORMModel):
     serial_no: str | None = None
     asset_id: uuid.UUID | None = None
 
+    work_type_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     symptom_id: uuid.UUID | None = None
     cause_id: uuid.UUID | None = None
@@ -285,6 +288,7 @@ class ServiceTicketOut(ORMModel):
     updated_at: datetime
 
     # 목록에서도 원인 · 대응인원을 한 줄로 보여 줄 수 있게 이름만 실어 보낸다.
+    work_type: CodeItemBrief | None = None
     cause_labels: list[str] = Field(default_factory=list)
     responder_names: list[str] = Field(default_factory=list)
     store_name: str | None = None

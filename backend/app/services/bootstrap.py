@@ -35,6 +35,16 @@ log = logging.getLogger("ddeck.bootstrap")
 # (group_code, group_name, module, [(item_code, item_name, color), ...])
 DEFAULT_CODES: list[tuple[str, str, ModuleKey, list[tuple[str, str, str | None]]]] = [
     (
+        "SERVICE_WORK_TYPE",
+        "업무 구분",
+        ModuleKey.SERVICE,
+        [
+            ("AS", "수리/점검", "#2563EB"),
+            ("CS", "고객 대응", "#059669"),
+            ("PO", "구매", "#D97706"),
+        ],
+    ),
+    (
         # 구 서버(CS_Record)의 서비스구분 12종을 그 순서대로. 회사가 쓰던 목록이 기본값이다
         # (2026-09-25). 세부분류는 구분의 하위 선택지라 DEFAULT_SYMPTOMS 로 따로 심는다.
         "SERVICE_CATEGORY",

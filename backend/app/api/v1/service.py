@@ -113,6 +113,7 @@ def ticket_filters(
     month: Annotated[
         int | None, Query(ge=1, le=12, description="발생 월. year 와 함께")
     ] = None,
+    work_type_id: uuid.UUID | None = None,
     assignee_id: uuid.UUID | None = None,
     department_id: uuid.UUID | None = None,
     category_id: Annotated[
@@ -139,6 +140,7 @@ def ticket_filters(
     if date_from and date_to and date_from > date_to:
         raise AppError("INVALID_DATE_RANGE", "시작일은 종료일보다 늦을 수 없습니다.")
     if missing and set(missing.split(",")) - {
+        "work_type",
         "category",
         "symptom",
         "maker",
@@ -159,6 +161,7 @@ def ticket_filters(
         "month": month if year else None,
         "assignee_id": assignee_id,
         "department_id": department_id,
+        "work_type_id": work_type_id,
         "category_id": category_id,
         "symptom_id": symptom_id,
         "maker_id": maker_id,
@@ -256,6 +259,9 @@ def _ticket_query(
         text = q.strip()
         like = f"%{text}%"
         code_ids = select(CodeItem.id).where(CodeItem.name.ilike(like))
+        work_type_ids = select(CodeItem.id).where(
+            or_(CodeItem.name.ilike(like), CodeItem.code.ilike(like))
+        )
         stmt = stmt.where(
             or_(
                 ServiceTicket.id.in_(
@@ -276,6 +282,7 @@ def _ticket_query(
                 ServiceTicket.store_id.in_(
                     select(Store.id).where(Store.name.ilike(like))
                 ),
+                ServiceTicket.work_type_id.in_(work_type_ids),
                 ServiceTicket.fault_id.in_(code_ids),
                 ServiceTicket.rental_type_id.in_(code_ids),
                 ServiceTicket.id.in_(
@@ -432,6 +439,8 @@ def export_tickets(
         "첨부 수",
         "처리 이력 수",
         "처리 이력 내용",
+        "업무 구분 코드",
+        "업무 구분",
     ]
 
     def rows():
@@ -464,6 +473,8 @@ def export_tickets(
                 e["attachment_count"],
                 e["log_count"],
                 "\n".join(log_text.get(t.id, [])),
+                e["work_type"].code if e["work_type"] else "",
+                e["work_type"].name if e["work_type"] else "미분류",
             ]
             yield line
 
@@ -472,7 +483,7 @@ def export_tickets(
     widths = (
         [8, 10, 18]
         + [14, 22, 13] * n_cause
-        + [12, 11, 46, 11, 46, 10, 8, 14, 9, 16, 18, 11, 11, 9, 7, 9, 50]
+        + [12, 11, 46, 11, 46, 10, 8, 14, 9, 16, 18, 11, 11, 9, 7, 9, 50, 16, 24]
     )
     wrap = [head.index("발생 내용"), head.index("대응 내용")]
     excel.fill_sheet(ws, head, rows(), widths, wrap_cols=wrap)
@@ -606,6 +617,9 @@ def create_ticket(
     store = ticket_rules.resolve_store(db, data.get("store_id"))
     if store is not None and not data.get("customer_name"):
         data["customer_name"] = store.name
+    ticket_rules.check_code(
+        db, data.get("work_type_id"), "SERVICE_WORK_TYPE", "업무 구분"
+    )
     ticket_rules.check_code(db, data.get("fault_id"), "SERVICE_FAULT", "과실")
 
     if data.get("due_at") is None:
@@ -724,6 +738,11 @@ def update_ticket(
         )
         if store is not None and "customer_name" not in data and follows_store:
             data["customer_name"] = store.name
+    # An inactive/removed historical type may be kept, but never newly assigned.
+    if "work_type_id" in data and data["work_type_id"] != ticket.work_type_id:
+        ticket_rules.check_code(
+            db, data["work_type_id"], "SERVICE_WORK_TYPE", "업무 구분"
+        )
     if "fault_id" in data:
         ticket_rules.check_code(db, data["fault_id"], "SERVICE_FAULT", "과실")
     if "rental_returned" in data and data["rental_returned"] is None:
@@ -1185,6 +1204,7 @@ def stats_summary(db: DbSession, _: CurrentUser, filters: Filters) -> ServiceSum
 GroupByParam = Annotated[
     # stats.GroupBy 와 같은 목록이어야 한다. 두 군데에 적혀 있으니 축을 더할 때 둘 다 고쳐야 한다.
     Literal[
+        "work_type",
         "category",
         "symptom",
         "maker",
@@ -1425,6 +1445,7 @@ def related_assets(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
 def export_all_stats(db: DbSession, _: CurrentUser, filters: Filters):
     workbook = excel.workbook()
     for axis, label in [
+        ("work_type", "업무 구분"),
         ("category", "서비스구분"),
         ("symptom", "세부분류"),
         ("maker", "제조사"),
