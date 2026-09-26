@@ -67,7 +67,7 @@ class _DeliveryComparePageState extends State<DeliveryComparePage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('출고 대조')),
     body: PageBody(
-      child: ListView(
+      child: FormListView(
         children: [
           const Text('출고 시리얼을 붙여넣거나 시리얼 열이 있는 Excel 파일을 선택하세요.'),
           TextField(
@@ -76,6 +76,7 @@ class _DeliveryComparePageState extends State<DeliveryComparePage> {
             decoration: const InputDecoration(labelText: '시리얼 목록'),
           ),
           Wrap(
+            runSpacing: 12,
             spacing: 8,
             children: [
               FilledButton(

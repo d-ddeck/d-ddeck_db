@@ -124,7 +124,8 @@ class _CalendarPageState extends State<CalendarPage> {
       builder: (c) => StatefulBuilder(
         builder: (c, update) => AlertDialog(
           title: const Text('캘린더 만들기'),
-          content: Column(
+          scrollable: true,
+          content: FormFields(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
@@ -323,6 +324,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 final calendar = Column(
                   children: [
                     Wrap(
+                      runSpacing: 12,
                       spacing: 8,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
@@ -470,6 +472,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Wrap(
+                        runSpacing: 12,
                         spacing: 8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [

@@ -417,6 +417,8 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                                     child: Padding(
                                       padding: const EdgeInsets.all(12),
                                       child: Wrap(
+                                        spacing: 8,
+                                        runSpacing: 12,
                                         crossAxisAlignment:
                                             WrapCrossAlignment.center,
                                         children: [
@@ -497,6 +499,7 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                                       label: Text('일자 *  $_date'),
                                     ),
                                     Wrap(
+                                      runSpacing: 12,
                                       spacing: 12,
                                       children: [
                                         OutlinedButton(

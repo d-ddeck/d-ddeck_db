@@ -266,7 +266,7 @@ class _SignupPageState extends State<SignupPage> {
     String? Function(String?)? validator,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboard,

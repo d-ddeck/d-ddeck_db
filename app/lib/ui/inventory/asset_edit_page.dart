@@ -72,7 +72,7 @@ class _AssetEditPageState extends State<AssetEditPage> {
               context.read<AdminRepository>().codeGroup('ASSET_CATEGORY'),
           builder: (context, group, _) => Form(
             key: _form,
-            child: ListView(
+            child: FormListView(
               children: [
                 TextFormField(
                   controller: _name,
@@ -120,7 +120,6 @@ class _AssetEditPageState extends State<AssetEditPage> {
                     if (d != null && mounted) setState(() => _date = d);
                   },
                 ),
-                const FormGap(),
                 FilledButton(
                   onPressed: _busy ? null : _save,
                   child: Text(_busy ? '저장 중…' : '저장'),

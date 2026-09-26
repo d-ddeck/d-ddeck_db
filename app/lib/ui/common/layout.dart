@@ -58,6 +58,7 @@ class SectionCard extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         Wrap(
+                          runSpacing: 12,
                           alignment: WrapAlignment.end,
                           spacing: AppSpace.sm,
                           children: actions,
@@ -109,7 +110,53 @@ class PageBody extends StatelessWidget {
 }
 
 class FormGap extends SizedBox {
-  const FormGap({super.key}) : super(height: AppSpace.md);
+  const FormGap({super.key}) : super(height: AppSpace.lg);
+}
+
+/// Shared vertical form rhythm; padding keeps floating labels inside scroll clips.
+class FormFields extends StatelessWidget {
+  const FormFields({
+    super.key,
+    required this.children,
+    this.mainAxisSize = MainAxisSize.min,
+    this.crossAxisAlignment = CrossAxisAlignment.stretch,
+  });
+  final List<Widget> children;
+  final MainAxisSize mainAxisSize;
+  final CrossAxisAlignment crossAxisAlignment;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(
+      top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
+    ),
+    child: Column(
+      mainAxisSize: mainAxisSize,
+      crossAxisAlignment: crossAxisAlignment,
+      spacing: AppSpace.lg,
+      children: children,
+    ),
+  );
+}
+
+/// Scrollable standalone form with consistent field/action gaps.
+class FormListView extends StatelessWidget {
+  const FormListView({super.key, required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: EdgeInsets.only(
+      top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
+      bottom: AppSpace.lg,
+    ),
+    children: [
+      for (var i = 0; i < children.length; i++) ...[
+        if (i > 0) const FormGap(),
+        children[i],
+      ],
+    ],
+  );
 }
 
 /// Used inside a Scaffold body so resizeToAvoidBottomInset keeps it above the keyboard.
@@ -137,7 +184,8 @@ class FormSection extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(title, style: Theme.of(context).textTheme.titleMedium),
-      for (final child in children) ...[const FormGap(), child],
+      const SizedBox(height: AppSpace.sm),
+      FormFields(children: children),
     ],
   );
 }

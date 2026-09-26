@@ -286,6 +286,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                                   .map(asMap)
                                   .toList(),
                           builder: (context, assets, reload) => Wrap(
+                            runSpacing: 12,
                             spacing: 8,
                             children: [
                               for (final asset in assets)
@@ -311,6 +312,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                         SectionCard(
                           title: '대응인원',
                           child: Wrap(
+                            runSpacing: 12,
                             spacing: 8,
                             children: [
                               for (final r in t.responders)
@@ -573,7 +575,8 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('처리 이력 수정'),
-        content: Column(
+        scrollable: true,
+        content: FormFields(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
@@ -636,7 +639,8 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('사용 부품 추가'),
-        content: Column(
+        scrollable: true,
+        content: FormFields(
           mainAxisSize: MainAxisSize.min,
           children: [
             Autocomplete<Asset>(

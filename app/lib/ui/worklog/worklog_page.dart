@@ -320,6 +320,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
                     TableColumn(
                       label: '표시',
                       cell: (w) => Wrap(
+                        runSpacing: 12,
                         spacing: 4,
                         children: [
                           if (w.overtime) const Chip(label: Text('연장')),

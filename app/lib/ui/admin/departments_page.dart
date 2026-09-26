@@ -19,10 +19,11 @@ class DepartmentsPage extends StatelessWidget {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
+        scrollable: true,
         title: Text(department == null ? '부서 추가' : '부서 수정'),
         content: Form(
           key: form,
-          child: Column(
+          child: FormFields(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(

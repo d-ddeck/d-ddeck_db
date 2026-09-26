@@ -36,7 +36,7 @@ class _ProfilePageState extends State<ProfilePage> {
     child: Scaffold(
       appBar: AppBar(title: const Text('내 정보 수정')),
       body: PageBody(
-        child: ListView(
+        child: FormListView(
           children: [
             for (final field in [
               (_name, '이름'),
@@ -47,7 +47,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 controller: field.$1,
                 decoration: InputDecoration(labelText: field.$2),
               ),
-            const FormGap(),
             FilledButton(
               onPressed: _busy
                   ? null

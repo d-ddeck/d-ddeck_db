@@ -131,6 +131,7 @@ class AsyncViewState<T> extends State<AsyncView<T>> {
               child: Padding(
                 padding: const EdgeInsets.all(8),
                 child: Wrap(
+                  runSpacing: 12,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 8,
                   children: [

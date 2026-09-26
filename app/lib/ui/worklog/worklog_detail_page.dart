@@ -113,6 +113,7 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     Wrap(
+                      runSpacing: 12,
                       spacing: 8,
                       children: [
                         if (log.overtime) const Chip(label: Text('연장')),

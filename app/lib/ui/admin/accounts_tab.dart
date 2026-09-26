@@ -139,6 +139,7 @@ class _AccountsTabState extends State<AccountsTab> {
               SelectableText(user.email),
               const SizedBox(height: 12),
               Wrap(
+                runSpacing: 12,
                 spacing: 8,
                 children: [
                   StatusChip(label: user.status.label),
@@ -181,6 +182,7 @@ class _AccountsTabState extends State<AccountsTab> {
                 const Text('동급·상위 계정의 세션은 조회할 수 없습니다.'),
               const SizedBox(height: 12),
               Wrap(
+                runSpacing: 12,
                 spacing: 8,
                 children: [
                   for (final item in {

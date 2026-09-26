@@ -300,6 +300,7 @@ class _StoreBody extends StatelessWidget {
         children: [
           Text(store.name, style: theme.textTheme.headlineSmall),
           Wrap(
+            runSpacing: 12,
             spacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [

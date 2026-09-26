@@ -706,6 +706,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
           ),
           const FormGap(),
           Wrap(
+            runSpacing: 12,
             spacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [

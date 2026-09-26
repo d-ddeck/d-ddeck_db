@@ -480,6 +480,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                       constraints: const BoxConstraints(maxHeight: 100),
                       child: SingleChildScrollView(
                         child: Wrap(
+                          runSpacing: 12,
                           spacing: 8,
                           children: [
                             for (final field in _invalidFields.where(
@@ -538,7 +539,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   onChanged: (v) =>
                                       _changeBrand(v == '' ? null : v),
                                 ),
-                                const FormGap(),
+
                                 DropdownButtonFormField<String>(
                                   key: ValueKey(
                                     'store:$_brandId:$_storeId:$_storesLoading',
@@ -565,7 +566,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   validator: (v) =>
                                       v == null ? '매장을 선택해 주세요.' : null,
                                 ),
-                                const FormGap(),
                               ],
                             ),
                             const FormGap(),
@@ -591,7 +591,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                       ? '발생 내용을 입력해 주세요.'
                                       : null,
                                 ),
-                                const FormGap(),
                               ],
                             ),
                             const FormGap(),
@@ -675,7 +674,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                     optional: false,
                                     multiple: true,
                                   ),
-                                  const FormGap(),
+
                                   _date(
                                     '회수 예정일',
                                     _rentalDueDate,
@@ -747,7 +746,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   }),
                                 ),
                                 if (_customerId == null) ...[
-                                  const FormGap(),
                                   TextFormField(
                                     controller: _customerName,
                                     decoration: const InputDecoration(
@@ -755,7 +753,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                     ),
                                   ),
                                 ],
-                                const FormGap(),
+
                                 TextFormField(
                                   controller: _phone,
                                   decoration: const InputDecoration(
@@ -763,21 +761,21 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   ),
                                   keyboardType: TextInputType.phone,
                                 ),
-                                const FormGap(),
+
                                 TextFormField(
                                   controller: _address,
                                   decoration: const InputDecoration(
                                     labelText: '현장 주소',
                                   ),
                                 ),
-                                const FormGap(),
+
                                 TextFormField(
                                   controller: _product,
                                   decoration: const InputDecoration(
                                     labelText: '제품명',
                                   ),
                                 ),
-                                const FormGap(),
+
                                 Row(
                                   children: [
                                     Expanded(
@@ -821,7 +819,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   onChanged: (v) =>
                                       setState(() => _assigneeId = v),
                                 ),
-                                const FormGap(),
+
                                 Row(
                                   children: [
                                     Expanded(

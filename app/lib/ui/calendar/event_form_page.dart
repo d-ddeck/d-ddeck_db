@@ -188,7 +188,9 @@ class _EventFormPageState extends State<EventFormPage> {
                       children: [
                         Expanded(
                           child: ListView(
-                            padding: EdgeInsets.zero,
+                            padding: EdgeInsets.only(
+                              top: MediaQuery.textScalerOf(context).scale(8),
+                            ),
                             children: [
                               TextField(
                                 controller: _title,
@@ -401,6 +403,7 @@ class _EventFormPageState extends State<EventFormPage> {
                                   for (final (index, reminder)
                                       in _reminders.indexed)
                                     Row(
+                                      spacing: 12,
                                       children: [
                                         Expanded(
                                           child: DropdownButtonFormField<int>(

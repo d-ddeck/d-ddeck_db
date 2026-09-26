@@ -233,6 +233,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
                             ),
                           ),
                           Wrap(
+                            runSpacing: 12,
                             spacing: 8,
                             children: [
                               TextButton(

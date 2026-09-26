@@ -351,6 +351,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
                                     title: '장비 정보',
                                     children: [
                                       Row(
+                                        spacing: 12,
                                         children: [
                                           Expanded(
                                             child: TextField(
@@ -372,12 +373,14 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
                                           ),
                                         ],
                                       ),
-                                      const FormGap(),
+
                                       RadioGroup<String>(
                                         groupValue: d.gripper,
                                         onChanged: (v) =>
                                             setState(() => d.gripper = v!),
                                         child: const Wrap(
+                                          spacing: 8,
+                                          runSpacing: 12,
                                           children: [
                                             SizedBox(
                                               width: 150,
@@ -396,7 +399,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
                                           ],
                                         ),
                                       ),
-                                      const FormGap(),
+
                                       TextField(
                                         controller: d.note,
                                         decoration: const InputDecoration(

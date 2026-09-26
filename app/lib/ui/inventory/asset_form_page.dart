@@ -203,14 +203,14 @@ class _AssetFormPageState extends State<AssetFormPage> {
                                   }),
                                   required: true,
                                 ),
-                                const FormGap(),
+
                                 inventoryChoice('품명', _modelId, {
                                   for (final m in _models.where(
                                     (m) => m.parentId == _categoryId,
                                   ))
                                     m.id: m.name,
                                 }, (v) => setState(() => _modelId = v)),
-                                const FormGap(),
+
                                 inventoryChoice(
                                   '제조사',
                                   _makerId,
@@ -225,7 +225,7 @@ class _AssetFormPageState extends State<AssetFormPage> {
                                     category?.name,
                                   ),
                                 ),
-                                const FormGap(),
+
                                 TextFormField(
                                   controller: _serial,
                                   minLines: 3,
@@ -241,7 +241,6 @@ class _AssetFormPageState extends State<AssetFormPage> {
                                       ? 'S/N을 입력해 주세요.'
                                       : null,
                                 ),
-                                const FormGap(),
                               ],
                             ),
                             const FormGap(),
@@ -255,7 +254,6 @@ class _AssetFormPageState extends State<AssetFormPage> {
                                   locations: _locations,
                                   registration: true,
                                 ),
-                                const FormGap(),
                               ],
                             ),
                             const FormGap(),
@@ -283,7 +281,7 @@ class _AssetFormPageState extends State<AssetFormPage> {
                                     }
                                   },
                                 ),
-                                const FormGap(),
+
                                 TextFormField(
                                   controller: _note,
                                   maxLines: 3,
@@ -291,7 +289,6 @@ class _AssetFormPageState extends State<AssetFormPage> {
                                     labelText: '비고',
                                   ),
                                 ),
-                                const FormGap(),
                               ],
                             ),
                           ],

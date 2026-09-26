@@ -281,6 +281,8 @@ class _SyncedAlarmsPageState extends State<SyncedAlarmsPage>
                 ),
                 const SizedBox(height: 8),
                 Wrap(
+                  spacing: 8,
+                  runSpacing: 12,
                   children: [
                     StatusChip(
                       label: _reachable == null

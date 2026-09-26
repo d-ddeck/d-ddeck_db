@@ -298,7 +298,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                       ? '매장명을 입력해 주세요.'
                                       : null,
                                 ),
-                                const FormGap(),
+
                                 DropdownButtonFormField<String>(
                                   initialValue: _brandId,
                                   isExpanded: true,
@@ -319,7 +319,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                   onChanged: (v) =>
                                       setState(() => _brandId = v),
                                 ),
-                                const FormGap(),
+
                                 DropdownButtonFormField<String>(
                                   initialValue: _gripperType,
                                   decoration: const InputDecoration(
@@ -342,7 +342,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                   onChanged: (v) =>
                                       setState(() => _gripperType = v),
                                 ),
-                                const FormGap(),
+
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   title: const Text('개점일'),
@@ -387,7 +387,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                       onTap: () => _pickDate(closing: true),
                                     ),
                                 ],
-                                const FormGap(),
+
                                 if (!_isNew)
                                   SwitchListTile(
                                     title: const Text("매장 활성화"),
@@ -405,7 +405,6 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                   ),
                                   maxLines: 3,
                                 ),
-                                const FormGap(),
                               ],
                             ),
                           ],

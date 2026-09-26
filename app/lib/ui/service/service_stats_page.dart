@@ -185,6 +185,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                     ),
                     const SizedBox(height: 8),
                     const Text('화면과 전체 통계 Excel은 같은 조건으로 집계합니다.'),
+                    const FormGap(),
                     DropdownButtonFormField<String>(
                       initialValue: _category?.id ?? '',
                       isExpanded: true,

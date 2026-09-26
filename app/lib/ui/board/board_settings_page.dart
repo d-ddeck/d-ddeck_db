@@ -32,7 +32,7 @@ class _BoardSettingsPageState extends State<BoardSettingsPage> {
           scrollable: true,
           content: SizedBox(
             width: 440,
-            child: Column(
+            child: FormFields(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (board == null)

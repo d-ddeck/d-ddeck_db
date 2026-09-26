@@ -179,7 +179,9 @@ class _LocationFormState extends State<_LocationForm> {
           child: Form(
             key: _form,
             child: ListView(
-              padding: EdgeInsets.zero,
+              padding: EdgeInsets.only(
+                top: MediaQuery.textScalerOf(context).scale(8),
+              ),
               children: [
                 TextFormField(
                   controller: _code,

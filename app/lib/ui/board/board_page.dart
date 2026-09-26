@@ -412,6 +412,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                     if (context.read<AuthState>().isManager ||
                         post.authorId == context.read<AuthState>().user?.id)
                       Wrap(
+                        runSpacing: 12,
                         spacing: 8,
                         children: [
                           TextButton.icon(
@@ -668,7 +669,7 @@ class _PostFormPageState extends State<PostFormPage> {
                     controller: _title,
                     decoration: const InputDecoration(labelText: '제목 *'),
                   ),
-                  const FormGap(),
+
                   TextField(
                     controller: _content,
                     decoration: const InputDecoration(
