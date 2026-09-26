@@ -10,10 +10,12 @@ class CalendarRangeSelection extends StatefulWidget {
     required this.weeks,
     required this.enabled,
     required this.onSelected,
+    this.weekdayHeight = 22,
   });
   final Widget child;
   final DateTime firstDay;
   final double rowHeight;
+  final double weekdayHeight;
   final int weeks;
   final bool enabled;
   final void Function(DateTime start, DateTime end) onSelected;
@@ -31,7 +33,8 @@ class _CalendarRangeSelectionState extends State<CalendarRangeSelection> {
         final width = (constraints.maxWidth - 8) / 7;
         int? cell(Offset point) {
           final col = ((point.dx - 4) / width).floor(),
-              row = ((point.dy - 22) / widget.rowHeight).floor();
+              row = ((point.dy - widget.weekdayHeight) / widget.rowHeight)
+                  .floor();
           if (col < 0 || col > 6 || row < 0 || row >= widget.weeks) return null;
           return row * 7 + col;
         }
@@ -43,6 +46,9 @@ class _CalendarRangeSelectionState extends State<CalendarRangeSelection> {
             ? -1
             : (_start! > _end! ? _start! : _end!);
         return GestureDetector(
+          // Finger drags scroll the calendar, including landscape phones.
+          // Keep range dragging for desktop mouse input only.
+          supportedDevices: const {PointerDeviceKind.mouse},
           dragStartBehavior: DragStartBehavior.down,
           behavior: HitTestBehavior.translucent,
           onPanStart: (event) => setState(() {
@@ -84,7 +90,7 @@ class _CalendarRangeSelectionState extends State<CalendarRangeSelection> {
                 for (var day = low; day <= high; day++)
                   Positioned(
                     left: 4 + (day % 7) * width,
-                    top: 22 + (day ~/ 7) * widget.rowHeight,
+                    top: widget.weekdayHeight + (day ~/ 7) * widget.rowHeight,
                     width: width,
                     height: widget.rowHeight,
                     child: IgnorePointer(

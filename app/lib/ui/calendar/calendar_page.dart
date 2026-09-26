@@ -258,277 +258,283 @@ class _CalendarPageState extends State<CalendarPage> {
           ),
         ],
       ),
-      body: PageBody(
-        child: AsyncView<CalendarMonthData>(
-          key: _viewKey,
-          load: () async {
-            try {
-              final month = _month;
-              final results = await Future.wait([
-                repo.calendars(),
-                repo.events(
-                  from: _windowStart,
-                  to: _windowEnd,
-                  mineOnly: _mineOnly,
-                  categoryId: _categoryId,
-                  participantId: _participantId,
-                ),
-                context
-                    .read<AdminRepository>()
-                    .codeGroup('EVENT_CATEGORY')
-                    .then((group) => group.items),
-                for (var y = _windowStart.year; y <= _windowEnd.year; y++)
-                  if (y >= 2000 && y <= 2100) _loadHolidays(repo, y),
-              ]);
-              return CalendarMonthData(
-                month: month,
-                categories: results[2] as List<CodeItem>,
-                calendars: results[0] as List<AppCalendar>,
-                events: results[1] as List<CalendarEvent>,
-                holidays: results
-                    .skip(3)
-                    .expand((v) => (v as List<Holiday>))
-                    .toList(),
-              );
-            } on ApiException catch (e) {
-              if (context.mounted) {
-                AppSnack.show(context, e.message, error: true);
-              }
-              rethrow;
-            }
-          },
-          builder: (context, data, reload) {
-            final dayEvents = _monthList
-                ? (data.eventsByDay.values
-                      .expand((rows) => rows)
-                      .where(
-                        (event) =>
-                            event.startsAt.isBefore(
-                              DateTime(_month.year, _month.month + 1),
-                            ) &&
-                            event.endsAt.isAfter(_month),
-                      )
-                      .toSet()
-                      .toList()
-                    ..sort((a, b) => a.startsAt.compareTo(b.startsAt)))
-                : data.eventsByDay[calendarDateOnly(_selected)] ??
-                      <CalendarEvent>[];
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final desktop = constraints.maxWidth >= 600;
-                final minHeight = desktop ? 124.0 : 80.0;
-                final rowHeight =
-                    ((constraints.maxHeight - 230) / data.weeks.length)
-                        .clamp(minHeight, double.infinity)
-                        .toDouble();
-                final calendar = Column(
-                  children: [
-                    Wrap(
-                      runSpacing: 12,
-                      spacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        FilterChip(
-                          label: const Text('내 일정'),
-                          selected: _mineOnly,
-                          onSelected: (value) {
-                            setState(() => _mineOnly = value);
-                            _refresh();
-                          },
-                        ),
-                        FilterChip(
-                          label: const Text('월 전체 목록'),
-                          selected: _monthList,
-                          onSelected: (value) => setState(() {
-                            _monthList = value;
-                            _refresh();
-                          }),
-                        ),
-                        DropdownButton<String>(
-                          value: _categoryId,
-                          hint: const Text('모든 분류'),
-                          items: [
-                            const DropdownMenuItem(
-                              value: null,
-                              child: Text('모든 분류'),
-                            ),
-                            for (final category in data.categories)
-                              DropdownMenuItem(
-                                value: category.id,
-                                child: Text(category.name),
-                              ),
-                          ],
-                          onChanged: (value) {
-                            setState(() => _categoryId = value);
-                            _refresh();
-                          },
-                        ),
-                        SizedBox(
-                          width: 180,
-                          child: Autocomplete<UserBrief>(
-                            displayStringForOption: (person) => person.fullName,
-                            optionsBuilder: (value) async =>
-                                (await context.read<AuthRepository>().directory(
-                                  query: value.text,
-                                )).items,
-                            fieldViewBuilder: (c, controller, focus, submit) =>
-                                TextField(
-                                  controller: controller,
-                                  focusNode: focus,
-                                  decoration: InputDecoration(
-                                    labelText: '참석자 검색',
-                                    suffixIcon: IconButton(
-                                      tooltip: '참석자 조건 지우기',
-                                      icon: const Icon(Icons.clear),
-                                      onPressed: () {
-                                        controller.clear();
-                                        setState(() => _participantId = null);
-                                        _refresh();
-                                      },
-                                    ),
-                                  ),
-                                ),
-                            onSelected: (person) {
-                              setState(() => _participantId = person.id);
-                              _refresh();
-                            },
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final range = await showDateRangePicker(
-                              context: context,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (range != null && mounted) {
-                              _createEvent(range.start, range.end);
-                            }
-                          },
-                          icon: const Icon(Icons.date_range),
-                          label: const Text('기간 일정'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _createCalendar,
-                          icon: const Icon(Icons.add),
-                          label: const Text('캘린더 만들기'),
-                        ),
-                      ],
-                    ),
-                    _MonthHeader(
-                      month: _month,
-                      onPrev: () => _shiftMonth(-1),
-                      onNext: () => _shiftMonth(1),
-                      onToday: () => setState(() {
-                        final now = DateTime.now();
-                        _month = DateTime(now.year, now.month);
-                        _selected = now;
-                        _refresh();
-                      }),
-                    ),
-                    CalendarRangeSelection(
-                      firstDay: data.weeks.first.days.first,
-                      rowHeight: rowHeight,
-                      weeks: data.weeks.length,
-                      enabled: desktop,
-                      onSelected: (start, end) => _createEvent(start, end),
-                      child: _MonthGrid(
-                        month: _month,
-                        selected: _selected,
-                        data: data,
-                        rowHeight: rowHeight,
-                        desktop: desktop,
-                        onChanged: _refresh,
-                        onCreate: _createEvent,
-                        onOverflow: (date) => _showDay(context, date, data),
-                        onSelect: (d) => setState(() => _selected = d),
-                      ),
-                    ),
-                    const Divider(height: 1),
-                  ],
+      body: SafeArea(
+        top: false,
+        child: PageBody(
+          child: AsyncView<CalendarMonthData>(
+            key: _viewKey,
+            load: () async {
+              try {
+                final month = _month;
+                final results = await Future.wait([
+                  repo.calendars(),
+                  repo.events(
+                    from: _windowStart,
+                    to: _windowEnd,
+                    mineOnly: _mineOnly,
+                    categoryId: _categoryId,
+                    participantId: _participantId,
+                  ),
+                  context
+                      .read<AdminRepository>()
+                      .codeGroup('EVENT_CATEGORY')
+                      .then((group) => group.items),
+                  for (var y = _windowStart.year; y <= _windowEnd.year; y++)
+                    if (y >= 2000 && y <= 2100) _loadHolidays(repo, y),
+                ]);
+                return CalendarMonthData(
+                  month: month,
+                  categories: results[2] as List<CodeItem>,
+                  calendars: results[0] as List<AppCalendar>,
+                  events: results[1] as List<CalendarEvent>,
+                  holidays: results
+                      .skip(3)
+                      .expand((v) => (v as List<Holiday>))
+                      .toList(),
                 );
-                final dayList = dayEvents.isEmpty
-                    ? StatePlaceholder(
-                        icon: Icons.event_available,
-                        message: '아직 등록된 일정이 없습니다',
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: dayEvents.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, i) => _EventTile(
-                          event: dayEvents[i],
-                          calendarColor: data.colorFor(
-                            dayEvents[i],
-                            Theme.of(context).colorScheme.primary,
-                          ),
-                          onChanged: _refresh,
-                        ),
-                      );
-                final selectedPanel = Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Wrap(
+              } on ApiException catch (e) {
+                if (context.mounted) {
+                  AppSnack.show(context, e.message, error: true);
+                }
+                rethrow;
+              }
+            },
+            builder: (context, data, reload) {
+              final dayEvents = _monthList
+                  ? (data.eventsByDay.values
+                        .expand((rows) => rows)
+                        .where(
+                          (event) =>
+                              event.startsAt.isBefore(
+                                DateTime(_month.year, _month.month + 1),
+                              ) &&
+                              event.endsAt.isAfter(_month),
+                        )
+                        .toSet()
+                        .toList()
+                      ..sort((a, b) => a.startsAt.compareTo(b.startsAt)))
+                  : data.eventsByDay[calendarDateOnly(_selected)] ??
+                        <CalendarEvent>[];
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final desktop = constraints.maxWidth >= 600;
+                  final splitView =
+                      constraints.maxWidth >= 1000 &&
+                      MediaQuery.textScalerOf(context).scale(14) < 22;
+                  // Mobile scrolls the complete page instead of fitting a grid
+                  // beneath a filter bar whose height changes with wrapping.
+                  final minHeight = desktop ? 124.0 : 80.0;
+                  final rowHeight = splitView
+                      ? ((constraints.maxHeight - 230) / data.weeks.length)
+                            .clamp(minHeight, double.infinity)
+                            .toDouble()
+                      : minHeight;
+                  final calendar = Column(
+                    children: [
+                      Wrap(
                         runSpacing: 12,
                         spacing: 8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text(
-                            '${_monthList ? '${_month.year}년 ${_month.month}월' : Fmt.date(_selected)} · ${dayEvents.length}개 일정',
-                            style: Theme.of(context).textTheme.titleMedium,
+                          FilterChip(
+                            label: const Text('내 일정'),
+                            selected: _mineOnly,
+                            onSelected: (value) {
+                              setState(() => _mineOnly = value);
+                              _refresh();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('월 전체 목록'),
+                            selected: _monthList,
+                            onSelected: (value) => setState(() {
+                              _monthList = value;
+                              _refresh();
+                            }),
+                          ),
+                          DropdownButton<String>(
+                            value: _categoryId,
+                            hint: const Text('모든 분류'),
+                            items: [
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('모든 분류'),
+                              ),
+                              for (final category in data.categories)
+                                DropdownMenuItem(
+                                  value: category.id,
+                                  child: Text(category.name),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              setState(() => _categoryId = value);
+                              _refresh();
+                            },
+                          ),
+                          SizedBox(
+                            width: 180,
+                            child: Autocomplete<UserBrief>(
+                              displayStringForOption: (person) =>
+                                  person.fullName,
+                              optionsBuilder: (value) async =>
+                                  (await context
+                                          .read<AuthRepository>()
+                                          .directory(query: value.text))
+                                      .items,
+                              fieldViewBuilder:
+                                  (c, controller, focus, submit) => TextField(
+                                    controller: controller,
+                                    focusNode: focus,
+                                    decoration: InputDecoration(
+                                      labelText: '참석자 검색',
+                                      suffixIcon: IconButton(
+                                        tooltip: '참석자 조건 지우기',
+                                        icon: const Icon(Icons.clear),
+                                        onPressed: () {
+                                          controller.clear();
+                                          setState(() => _participantId = null);
+                                          _refresh();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                              onSelected: (person) {
+                                setState(() => _participantId = person.id);
+                                _refresh();
+                              },
+                            ),
                           ),
                           TextButton.icon(
-                            onPressed: () => _createEvent(_selected),
+                            onPressed: () async {
+                              final range = await showDateRangePicker(
+                                context: context,
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2100),
+                              );
+                              if (range != null && mounted) {
+                                _createEvent(range.start, range.end);
+                              }
+                            },
+                            icon: const Icon(Icons.date_range),
+                            label: const Text('기간 일정'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _createCalendar,
                             icon: const Icon(Icons.add),
-                            label: const Text('일정 등록'),
+                            label: const Text('캘린더 만들기'),
                           ),
                         ],
                       ),
-                    ),
-                    dayList,
-                  ],
-                );
-                if (constraints.maxWidth >= 1000 &&
-                    MediaQuery.textScalerOf(context).scale(14) < 22) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: SingleChildScrollView(child: calendar),
-                      ),
-                      const VerticalDivider(width: 24),
-                      Expanded(
-                        child: SingleChildScrollView(child: selectedPanel),
-                      ),
-                    ],
-                  );
-                }
-                if (constraints.maxHeight <
-                    90 + minHeight * data.weeks.length) {
-                  return ListView(
-                    children: [
-                      calendar,
                       const SizedBox(height: AppSpace.md),
-                      selectedPanel,
+                      _MonthHeader(
+                        month: _month,
+                        onPrev: () => _shiftMonth(-1),
+                        onNext: () => _shiftMonth(1),
+                        onToday: () => setState(() {
+                          final now = DateTime.now();
+                          _month = DateTime(now.year, now.month);
+                          _selected = now;
+                          _refresh();
+                        }),
+                      ),
+                      CalendarRangeSelection(
+                        firstDay: data.weeks.first.days.first,
+                        rowHeight: rowHeight,
+                        weekdayHeight:
+                            (MediaQuery.textScalerOf(context).scale(11) + 6)
+                                .clamp(22.0, double.infinity),
+                        weeks: data.weeks.length,
+                        enabled: desktop,
+                        onSelected: (start, end) => _createEvent(start, end),
+                        child: _MonthGrid(
+                          month: _month,
+                          selected: _selected,
+                          data: data,
+                          rowHeight: rowHeight,
+                          desktop: desktop,
+                          onChanged: _refresh,
+                          onCreate: _createEvent,
+                          onOverflow: (date) => _showDay(context, date, data),
+                          onSelect: (d) => setState(() => _selected = d),
+                        ),
+                      ),
+                      const Divider(height: 1),
                     ],
                   );
-                }
-                return Column(
-                  children: [
-                    calendar,
-                    const SizedBox(height: AppSpace.md),
-                    Expanded(
-                      child: SingleChildScrollView(child: selectedPanel),
+                  final dayList = dayEvents.isEmpty
+                      ? StatePlaceholder(
+                          icon: Icons.event_available,
+                          message: '아직 등록된 일정이 없습니다',
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: dayEvents.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, i) => _EventTile(
+                            event: dayEvents[i],
+                            calendarColor: data.colorFor(
+                              dayEvents[i],
+                              Theme.of(context).colorScheme.primary,
+                            ),
+                            onChanged: _refresh,
+                          ),
+                        );
+                  final selectedPanel = Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Wrap(
+                          runSpacing: 12,
+                          spacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '${_monthList ? '${_month.year}년 ${_month.month}월' : Fmt.date(_selected)} · ${dayEvents.length}개 일정',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            TextButton.icon(
+                              onPressed: () => _createEvent(_selected),
+                              icon: const Icon(Icons.add),
+                              label: const Text('일정 등록'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      dayList,
+                    ],
+                  );
+                  if (splitView) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: SingleChildScrollView(child: calendar),
+                        ),
+                        const VerticalDivider(width: 24),
+                        Expanded(
+                          child: SingleChildScrollView(child: selectedPanel),
+                        ),
+                      ],
+                    );
+                  }
+                  return SingleChildScrollView(
+                    key: const ValueKey('calendar-page-scroll'),
+                    padding: const EdgeInsets.only(bottom: AppSpace.lg),
+                    child: Column(
+                      children: [
+                        calendar,
+                        const SizedBox(height: AppSpace.md),
+                        selectedPanel,
+                      ],
                     ),
-                  ],
-                );
-              },
-            );
-          },
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -599,7 +605,12 @@ class _MonthGrid extends StatelessWidget {
     final fontSize = desktop ? 12.0 : 11.0;
     final textHeight = MediaQuery.textScalerOf(context).scale(fontSize);
     final laneHeight = (textHeight + 5).clamp(18.0, double.infinity).toDouble();
-    const headerHeight = 26.0;
+    final headerHeight =
+        (MediaQuery.textScalerOf(context).scale(12) + 8).clamp(
+          24.0,
+          double.infinity,
+        ) +
+        2;
     final overflowHeight = (textHeight + 4)
         .clamp(18.0, double.infinity)
         .toDouble();
@@ -614,7 +625,10 @@ class _MonthGrid extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(
-            height: 22,
+            height: (MediaQuery.textScalerOf(context).scale(11) + 6).clamp(
+              22.0,
+              double.infinity,
+            ),
             child: Row(
               children: [
                 for (final (i, label) in [
@@ -859,17 +873,25 @@ class _DayCell extends StatelessWidget {
         ),
         alignment: Alignment.topLeft,
         child: SizedBox(
-          height: 24,
+          height: (MediaQuery.textScalerOf(context).scale(12) + 8).clamp(
+            24.0,
+            double.infinity,
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Row(
               children: [
-                Text(
-                  '${date.day}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${date.day}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: color,
+                        fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                      ),
+                    ),
                   ),
                 ),
                 if (holiday.isNotEmpty)

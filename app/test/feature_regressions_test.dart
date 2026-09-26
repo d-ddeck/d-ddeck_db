@@ -5,6 +5,7 @@ import 'package:alarm/alarm.dart';
 import 'package:ddeck_app/services/alarm_service.dart';
 import 'package:ddeck_app/ui/calendar/calendar_range_selection.dart';
 import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
@@ -100,7 +101,10 @@ void main() {
       ),
     );
     final origin = tester.getTopLeft(find.byType(CalendarRangeSelection));
-    final gesture = await tester.startGesture(origin + const Offset(54, 72));
+    final gesture = await tester.startGesture(
+      origin + const Offset(54, 72),
+      kind: PointerDeviceKind.mouse,
+    );
     await gesture.moveTo(origin + const Offset(354, 172));
     await tester.pump();
     await gesture.up();
