@@ -11,12 +11,13 @@ import re
 import sys
 from pathlib import Path
 
-from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from sqlalchemy import Index, MetaData, create_engine, text
 from sqlalchemy.schema import CreateIndex
+
+from alembic import command
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))

@@ -1,0 +1,5 @@
+# Keep import classification identical from the repository root and backend/.
+src = ["backend"]
+
+[lint.isort]
+known-first-party = ["app"]

@@ -23,6 +23,11 @@ def main():
             FIRST_SUPERADMIN_EMAIL="admin@ddeck.local",
             FIRST_SUPERADMIN_PASSWORD="Admin-test-1234",
         )
+        from fastapi.testclient import TestClient
+        from sqlalchemy import select, text
+        from sqlalchemy.exc import IntegrityError
+        from starlette.requests import Request
+
         from app.core.config import settings
         from app.core.database import SessionLocal
         from app.core.deps import client_info
@@ -31,10 +36,6 @@ def main():
         from app.models.enums import Role, UserStatus
         from app.models.service import ServiceTicketCause
         from app.models.user import Device, RefreshToken, User
-        from fastapi.testclient import TestClient
-        from sqlalchemy import select, text
-        from sqlalchemy.exc import IntegrityError
-        from starlette.requests import Request
 
         count = 0
         with TestClient(app, raise_server_exceptions=False) as client:

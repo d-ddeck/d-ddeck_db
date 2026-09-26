@@ -36,9 +36,10 @@ def main():
     sys.path.insert(0, str(root))
     from unittest.mock import patch
 
+    from fastapi.testclient import TestClient
+
     from app.main import app
     from app.models import Base
-    from fastapi.testclient import TestClient
 
     engine = create_engine(url)
     assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 30

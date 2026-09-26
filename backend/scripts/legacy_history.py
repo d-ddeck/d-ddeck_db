@@ -3,13 +3,14 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid5
 
+from sqlalchemy import select
+
 from app.models.admin import AuditLog, CodeGroup, CodeItem
 from app.models.board import Board
 from app.models.enums import AuditAction, BoardType, ModuleKey, MovementType
 from app.models.inventory import Asset, AssetMovement
 from app.models.service import ServiceTicket
 from app.models.store import Store
-from sqlalchemy import select
 
 NAMESPACE = UUID("27d3dc3c-5036-44df-80e6-e31522780bd9")
 

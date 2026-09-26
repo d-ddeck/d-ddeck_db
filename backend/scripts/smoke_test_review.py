@@ -21,9 +21,10 @@ os.environ.update(
     FIRST_SUPERADMIN_EMAIL="admin@ddeck.local",
     FIRST_SUPERADMIN_PASSWORD="admin1234",
 )
+from fastapi.testclient import TestClient
+
 from app.core.database import engine
 from app.main import app
-from fastapi.testclient import TestClient
 
 PASSED = 0
 

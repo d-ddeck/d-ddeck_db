@@ -31,12 +31,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from sqlalchemy import func, select
+
 from app.core.database import SessionLocal
 from app.core.security import now_utc
 from app.models.admin import CodeGroup, CodeItem
 from app.models.service import ServiceTicket, ServiceTicketCause
 from scripts.migrate_from_legacy import code_for
-from sqlalchemy import func, select
 
 GROUP_NAMES = {"SERVICE_CATEGORY": "서비스구분", "SERVICE_SYMPTOM": "세부분류"}
 

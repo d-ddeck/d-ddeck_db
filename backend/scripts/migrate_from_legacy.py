@@ -37,6 +37,9 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.database import SessionLocal, engine
 from app.core.security import hash_password
@@ -68,8 +71,6 @@ from app.models.store import Store, StoreSet
 from app.models.user import User
 from app.models.worklog import WorkLog
 from app.services import bootstrap
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 # 구 서버는 우분투 데스크톱의 로컬 시각(KST)을 그대로 문자열로 넣었다.
 # 이 서버는 전부 UTC aware 라 옮기면서 9시간을 뺀다.

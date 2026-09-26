@@ -23,6 +23,9 @@ def main():
             FIRST_SUPERADMIN_EMAIL="admin@ddeck.local",
             FIRST_SUPERADMIN_PASSWORD="Admin-test-1234",
         )
+        from fastapi.testclient import TestClient
+        from sqlalchemy import select
+
         from app.core.config import settings
         from app.core.database import SessionLocal
         from app.core.security import now_utc
@@ -33,8 +36,6 @@ def main():
         from app.models.user import Device, User
         from app.services.notifications import dispatch_push, notify
         from app.services.retention import sweep
-        from fastapi.testclient import TestClient
-        from sqlalchemy import select
 
         count = 0
         with TestClient(app) as client:
@@ -359,9 +360,10 @@ def main():
                 db.commit()
                 assert sweep(db)["attachments"] == 1 and not path.exists()
             with SessionLocal() as db:
+                from reset_admin import recover
+
                 from app.core.security import verify_password
                 from app.models.user import RefreshToken
-                from reset_admin import recover
 
                 admin_user = db.scalar(select(User))
                 recover(db, admin_user, "Recovered-Password-9876")

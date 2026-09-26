@@ -32,9 +32,10 @@ os.environ["STORAGE_DIR"] = str(TEST_STORAGE)
 
 import shutil
 
+from fastapi.testclient import TestClient
+
 from app.core.database import engine
 from app.main import app
-from fastapi.testclient import TestClient
 
 PASSED = 0
 

@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from sqlalchemy import select
+
 from app.core.config import settings
 from app.core.database import SessionLocal, engine
 from app.core.security import hash_password, now_utc
@@ -55,7 +57,6 @@ from app.models.service import (
 )
 from app.models.user import Department, User
 from app.services import bootstrap
-from sqlalchemy import select
 
 rng = random.Random(20260920)  # fixed seed: the same demo data every run
 

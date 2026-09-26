@@ -27,9 +27,10 @@ os.environ["AUTH_RATE_LIMIT_ENABLED"] = "false"
 os.environ["FIRST_SUPERADMIN_EMAIL"] = "admin@ddeck.local"
 os.environ["FIRST_SUPERADMIN_PASSWORD"] = "admin1234"
 
+from fastapi.testclient import TestClient
+
 from app.core.database import engine
 from app.main import app
-from fastapi.testclient import TestClient
 
 PASSED = 0
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

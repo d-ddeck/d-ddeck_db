@@ -16,6 +16,10 @@ def main():
             DEBUG="false",
             ENVIRONMENT="test",
         )
+        from legacy_history import migrate
+        from migrate_from_legacy import Stats, code_for, to_utc
+        from sqlalchemy import func, select
+
         from app.core.database import SessionLocal, engine
         from app.core.security import now_utc
         from app.models import Base
@@ -25,9 +29,6 @@ def main():
         from app.models.service import ServiceTicket
         from app.models.store import Store
         from app.models.user import User
-        from legacy_history import migrate
-        from migrate_from_legacy import Stats, code_for, to_utc
-        from sqlalchemy import func, select
 
         Base.metadata.create_all(engine)
         source = sqlite3.connect(":memory:")

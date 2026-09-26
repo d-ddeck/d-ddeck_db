@@ -6,12 +6,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from sqlalchemy import select, update
+
 from app.core.database import SessionLocal
 from app.core.security import hash_password, now_utc, validate_password_strength
 from app.models.enums import AuditAction, ModuleKey, Role, UserStatus
 from app.models.user import Device, RefreshToken, User
 from app.services import audit
-from sqlalchemy import select, update
 
 
 def recover(db, user, password):

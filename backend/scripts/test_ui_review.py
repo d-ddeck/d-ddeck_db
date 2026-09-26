@@ -17,14 +17,15 @@ with tempfile.TemporaryDirectory(prefix="ddeck-ui-") as tmp:
         AUTH_RATE_LIMIT_ENABLED="false",
         FIRST_SUPERADMIN_PASSWORD="TestOnly1234",
     )
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
     from app.core.database import engine
     from app.core.security import hash_password, now_utc
     from app.main import app
     from app.models.admin import Attachment
     from app.models.enums import Role, UserStatus
     from app.models.user import RefreshToken, User
-    from fastapi.testclient import TestClient
-    from sqlalchemy.orm import Session
 
     with TestClient(app) as client:
         ids = {}
