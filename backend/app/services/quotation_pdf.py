@@ -6,12 +6,13 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    Image,
     KeepTogether,
     LongTable,
     Paragraph,
@@ -37,7 +38,7 @@ def font_name():
     return name
 
 
-def render(snapshot: dict) -> bytes:
+def render(snapshot: dict, signature: bytes | None = None) -> bytes:
     buffer = BytesIO()
     font = font_name()
     style = ParagraphStyle(
@@ -166,12 +167,43 @@ def render(snapshot: dict) -> bytes:
             ]
         ),
     ]
+    right_style = ParagraphStyle("closing", parent=style, alignment=TA_RIGHT)
+    closing_text = f"{supplier['company']}  대표이사 {supplier['contact']}"
+    if signature:
+        signature_image = Image(BytesIO(signature))
+        scale = min(76 / signature_image.imageWidth, 48 / signature_image.imageHeight)
+        signature_image.drawWidth = signature_image.imageWidth * scale
+        signature_image.drawHeight = signature_image.imageHeight * scale
+        signature_image.hAlign = "RIGHT"
+        closing = Table(
+            [[Paragraph(escape(closing_text), right_style), signature_image]],
+            colWidths=[431, 84],
+            hAlign="RIGHT",
+        )
+        closing.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+    else:
+        closing = Paragraph(escape(closing_text + " (인)"), right_style)
     story += [
         p("[ 안내사항 ]"),
         p(snapshot["notes"] or "-"),
         Spacer(1, 18),
-        p("상기와 같이 견적서를 제출합니다."),
-        p(f"{supplier['company']}  대표 {supplier['contact']} (인)"),
+        KeepTogether(
+            [
+                Paragraph("상기와 같이 견적서를 제출합니다.", right_style),
+                Spacer(1, 6),
+                closing,
+            ]
+        ),
     ]
 
     def footer(canvas, doc):

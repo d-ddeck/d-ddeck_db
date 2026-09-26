@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import hashlib
 import io
@@ -26,6 +27,7 @@ os.environ.update(
     FIRST_SUPERADMIN_PASSWORD="admin1234",
 )
 from fastapi.testclient import TestClient
+from PIL import Image
 from pypdf import PdfReader
 
 from app.core.database import engine
@@ -117,12 +119,42 @@ try:
             dest = Path(sys.argv[sys.argv.index("--sample-pdf") + 1])
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(pdf1.content)
+        # Synthetic image fixture, never the real representative's signature.
+        image_buffer = io.BytesIO()
+        Image.new("RGB", (16, 8), "black").save(image_buffer, format="PNG")
+        image_bytes = image_buffer.getvalue()
+        call(
+            "PUT",
+            "/admin/settings/SERVICE",
+            {
+                "settings": [
+                    {
+                        "key": "quotation_signature",
+                        "value_type": "json",
+                        "value": {
+                            "company": payload["supplier"]["company"],
+                            "contact": payload["supplier"]["contact"],
+                            "png_base64": base64.b64encode(image_bytes).decode("ascii"),
+                        },
+                    }
+                ]
+            },
+        )
         updated = copy.deepcopy(payload)
         updated.update(base_version=1, revision_note="수량 수정")
         updated["items"][0]["quantity"] = "3"
         v2 = call("POST", path, updated, 201)
         assert v2["filename"] != v1["filename"] and v2["version"] == 2
         assert v2["snapshot"]["total"] == 330
+        assert (
+            v2["snapshot"]["signature_sha256"]
+            == hashlib.sha256(image_bytes).hexdigest()
+        )
+        pdf2 = c.get(
+            "/api/v1" + path + "/" + v2["id"] + "/pdf", headers=headers
+        ).content
+        assert len(PdfReader(io.BytesIO(pdf2)).pages[0].images) == 1
+        assert not PdfReader(io.BytesIO(pdf1.content)).pages[0].images
         assert (
             c.get("/api/v1" + path + "/" + v1["id"] + "/pdf", headers=headers).content
             == pdf1.content
@@ -163,11 +195,13 @@ try:
         assert len(call("GET", path)) == 2
         many = copy.deepcopy(payload)
         many["base_version"] = 2
+        many["supplier"]["contact"] = "다른 대표자"
         many["items"] = [
             {**payload["items"][0], "name": f"항목 {i + 1} 한글 품목"}
             for i in range(60)
         ]
         v3 = call("POST", path, many, 201)
+        assert v3["snapshot"]["signature_sha256"] is None
         pdf3 = c.get(
             "/api/v1" + path + "/" + v3["id"] + "/pdf", headers=headers
         ).content

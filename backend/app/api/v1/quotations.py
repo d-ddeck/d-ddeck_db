@@ -1,5 +1,6 @@
 """Append-only quotation versions attached to service tickets."""
 
+import base64
 import hashlib
 import re
 import uuid
@@ -145,7 +146,21 @@ def create(
     snapshot["document_no"] = f"QT-{safe_no}-v{version:03}"
     snapshot["ticket_no"] = t.ticket_no
     identifier = uuid.uuid4()
-    pdf = render(snapshot)
+    signature = None
+    configured = settings_store.get(db, ModuleKey.SERVICE, "quotation_signature", {})
+    if (
+        isinstance(configured, dict)
+        and all(
+            configured.get(key) == snapshot["supplier"][key]
+            for key in ("company", "contact")
+        )
+        and configured.get("png_base64")
+    ):
+        signature = base64.b64decode(configured["png_base64"], validate=True)
+    snapshot["signature_sha256"] = (
+        hashlib.sha256(signature).hexdigest() if signature else None
+    )
+    pdf = render(snapshot, signature=signature)
     row = QuotationRevision(
         id=identifier,
         ticket_id=ticket_id,
