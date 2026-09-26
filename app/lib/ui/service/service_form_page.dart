@@ -1,5 +1,6 @@
 import '../common/save_attachment_button.dart';
 import 'service_detail_page.dart';
+import 'quotation_page.dart';
 
 import 'package:flutter/services.dart';
 
@@ -930,9 +931,22 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                     ),
                   ),
                   FormActions(
-                    child: FilledButton(
-                      onPressed: _busy || _storesLoading ? null : _submit,
-                      child: Text(_busy ? '저장 중…' : '저장'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FilledButton(
+                          onPressed: _busy || _storesLoading ? null : _submit,
+                          child: Text(_busy ? '저장 중…' : '저장'),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _busy || _storesLoading
+                              ? null
+                              : () => _submit(quotation: true),
+                          icon: const Icon(Icons.request_quote_outlined),
+                          label: const Text('저장 후 견적서 작성'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -944,7 +958,10 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     ),
   );
 
-  Future<void> _submit({bool attachments = false}) async {
+  Future<void> _submit({
+    bool attachments = false,
+    bool quotation = false,
+  }) async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
     final invalid = _formKey.currentState!.validateGranularly();
@@ -1055,6 +1072,14 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
           detail: () => ServiceDetailPage(ticketId: saved.id),
         );
         submitted = true;
+        if (mounted && quotation) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => QuotationPage(ticketId: saved.id),
+            ),
+          );
+        }
         if (mounted && attachments) {
           await FormAttachmentsPage.open(context, 'service_ticket', saved.id);
         }

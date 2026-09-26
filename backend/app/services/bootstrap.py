@@ -268,6 +268,22 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
     (ModuleKey.AUTH, "max_failed_logins", 5, "int", "로그인 실패 잠금 횟수", False),
     (ModuleKey.AUTH, "lockout_minutes", 15, "int", "잠금 유지 시간(분)", False),
     (ModuleKey.SERVICE, "ticket_prefix", "AS", "string", "접수번호 접두어", True),
+    (
+        ModuleKey.SERVICE,
+        "quotation_supplier",
+        {"company": "", "contact": "", "address": "", "phone": "", "email": ""},
+        "json",
+        "견적서 기본 공급자 정보",
+        False,
+    ),
+    (
+        ModuleKey.SERVICE,
+        "quotation_bank_account",
+        "",
+        "string",
+        "견적서 기본 입금계좌",
+        False,
+    ),
     (ModuleKey.SERVICE, "default_due_days", 3, "int", "기본 처리 기한(일)", True),
     (
         ModuleKey.SERVICE,

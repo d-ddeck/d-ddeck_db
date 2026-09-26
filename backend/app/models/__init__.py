@@ -17,6 +17,7 @@ from app.models.calendar import (
     Notification,
 )
 from app.models.inventory import Asset, AssetMovement, Location
+from app.models.quotation import QuotationRevision
 from app.models.service import (
     Customer,
     ServiceLog,
@@ -50,6 +51,7 @@ __all__ = [
     "Notification",
     "Post",
     "PostComment",
+    "QuotationRevision",
     "RefreshToken",
     "ServiceLog",
     "ServicePart",

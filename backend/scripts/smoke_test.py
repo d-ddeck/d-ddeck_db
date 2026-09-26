@@ -1415,7 +1415,7 @@ with TestClient(app) as c:
     check("계정 수 (관리자·김테스트·동료)", st["users_active"] == 3, st["users_active"])
     check("AS 건수", st["tickets_total"] == 4, st["tickets_total"])
     check("자산 건수", st["assets_total"] == 2, st["assets_total"])
-    check("테이블 목록", len(st["tables"]) == 30, len(st["tables"]))
+    check("테이블 목록", len(st["tables"]) == 31, len(st["tables"]))
 
     r = c.get(
         f"/api/v1/admin/codes/items/{categories['PROGRAM']}/usage",

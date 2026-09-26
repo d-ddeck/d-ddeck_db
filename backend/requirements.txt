@@ -27,7 +27,9 @@ certifi==2026.7.22
 cffi==2.1.1
     # via cryptography
 charset-normalizer==3.5.1
-    # via requests
+    # via
+    #   reportlab
+    #   requests
 click==8.5.0
     # via uvicorn
 cryptography==50.0.1
@@ -64,6 +66,8 @@ markupsafe==3.0.3
     # via mako
 openpyxl==3.1.5
     # via -r backend/requirements.in
+pillow==12.3.0
+    # via reportlab
 psycopg[binary]==3.3.6
     # via -r backend/requirements.in
 psycopg-binary==3.3.6
@@ -95,6 +99,8 @@ python-multipart==0.0.32
     # via -r backend/requirements.in
 pyyaml==6.0.3
     # via uvicorn
+reportlab==5.0.1
+    # via -r backend/requirements.in
 requests==2.34.2
     # via -r backend/requirements.in
 six==1.17.0

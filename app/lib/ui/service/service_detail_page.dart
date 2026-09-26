@@ -21,6 +21,7 @@ import '../format.dart';
 import '../theme.dart';
 import 'service_form_page.dart';
 import 'ticket_history_page.dart';
+import 'quotation_page.dart';
 
 class ServiceDetailPage extends StatefulWidget {
   const ServiceDetailPage({super.key, required this.ticketId});
@@ -57,6 +58,16 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
         appBar: AppBar(
           title: const Text('AS 상세'),
           actions: [
+            IconButton(
+              tooltip: '견적서 · 수정 이력',
+              icon: const Icon(Icons.request_quote_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => QuotationPage(ticketId: widget.ticketId),
+                ),
+              ),
+            ),
             IconButton(
               tooltip: "수정 이력",
               icon: const Icon(Icons.history),
@@ -234,9 +245,9 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                           t.displayNo,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -281,8 +292,11 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                         AsyncView<List<Map<String, dynamic>>>(
                           load: () async =>
                               (await context.read<ApiClient>().get(
-                                '/service/tickets/${t.id}/assets',
-                              ) as List).map(asMap).toList(),
+                                        '/service/tickets/${t.id}/assets',
+                                      )
+                                      as List)
+                                  .map(asMap)
+                                  .toList(),
                           builder: (context, assets, reload) => Wrap(
                             runSpacing: 12,
                             spacing: 8,
@@ -484,7 +498,8 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                                                   if (!await ConfirmDialog.show(
                                                     context,
                                                     title: '처리 이력 삭제',
-                                                    message: '이 내용과 기록된 작업 시간을 삭제합니다.',
+                                                    message:
+                                                        '이 내용과 기록된 작업 시간을 삭제합니다.',
                                                     confirmLabel: '삭제',
                                                   )) {
                                                     return;
@@ -512,6 +527,17 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                         ),
 
                         const SizedBox(height: AppSpace.md),
+                        OutlinedButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => QuotationPage(ticketId: t.id),
+                            ),
+                          ),
+                          icon: const Icon(Icons.request_quote_outlined),
+                          label: const Text('견적서 작성 · PDF · 수정 이력'),
+                        ),
+                        const SizedBox(height: AppSpace.lg),
                         AttachmentSection(
                           entityType: FileRepository.serviceTicket,
                           entityId: t.id,

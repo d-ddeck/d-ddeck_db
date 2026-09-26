@@ -100,6 +100,8 @@ jobs:
           pip install -r requirements-dev.txt
           ruff check app scripts ../deploy
           python scripts/test_migrations.py
+          python scripts/test_service_work_types.py
+          python scripts/test_quotations.py
           python scripts/smoke_test.py
           python scripts/smoke_test_legacy.py
           python scripts/smoke_test_review.py

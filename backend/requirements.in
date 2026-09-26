@@ -35,3 +35,6 @@ python-dateutil>=2.9.0
 # Windows zoneinfo database
 tzdata==2026.4 ; sys_platform == "win32"
 colorama==0.4.6 ; sys_platform == "win32"
+
+# Immutable quotation PDF with embedded Korean font
+reportlab>=4.4.0

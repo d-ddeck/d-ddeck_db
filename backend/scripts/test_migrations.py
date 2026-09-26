@@ -59,9 +59,9 @@ def main() -> None:
         alembic(fresh, "upgrade", "head")
         alembic(fresh, "check")
         engine = create_engine(f"sqlite+pysqlite:///{fresh.as_posix()}")
-        assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 30
+        assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 31
         engine.dispose()
-        print("PASS: clean install, 30 tables, no model drift", flush=True)
+        print("PASS: clean install, 31 tables, no model drift", flush=True)
 
         production_env = {
             **os.environ,

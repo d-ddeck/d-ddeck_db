@@ -3,7 +3,7 @@
   "info": {
     "title": "d-ddeck DB Server",
     "description": "사내 통합 DB 서버 API.\n\n**진입 순서**: 회원가입 → 관리자 승인 → 로그인 → 이용\n\n| 모듈 | prefix | 내용 |\n|---|---|---|\n| 인증 | `/auth` | 가입 · 로그인 · 토큰 · 세션 · 기기 등록 |\n| 사용자 | `/users` | 승인 대기열 · 권한 · 구성원 목록 |\n| 서비스(AS) | `/service` | 접수 · 처리 이력 · 부품 · **자동 통계** |\n| 재고관리 | `/inventory` | 자산 · 위치 트리 · 이동 이력 |\n| 게시판 | `/board` | 게시판 설정 · 게시글 · 댓글 |\n| 캘린더 | `/calendar` | 일정 공유 · 참석자 · 알림 |\n| 관리기능 | `/admin` | **모듈별 설정** · 분류 코드 · 부서 · 감사로그 · 상태 |\n| 첨부 | `/files` | 공통 파일 업로드/다운로드 |\n\n인증은 `Authorization: Bearer <access_token>` 헤더를 사용합니다.",
-    "version": "1.0.7"
+    "version": "1.0.12"
   },
   "paths": {
     "/api/v1/auth/signup": {
@@ -1157,6 +1157,274 @@
         }
       }
     },
+    "/api/v1/service/tickets/{ticket_id}/quotations/defaults": {
+      "get": {
+        "tags": [
+          "quotations"
+        ],
+        "summary": "Defaults",
+        "operationId": "defaults_api_v1_service_tickets__ticket_id__quotations_defaults_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/tickets/{ticket_id}/quotations": {
+      "get": {
+        "tags": [
+          "quotations"
+        ],
+        "summary": "Revisions",
+        "operationId": "revisions_api_v1_service_tickets__ticket_id__quotations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuoteSummary"
+                  },
+                  "title": "Response Revisions Api V1 Service Tickets  Ticket Id  Quotations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "quotations"
+        ],
+        "summary": "Create",
+        "operationId": "create_api_v1_service_tickets__ticket_id__quotations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/tickets/{ticket_id}/quotations/{revision_id}": {
+      "get": {
+        "tags": [
+          "quotations"
+        ],
+        "summary": "Detail",
+        "operationId": "detail_api_v1_service_tickets__ticket_id__quotations__revision_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Revision Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/tickets/{ticket_id}/quotations/{revision_id}/pdf": {
+      "get": {
+        "tags": [
+          "quotations"
+        ],
+        "summary": "Download",
+        "operationId": "download_api_v1_service_tickets__ticket_id__quotations__revision_id__pdf_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Revision Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/service/customers": {
       "get": {
         "tags": [
@@ -1547,6 +1815,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -2010,6 +2295,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -3012,6 +3314,23 @@
             "description": "발생 월. year 와 함께"
           },
           {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -3298,6 +3617,7 @@
             "required": false,
             "schema": {
               "enum": [
+                "work_type",
                 "category",
                 "symptom",
                 "maker",
@@ -3409,6 +3729,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -3796,6 +4133,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -4203,6 +4557,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -4626,6 +4997,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -5067,6 +5455,23 @@
               "title": "Month"
             },
             "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "work_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Type Id"
+            }
           },
           {
             "name": "assignee_id",
@@ -10840,6 +11245,74 @@
                 "schema": {
                   "$ref": "#/components/schemas/Message"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/updates/latest": {
+      "get": {
+        "tags": [
+          "client updates"
+        ],
+        "summary": "Latest",
+        "operationId": "latest_api_v1_updates_latest_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/updates/files/{release}/{filename}": {
+      "get": {
+        "tags": [
+          "client updates"
+        ],
+        "summary": "Installer",
+        "operationId": "installer_api_v1_updates_files__release___filename__get",
+        "parameters": [
+          {
+            "name": "release",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Release"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -17544,6 +18017,46 @@
         ],
         "title": "ParticipantResponseIn"
       },
+      "Party": {
+        "properties": {
+          "company": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Company"
+          },
+          "contact": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Contact",
+            "default": ""
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Address",
+            "default": ""
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Phone",
+            "default": ""
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Email",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "company"
+        ],
+        "title": "Party"
+      },
       "PostCreate": {
         "properties": {
           "title": {
@@ -17836,6 +18349,233 @@
         },
         "type": "object",
         "title": "PostUpdate"
+      },
+      "QuoteCreate": {
+        "properties": {
+          "base_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Base Version"
+          },
+          "quote_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Quote Date"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date",
+            "title": "Valid Until"
+          },
+          "supplier": {
+            "$ref": "#/components/schemas/Party"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/Party"
+          },
+          "bank_account": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Bank Account",
+            "default": ""
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLine"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Notes",
+            "default": ""
+          },
+          "revision_note": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Revision Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "base_version",
+          "quote_date",
+          "valid_until",
+          "supplier",
+          "recipient",
+          "items"
+        ],
+        "title": "QuoteCreate"
+      },
+      "QuoteDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "revision_note": {
+            "type": "string",
+            "title": "Revision Note"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Snapshot"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "filename",
+          "sha256",
+          "created_at",
+          "author_name",
+          "total",
+          "revision_note",
+          "snapshot"
+        ],
+        "title": "QuoteDetail"
+      },
+      "QuoteLine": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "specification": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Specification",
+            "default": ""
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,7}|(?=[\\d.]{1,11}0*$)\\d{0,7}\\.\\d{0,3}0*$)"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,11}|(?=[\\d.]{1,12}0*$)\\d{0,11}\\.\\d{0,0}0*$)"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "quantity",
+          "unit_price"
+        ],
+        "title": "QuoteLine"
+      },
+      "QuoteSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "revision_note": {
+            "type": "string",
+            "title": "Revision Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "filename",
+          "sha256",
+          "created_at",
+          "author_name",
+          "total",
+          "revision_note"
+        ],
+        "title": "QuoteSummary"
       },
       "RefreshRequest": {
         "properties": {
@@ -18981,6 +19721,18 @@
             ],
             "title": "Asset Id"
           },
+          "work_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Type Id"
+          },
           "category_id": {
             "anyOf": [
               {
@@ -19286,6 +20038,18 @@
             ],
             "title": "Asset Id"
           },
+          "work_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Type Id"
+          },
           "category_id": {
             "anyOf": [
               {
@@ -19570,6 +20334,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "work_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cause_labels": {
             "items": {
@@ -19858,6 +20632,18 @@
             ],
             "title": "Asset Id"
           },
+          "work_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Type Id"
+          },
           "category_id": {
             "anyOf": [
               {
@@ -20143,6 +20929,16 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "work_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeItemBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cause_labels": {
             "items": {
               "type": "string"
@@ -20397,6 +21193,18 @@
               }
             ],
             "title": "Asset Id"
+          },
+          "work_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Type Id"
           },
           "category_id": {
             "anyOf": [
