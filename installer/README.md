@@ -1,6 +1,6 @@
 # Windows 설치 파일 만들기
 
-사용자에게 전달할 `ddeck-setup-1.0.5.exe` 한 개를 만듭니다.
+사용자에게 전달할 `ddeck-setup-1.0.6.exe` 한 개를 만듭니다.
 관리자 권한 없이 설치되고, **설치 중 서버 주소를 물어봅니다.**
 
 ---
@@ -33,7 +33,7 @@ Flutter와 Visual Studio 2022는 앱 빌드에 이미 필요한 것들이고,
 
 ## 배포
 
-`dist\ddeck-setup-1.0.5.exe` **파일 하나만** 전달하면 됩니다. (약 10.5MB)
+`dist\ddeck-setup-1.0.6.exe` **파일 하나만** 전달하면 됩니다. (약 10.5MB)
 
 사용자가 실행하면:
 
@@ -49,7 +49,7 @@ Flutter와 Visual Studio 2022는 앱 빌드에 이미 필요한 것들이고,
 ### IT 일괄 배포 (무인 설치)
 
 ```powershell
-ddeck-setup-1.0.5.exe /VERYSILENT /SERVERURL="http://miniserver.local:8000"
+ddeck-setup-1.0.6.exe /VERYSILENT /SERVERURL="http://miniserver.local:8000"
 ```
 
 | 인자 | 설명 |
