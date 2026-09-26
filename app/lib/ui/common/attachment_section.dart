@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'common.dart';
@@ -18,19 +19,22 @@ class AttachmentSection extends StatelessWidget {
     required this.entityType,
     required this.entityId,
     this.canEdit = true,
+    this.photoCategory,
   });
 
   final String entityType;
   final String entityId;
   final bool canEdit;
+  final String? photoCategory;
 
   @override
   Widget build(BuildContext context) => _AttachmentSectionBody(
     // 대상이 바뀌면 이전 목록과 진행 중인 작업의 UI 상태를 물려받지 않는다.
-    key: ValueKey((entityType, entityId)),
+    key: ValueKey((entityType, entityId, photoCategory)),
     entityType: entityType,
     entityId: entityId,
     canEdit: canEdit,
+    photoCategory: photoCategory,
   );
 }
 
@@ -40,11 +44,13 @@ class _AttachmentSectionBody extends StatefulWidget {
     required this.entityType,
     required this.entityId,
     this.canEdit = true,
+    this.photoCategory,
   });
 
   final String entityType;
   final String entityId;
   final bool canEdit;
+  final String? photoCategory;
 
   @override
   State<_AttachmentSectionBody> createState() => _AttachmentSectionBodyState();
@@ -58,6 +64,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
   int _uploadIndex = 0;
   int _uploadCount = 0;
   double? _progress;
+  final List<(String, bool)> _outcomes = [];
 
   bool get _busy => _adding || _busyId != null;
 
@@ -66,100 +73,145 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
     final repo = context.read<FileRepository>();
     final auth = context.watch<AuthState>();
     final scheme = Theme.of(context).colorScheme;
-    return SectionCard(title: '첨부', actions: [IconButton(
-                  tooltip: '새로고침',
-                  onPressed: _busy
-                      ? null
-                      : () => _viewKey.currentState?.reload(),
-                  icon: const Icon(Icons.refresh),
-                ), if (widget.canEdit) OutlinedButton.icon(
-                  onPressed: _busy ? null : _add,
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  label: const Text('추가'),
-                )], child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-
-            if (_adding) ...[
-              const SizedBox(height: 8),
-              if (_uploadName != null) ...[
-                StatusChip(
-                  label: '업로드 중 $_uploadIndex / $_uploadCount',
-                  color: scheme.primary,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _uploadName!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ] else
-                const Text('파일 선택 중…'),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(value: _progress),
-              if (_progress != null)
-                Text(
-                  '${(_progress! * 100).round()}%',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              const SizedBox(height: 12),
-            ],
-            AsyncView<List<Attachment>>(
-              key: _viewKey,
-              load: () => repo.listFor(widget.entityType, widget.entityId),
-              builder: (context, attachments, reload) {
-                // 상세 화면의 스크롤 안에 있으므로 빈 목록도 높이가 정해진 ListView를 쓰지 않는다.
-                if (attachments.isEmpty) {
-                  return EmptyState(icon: Icons.attach_file, message: '아직 등록된 첨부파일이 없습니다',
-                    action: widget.canEdit ? OutlinedButton(onPressed: _busy ? null : _add, child: const Text('파일 추가')) : null);
-                }
-                return Column(
-                  children: [
-                    for (final attachment in attachments)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: _busyId == attachment.id
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                attachment.isImage
-                                    ? Icons.image_outlined
-                                    : Icons.insert_drive_file_outlined,
-                              ),
-                        title: Text(attachment.originalName),
-                        subtitle: Text(
-                          '${attachment.sizeLabel} · ${Fmt.dateTime(attachment.createdAt)}',
-                        ),
-                        onTap: _busy ? null : () => _open(attachment),
-                        trailing:
-                            widget.canEdit && (auth.isAdmin ||
-                                (auth.user != null &&
-                                    auth.user!.id == attachment.uploadedById))
-                            ? IconButton(
-                                tooltip: '삭제',
-                                onPressed: _busy
-                                    ? null
-                                    : () => _delete(attachment),
-                                icon: const Icon(Icons.delete_outline),
-                              )
-                            : null,
-                      ),
-                  ],
-                );
-              },
+    return SectionCard(
+      title:
+          const {
+            'shop': '매장 사진',
+            'robot': '로봇 사진',
+            'ctrl': '제어박스 사진',
+            'panel': '조작부 사진',
+            'serial': '시리얼 사진',
+          }[widget.photoCategory] ??
+          '첨부',
+      actions: [
+        IconButton(
+          tooltip: '새로고침',
+          onPressed: _busy ? null : () => _viewKey.currentState?.reload(),
+          icon: const Icon(Icons.refresh),
+        ),
+        if (widget.canEdit)
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _add,
+            icon: const Icon(Icons.attach_file, size: 18),
+            label: const Text('추가'),
+          ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_outcomes.isNotEmpty)
+            Column(
+              children: [
+                for (final result in _outcomes)
+                  ListTile(
+                    leading: Icon(
+                      result.$2
+                          ? Icons.check_circle_outline
+                          : Icons.error_outline,
+                      color: result.$2
+                          ? AppColors.success(context)
+                          : AppColors.danger(context),
+                    ),
+                    title: Text(
+                      result.$1,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      result.$2 ? '업로드 완료' : '업로드 실패 · 파일을 다시 선택해 주세요',
+                    ),
+                  ),
+              ],
             ),
+          if (_adding) ...[
+            const SizedBox(height: 8),
+            if (_uploadName != null) ...[
+              StatusChip(
+                label: '업로드 중 $_uploadIndex / $_uploadCount',
+                color: scheme.primary,
+              ),
+              const SizedBox(height: 6),
+              Text(_uploadName!, maxLines: 2, overflow: TextOverflow.ellipsis),
+            ] else
+              const Text('파일 선택 중…'),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: _progress),
+            if (_progress != null)
+              Text(
+                '${(_progress! * 100).round()}%',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            const SizedBox(height: 12),
           ],
-        ));
+          AsyncView<List<Attachment>>(
+            key: _viewKey,
+            load: () => repo.listFor(
+              widget.entityType,
+              widget.entityId,
+              photoCategory: widget.photoCategory,
+            ),
+            builder: (context, attachments, reload) {
+              // 상세 화면의 스크롤 안에 있으므로 빈 목록도 높이가 정해진 ListView를 쓰지 않는다.
+              if (attachments.isEmpty) {
+                return EmptyState(
+                  icon: Icons.attach_file,
+                  message: '아직 등록된 첨부파일이 없습니다',
+                  action: widget.canEdit
+                      ? OutlinedButton(
+                          onPressed: _busy ? null : _add,
+                          child: const Text('파일 추가'),
+                        )
+                      : null,
+                );
+              }
+              return Column(
+                children: [
+                  for (final attachment in attachments)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: _busyId == attachment.id
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : attachment.isImage
+                          ? _AttachmentThumbnail(attachment: attachment)
+                          : const Icon(Icons.insert_drive_file_outlined),
+                      title: Text(attachment.originalName),
+                      subtitle: Text(
+                        '${attachment.sizeLabel} · ${Fmt.dateTime(attachment.createdAt)}',
+                      ),
+                      onTap: _busy ? null : () => _open(attachment),
+                      trailing:
+                          widget.canEdit &&
+                              (auth.isAdmin ||
+                                  (auth.user != null &&
+                                      auth.user!.id == attachment.uploadedById))
+                          ? IconButton(
+                              tooltip: '삭제',
+                              onPressed: _busy
+                                  ? null
+                                  : () => _delete(attachment),
+                              icon: const Icon(Icons.delete_outline),
+                            )
+                          : null,
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _add() async {
     final repo = context.read<FileRepository>();
-    setState(() => _adding = true);
+    setState(() {
+      _adding = true;
+      _outcomes.clear();
+    });
     try {
       FilePickerResult? selection;
       final picked = await runGuarded(context, () async {
@@ -187,6 +239,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
           await repo.upload(
             entityType: widget.entityType,
             entityId: widget.entityId,
+            photoCategory: widget.photoCategory,
             filePath: path,
             fileName: file.name,
             onProgress: (sent, total) {
@@ -197,6 +250,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
             },
           );
         });
+        if (mounted) setState(() => _outcomes.add((file.name, ok)));
         if (mounted && ok) _viewKey.currentState?.reload();
       }
     } finally {
@@ -217,6 +271,46 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
       await runGuarded(context, () async {
         final file = await repo.download(attachment);
         if (!mounted) return;
+        if (attachment.isImage) {
+          await showDialog<void>(
+            context: context,
+            builder: (c) => Dialog(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(attachment.originalName),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '닫기',
+                        onPressed: () => Navigator.pop(c),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  Flexible(
+                    child: InteractiveViewer(
+                      child: Image.file(
+                        File(file.path),
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stack) => TextButton(
+                          onPressed: () => OpenFilex.open(file.path),
+                          child: const Text('외부 앱에서 열기'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+          return;
+        }
         final result = await OpenFilex.open(file.path);
         if (result.type != ResultType.done) {
           throw ApiException(
@@ -239,8 +333,13 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
     final repo = context.read<FileRepository>();
     setState(() => _busyId = attachment.id);
     try {
-      final confirmed = await ConfirmDialog.show(context, title: '첨부파일 삭제',
-        message: '${attachment.originalName}\n파일을 삭제하시겠습니까?', confirmLabel: '삭제', destructive: true);
+      final confirmed = await ConfirmDialog.show(
+        context,
+        title: '첨부파일 삭제',
+        message: '${attachment.originalName}\n파일을 삭제하시겠습니까?',
+        confirmLabel: '삭제',
+        destructive: true,
+      );
       if (!mounted || confirmed != true) return;
       final ok = await runGuarded(
         context,
@@ -252,4 +351,59 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
       if (mounted) setState(() => _busyId = null);
     }
   }
+}
+
+class _AttachmentThumbnail extends StatefulWidget {
+  const _AttachmentThumbnail({required this.attachment});
+  final Attachment attachment;
+  @override
+  State<_AttachmentThumbnail> createState() => _AttachmentThumbnailState();
+}
+
+class _AttachmentThumbnailState extends State<_AttachmentThumbnail> {
+  Future<File>? _file;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 56,
+    height: 56,
+    child: _file == null
+        ? IconButton(
+            tooltip: '썸네일 불러오기',
+            icon: const Icon(Icons.image_outlined),
+            onPressed: () => setState(
+              () => _file = context.read<FileRepository>().download(
+                widget.attachment,
+              ),
+            ),
+          )
+        : FutureBuilder<File>(
+            future: _file,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return IconButton(
+                  tooltip: '썸네일 다시 시도',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () => setState(
+                    () => _file = context.read<FileRepository>().download(
+                      widget.attachment,
+                    ),
+                  ),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const CircularProgressIndicator(strokeWidth: 2);
+              }
+              return Image.file(
+                snapshot.data!,
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                cacheWidth: 112,
+                semanticLabel: widget.attachment.originalName,
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.broken_image_outlined),
+              );
+            },
+          ),
+  );
 }

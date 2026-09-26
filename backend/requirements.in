@@ -1,0 +1,37 @@
+# --- Web / API ---
+fastapi>=0.118.0
+uvicorn[standard]>=0.37.0
+python-multipart>=0.0.20
+
+# --- Validation / Settings ---
+pydantic>=2.11.0
+pydantic-settings>=2.10.0
+email-validator>=2.2.0
+
+# --- DB ---
+SQLAlchemy>=2.0.43
+alembic>=1.16.0
+# PostgreSQL driver. Skeleton runs on SQLite without it, but install for production.
+psycopg[binary]>=3.2.0
+
+# --- Auth ---
+PyJWT>=2.10.0
+bcrypt>=4.2.0
+
+# --- Excel export (구 서버와 같은 엑셀 내려받기) ---
+openpyxl>=3.1.5
+
+# --- Scheduler (calendar reminders -> notifications) ---
+APScheduler>=3.11.0
+
+# --- HTTP transport ---
+httpx>=0.28.0
+
+# FCM HTTP v1 and recurring events
+google-auth>=2.40.0
+requests>=2.32.0
+python-dateutil>=2.9.0
+
+# Windows zoneinfo database
+tzdata==2026.4 ; sys_platform == "win32"
+colorama==0.4.6 ; sys_platform == "win32"

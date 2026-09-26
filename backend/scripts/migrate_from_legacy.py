@@ -13,15 +13,13 @@
     대응 기록    legacy_no         게시글   (게시판, 제목)
 
 옮기지 않는 것 (1차 범위 밖):
-  * change_log 141건 / asset_log 552건 - 변경·재고 이력. 구 DB 가 그대로 있으니
-    나중에 붙일 수 있다.
-  * worklogs - 근무일지는 받을 테이블이 아직 없다.
   * equipment 83행 - 구 시스템에서도 읽는 곳이 한 줄뿐인 죽은 표.
 
 비밀번호는 넘어오지 않는다. 구 서버는 werkzeug scrypt, 이쪽은 bcrypt 라 해시를
 재사용할 수 없다. 새로 만든 계정은 --password 값(기본 ddeck1234)으로 열리고
 must_change_password=True 가 붙는다.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,23 +29,22 @@ import shutil
 import sqlite3
 import sys
 import uuid
+from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from sqlalchemy import func, select  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
-
-from app.core.config import settings  # noqa: E402
-from app.core.database import SessionLocal, engine  # noqa: E402
-from app.core.security import hash_password  # noqa: E402
-from app.models import Base  # noqa: E402
-from app.models.admin import Attachment, CodeGroup, CodeItem  # noqa: E402
-from app.models.board import Board, Post  # noqa: E402
-from app.models.calendar import Calendar, Event, EventParticipant  # noqa: E402
-from app.models.enums import (  # noqa: E402
+from app.core.config import settings
+from app.core.database import SessionLocal, engine
+from app.core.security import hash_password
+from app.models import Base
+from app.models.admin import Attachment, CodeGroup, CodeItem
+from app.models.board import Board, Post
+from app.models.calendar import Calendar, Event, EventParticipant
+from app.models.enums import (
     AssetStatus,
     BoardType,
     CalendarType,
@@ -59,18 +56,20 @@ from app.models.enums import (  # noqa: E402
     ServicePriority,
     ServiceStatus,
     UserStatus,
+    WorkLogVisibility,
 )
-from app.models.inventory import Asset, Location  # noqa: E402
-from app.models.service import (  # noqa: E402
+from app.models.inventory import Asset, Location
+from app.models.service import (
     ServiceTicket,
     ServiceTicketCause,
     ServiceTicketResponder,
 )
 from app.models.store import Store, StoreSet
+from app.models.user import User
 from app.models.worklog import WorkLog
-from app.models.enums import WorkLogVisibility  # noqa: E402
-from app.models.user import User  # noqa: E402
-from app.services import bootstrap  # noqa: E402
+from app.services import bootstrap
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 # 구 서버는 우분투 데스크톱의 로컬 시각(KST)을 그대로 문자열로 넣었다.
 # 이 서버는 전부 UTC aware 라 옮기면서 9시간을 뺀다.
@@ -154,7 +153,7 @@ def to_utc(text: str | None) -> datetime | None:
     text = text.strip()
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
-            naive = datetime.strptime(text, fmt)
+            naive = datetime.strptime(text, fmt)  # noqa: DTZ007 - legacy values are interpreted as KST below
         except ValueError:
             continue
         if fmt == "%Y-%m-%d":
@@ -167,7 +166,7 @@ def to_date(text: str | None) -> date | None:
     if not text:
         return None
     try:
-        return datetime.strptime(text.strip(), "%Y-%m-%d").date()
+        return datetime.strptime(text.strip(), "%Y-%m-%d").date()  # noqa: DTZ007 - legacy values are interpreted as KST below
     except ValueError:
         return None
 
@@ -201,7 +200,9 @@ def split_multi(text: str | None) -> list[str]:
 # --------------------------------------------------------------- 각 단계
 
 
-def migrate_users(db: Session, src: sqlite3.Connection, st: Stats, password: str) -> dict[str, User]:
+def migrate_users(
+    db: Session, src: sqlite3.Connection, st: Stats, password: str
+) -> dict[str, User]:
     """구 계정 5명. 로그인 아이디가 한글이라 <아이디>@ddeck.local 로 만든다."""
     created = reused = 0
     by_name: dict[str, User] = {}
@@ -235,6 +236,7 @@ def migrate_users(db: Session, src: sqlite3.Connection, st: Stats, password: str
         else:
             reused += 1
         by_name[name] = user
+        by_name[login] = user
     st.add("사용자", created, reused)
     return by_name
 
@@ -298,7 +300,9 @@ def migrate_codes(
     index: dict[tuple[str, str], CodeItem] = {}
 
     rows = list(
-        src.execute("SELECT kind, value, parent, sort, active FROM lists ORDER BY kind, sort, rowid")
+        src.execute(
+            "SELECT kind, value, parent, sort, active FROM lists ORDER BY kind, sort, rowid"
+        )
     )
 
     # 1) 부모가 없는 평범한 마스터
@@ -348,7 +352,10 @@ def migrate_codes(
 
 
 def migrate_stores(
-    db: Session, src: sqlite3.Connection, st: Stats, codes: dict[tuple[str, str], CodeItem]
+    db: Session,
+    src: sqlite3.Connection,
+    st: Stats,
+    codes: dict[tuple[str, str], CodeItem],
 ) -> dict[str, Store]:
     created = reused = 0
     by_name: dict[str, Store] = {}
@@ -384,7 +391,9 @@ def migrate_stores(
         if store is None:
             continue
         existing = db.scalar(
-            select(StoreSet).where(StoreSet.store_id == store.id, StoreSet.set_no == set_no)
+            select(StoreSet).where(
+                StoreSet.store_id == store.id, StoreSet.set_no == set_no
+            )
         )
         if existing is None:
             db.add(StoreSet(store_id=store.id, set_no=set_no, name=set_name or None))
@@ -395,20 +404,31 @@ def migrate_stores(
     return by_name
 
 
-def migrate_places(db: Session, src: sqlite3.Connection, st: Stats) -> dict[str, Location]:
+def migrate_places(
+    db: Session, src: sqlite3.Connection, st: Stats
+) -> dict[str, Location]:
     """구 asset_place('창고','사무실') -> 자사 위치 행.
 
     매장과 달리 이것들은 우리 건물 안이라 Location 트리가 맞는 자리다.
     """
     created = reused = 0
     by_name: dict[str, Location] = {}
-    values = [r[0] for r in src.execute("SELECT value FROM lists WHERE kind='asset_place' ORDER BY sort")]
+    values = [
+        r[0]
+        for r in src.execute(
+            "SELECT value FROM lists WHERE kind='asset_place' ORDER BY sort"
+        )
+    ]
     # 자산 쪽에 목록에 없는 위치 문자열이 있을 수 있어 같이 긁는다.
     for (extra,) in src.execute("SELECT DISTINCT place FROM assets WHERE place<>''"):
         if extra not in values:
             values.append(extra)
     for idx, value in enumerate(values, 1):
-        loc = db.scalar(select(Location).where(Location.name == value, Location.deleted_at.is_(None)))
+        loc = db.scalar(
+            select(Location).where(
+                Location.name == value, Location.deleted_at.is_(None)
+            )
+        )
         if loc is None:
             loc = Location(
                 code=code_for(f"place:{value}"),
@@ -442,8 +462,18 @@ def migrate_assets(
         " note, set_no, maker FROM assets ORDER BY id"
     ):
         (
-            legacy_id, kind, model, serial, status, place, store_name,
-            _brand, install_date, note, set_no, maker,
+            legacy_id,
+            kind,
+            model,
+            serial,
+            status,
+            place,
+            store_name,
+            _brand,
+            install_date,
+            note,
+            set_no,
+            maker,
         ) = row
         category = codes.get(("asset_kind", kind))
         key = (kind, serial)
@@ -459,7 +489,9 @@ def migrate_assets(
             # 구 시스템은 store 칸에 '창고' 같은 위치를 넣어 둔 행이 있다.
             # 매장 목록에 없으면 매장이 아니라 위치로 본다.
             store = stores.get(store_name or "")
-            location = places.get(place or "") or (None if store else places.get(store_name or ""))
+            location = places.get(place or "") or (
+                None if store else places.get(store_name or "")
+            )
             asset = Asset(
                 asset_no=f"AST-L-{legacy_id:05d}",
                 name=f"{kind} {model}".strip() or kind,
@@ -468,8 +500,11 @@ def migrate_assets(
                 manufacturer=maker or None,
                 serial_no=serial,
                 status=ASSET_STATUS_MAP.get(status, AssetStatus.IN_STOCK),
-                status_item_id=(codes.get(("asset_status", status)).id
-                                if codes.get(("asset_status", status)) else None),
+                status_item_id=(
+                    codes.get(("asset_status", status)).id
+                    if codes.get(("asset_status", status))
+                    else None
+                ),
                 location_id=location.id if location else None,
                 store_id=store.id if store else None,
                 set_no=set_no or 0,
@@ -499,7 +534,9 @@ def deactivate_unused_categories(db: Session, st: Stats) -> None:
         return
     turned_off = 0
     for item in db.scalars(
-        select(CodeItem).where(CodeItem.group_id == group.id, CodeItem.is_active.is_(True))
+        select(CodeItem).where(
+            CodeItem.group_id == group.id, CodeItem.is_active.is_(True)
+        )
     ):
         used = db.scalar(
             select(func.count(Asset.id)).where(
@@ -537,9 +574,25 @@ def migrate_tickets(
         " FROM records ORDER BY no"
     ):
         (
-            no, _brand, store_name, fault, occur_date, occur_content, response_date,
-            response_content, responders, rental, rental_type, serial, due_date,
-            return_date, returned, created_at, updated_at, created_by, closed,
+            no,
+            _brand,
+            store_name,
+            fault,
+            occur_date,
+            occur_content,
+            response_date,
+            response_content,
+            responders,
+            rental,
+            rental_type,
+            serial,
+            due_date,
+            return_date,
+            returned,
+            created_at,
+            updated_at,
+            created_by,
+            closed,
         ) = row
 
         ticket = db.scalar(select(ServiceTicket).where(ServiceTicket.legacy_no == no))
@@ -549,34 +602,49 @@ def migrate_tickets(
             continue
 
         store = stores.get(store_name or "")
-        received = to_utc(occur_date) or to_utc(created_at) or datetime.now(timezone.utc)
+        received = (
+            to_utc(occur_date) or to_utc(created_at) or datetime.now(timezone.utc)
+        )
         completed = to_utc(response_date) if closed == "O" else None
         my_causes = causes_by_no.get(no, [])
         head = my_causes[0] if my_causes else None
 
         ticket = ServiceTicket(
-            ticket_no=str(no),          # 팀이 부르던 번호를 그대로 둔다
+            ticket_no=str(no),  # 팀이 부르던 번호를 그대로 둔다
             legacy_no=no,
             title=first_line(occur_content) or (store_name or f"대응 {no}"),
             store_id=store.id if store else None,
             customer_name=store_name or None,
             serial_no=(split_multi(serial) or [None])[0],
-            category_id=(codes.get(("category", head[1])).id
-                         if head and codes.get(("category", head[1])) else None),
-            symptom_id=(codes.get(("detail", head[2])).id
-                        if head and head[2] and codes.get(("detail", head[2])) else None),
-            fault_id=(codes.get(("fault", fault)).id if codes.get(("fault", fault)) else None),
+            category_id=(
+                codes.get(("category", head[1])).id
+                if head and codes.get(("category", head[1]))
+                else None
+            ),
+            symptom_id=(
+                codes.get(("detail", head[2])).id
+                if head and head[2] and codes.get(("detail", head[2]))
+                else None
+            ),
+            fault_id=(
+                codes.get(("fault", fault)).id if codes.get(("fault", fault)) else None
+            ),
             status=ServiceStatus.COMPLETED if closed == "O" else ServiceStatus.RECEIVED,
             priority=ServicePriority.NORMAL,
             channel=ServiceChannel.INTERNAL,
-            assignee_id=(users[split_multi(responders)[0]].id
-                         if split_multi(responders) and split_multi(responders)[0] in users
-                         else None),
+            assignee_id=(
+                users[split_multi(responders)[0]].id
+                if split_multi(responders) and split_multi(responders)[0] in users
+                else None
+            ),
             received_at=received,
             completed_at=completed,
             is_rental=(rental == "O"),
-            rental_type_id=(codes.get(("rental_type", rental_type)).id
-                            if codes.get(("rental_type", rental_type)) else None),
+            rental_type_id=(
+                codes.get(("rental_type", rental_type)).id
+                if codes.get(("rental_type", rental_type))
+                else None
+            ),
             rental_serials=serial or None,
             rental_due_date=to_date(due_date),
             rental_returned=(returned == "O"),
@@ -599,12 +667,21 @@ def migrate_tickets(
                 ServiceTicketCause(
                     ticket_id=ticket.id,
                     seq=seq,
-                    category_id=(codes.get(("category", category)).id
-                                 if codes.get(("category", category)) else None),
-                    symptom_id=(codes.get(("detail", detail)).id
-                                if detail and codes.get(("detail", detail)) else None),
-                    maker_id=(codes.get(("asset_maker", maker)).id
-                              if maker and codes.get(("asset_maker", maker)) else None),
+                    category_id=(
+                        codes.get(("category", category)).id
+                        if codes.get(("category", category))
+                        else None
+                    ),
+                    symptom_id=(
+                        codes.get(("detail", detail)).id
+                        if detail and codes.get(("detail", detail))
+                        else None
+                    ),
+                    maker_id=(
+                        codes.get(("asset_maker", maker)).id
+                        if maker and codes.get(("asset_maker", maker))
+                        else None
+                    ),
                 )
             )
             cause_rows += 1
@@ -644,13 +721,17 @@ def migrate_board(
         category = category or "기타"
         board = boards.get(category)
         if board is None:
-            code = "NOTICE" if category == "공지사항" else f"LEGACY_{code_for(category)}"
+            code = (
+                "NOTICE" if category == "공지사항" else f"LEGACY_{code_for(category)}"
+            )
             board = db.scalar(select(Board).where(Board.code == code))
             if board is None:
                 board = Board(
                     code=code,
                     name=category,
-                    type=BoardType.NOTICE if category == "공지사항" else BoardType.ARCHIVE,
+                    type=BoardType.NOTICE
+                    if category == "공지사항"
+                    else BoardType.ARCHIVE,
                     description="구 서버 자료실에서 옮겨온 분류",
                     sort_order=50,
                 )
@@ -722,7 +803,9 @@ def migrate_events(
     created = reused = 0
     calendar = db.scalar(select(Calendar).where(Calendar.type == CalendarType.COMPANY))
     if calendar is None:
-        calendar = Calendar(name="전사 캘린더", type=CalendarType.COMPANY, color="#3B82F6")
+        calendar = Calendar(
+            name="전사 캘린더", type=CalendarType.COMPANY, color="#3B82F6"
+        )
         db.add(calendar)
         db.flush()
 
@@ -731,8 +814,18 @@ def migrate_events(
         "SELECT author, category, title, start_date, end_date, start_time, end_time,"
         " place, detail, created_by FROM events ORDER BY id"
     ):
-        (author, category, title, start_date, end_date, start_time,
-         end_time, place, detail, created_by) = row
+        (
+            author,
+            category,
+            title,
+            start_date,
+            end_date,
+            start_time,
+            end_time,
+            place,
+            detail,
+            created_by,
+        ) = row
         starts = to_utc(f"{start_date} {start_time or '09:00'}:00")
         ends = to_utc(f"{end_date} {end_time or '18:00'}:00")
         if starts is None:
@@ -792,15 +885,22 @@ def migrate_files(
     ):
         ticket = tickets.get(rec_no)
         if ticket is not None:
-            jobs.append(("service_ticket", ticket.id, filename,
-                         source_root / "uploads" / str(rec_no) / stored))
+            jobs.append(
+                (
+                    "service_ticket",
+                    ticket.id,
+                    filename,
+                    source_root / "uploads" / str(rec_no) / stored,
+                )
+            )
     for doc_id, filename, stored in src.execute(
         "SELECT doc_id, filename, stored FROM doc_files WHERE stored<>''"
     ):
         post = posts.get(doc_id)
         if post is not None:
-            jobs.append(("post", post.id, filename,
-                         source_root / "docs" / str(doc_id) / stored))
+            jobs.append(
+                ("post", post.id, filename, source_root / "docs" / str(doc_id) / stored)
+            )
 
     for entity_type, entity_id, original_name, path in jobs:
         existing = db.scalar(
@@ -857,8 +957,25 @@ def migrate_worklogs(
         "SELECT id, author, position, date, work_start, work_end, summary, detail, overtime, overtime_note,"
         " plan, needs, visibility, created_at, created_by, updated_at, updated_by FROM worklogs ORDER BY id"
     ):
-        (wid, author, position, wdate, ws, we, summary, detail, overtime, note,
-         plan, needs, visibility, created_at, created_by, updated_at, updated_by) = row
+        (
+            wid,
+            author,
+            position,
+            wdate,
+            ws,
+            we,
+            summary,
+            detail,
+            overtime,
+            note,
+            plan,
+            needs,
+            visibility,
+            created_at,
+            created_by,
+            updated_at,
+            updated_by,
+        ) = row
         log = db.scalar(select(WorkLog).where(WorkLog.legacy_id == wid))
         if log is not None:
             reused += 1
@@ -869,7 +986,7 @@ def migrate_worklogs(
                 author_id=user.id if user else None,
                 author_name=author,
                 position=position or None,
-                work_date=to_date(wdate) or date.today(),
+                work_date=to_date(wdate) or datetime.now(ZoneInfo("Asia/Seoul")).date(),
                 work_start=ws or "09:00",
                 work_end=we or "18:00",
                 summary=summary or "-",
@@ -878,9 +995,15 @@ def migrate_worklogs(
                 overtime_note=note or None,
                 plan=plan or None,
                 needs=needs or None,
-                visibility=WorkLogVisibility.TEAM if visibility == "team" else WorkLogVisibility.PRIVATE,
-                created_by_id=(users.get(created_by) or by_name.get(created_by)).id if (users.get(created_by) or by_name.get(created_by)) else None,
-                updated_by_id=(users.get(updated_by) or by_name.get(updated_by)).id if (users.get(updated_by) or by_name.get(updated_by)) else None,
+                visibility=WorkLogVisibility.TEAM
+                if visibility == "team"
+                else WorkLogVisibility.PRIVATE,
+                created_by_id=(users.get(created_by) or by_name.get(created_by)).id
+                if (users.get(created_by) or by_name.get(created_by))
+                else None,
+                updated_by_id=(users.get(updated_by) or by_name.get(updated_by)).id
+                if (users.get(updated_by) or by_name.get(updated_by))
+                else None,
             )
             db.add(log)
             db.flush()
@@ -889,11 +1012,17 @@ def migrate_worklogs(
             created += 1
         # 첨부: data/worklogs/<작성자>/<년>/<월>/<stored>
         for filename, stored, uploaded_by in src.execute(
-            "SELECT filename, stored, uploaded_by FROM worklog_files WHERE worklog_id=? AND stored<>''", (wid,)
+            "SELECT filename, stored, uploaded_by FROM worklog_files WHERE worklog_id=? AND stored<>''",
+            (wid,),
         ):
-            exists = db.scalar(select(Attachment).where(
-                Attachment.entity_type == "worklog", Attachment.entity_id == log.id,
-                Attachment.original_name == filename, Attachment.deleted_at.is_(None)))
+            exists = db.scalar(
+                select(Attachment).where(
+                    Attachment.entity_type == "worklog",
+                    Attachment.entity_id == log.id,
+                    Attachment.original_name == filename,
+                    Attachment.deleted_at.is_(None),
+                )
+            )
             if exists is not None:
                 continue
             path = source_root / "worklogs" / author / wdate[:4] / wdate[5:7] / stored
@@ -907,12 +1036,19 @@ def migrate_worklogs(
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, dest)
             up = users.get(uploaded_by) or by_name.get(uploaded_by)
-            db.add(Attachment(
-                entity_type="worklog", entity_id=log.id, original_name=filename,
-                stored_path=str(dest.relative_to(settings.storage_path)).replace("\\", "/"),
-                content_type=mimetypes.guess_type(filename)[0], size_bytes=path.stat().st_size,
-                uploaded_by_id=up.id if up else None,
-            ))
+            db.add(
+                Attachment(
+                    entity_type="worklog",
+                    entity_id=log.id,
+                    original_name=filename,
+                    stored_path=str(dest.relative_to(settings.storage_path)).replace(
+                        "\\", "/"
+                    ),
+                    content_type=mimetypes.guess_type(filename)[0],
+                    size_bytes=path.stat().st_size,
+                    uploaded_by_id=up.id if up else None,
+                )
+            )
             files_created += 1
     st.add("근무일지", created, reused)
     st.add("  근무일지 첨부", files_created, 0)
@@ -925,10 +1061,20 @@ def migrate_worklogs(
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="구 서버(CS_Record) 자료 이관")
-    ap.add_argument("--source", required=True, help="구 서버 백업 폴더 (cs.db 가 있는 곳)")
-    ap.add_argument("--password", default="ddeck1234", help="새로 만드는 계정의 임시 비밀번호")
-    ap.add_argument("--dry-run", action="store_true", help="실제로 쓰지 않고 건수만 센다")
-    ap.add_argument("--only", default="", help="쉼표로 나눈 단계 이름만 실행 (예: worklogs). 계정 매핑은 항상 읽는다")
+    ap.add_argument(
+        "--source", required=True, help="구 서버 백업 폴더 (cs.db 가 있는 곳)"
+    )
+    ap.add_argument(
+        "--password", default="ddeck1234", help="새로 만드는 계정의 임시 비밀번호"
+    )
+    ap.add_argument(
+        "--dry-run", action="store_true", help="실제로 쓰지 않고 건수만 센다"
+    )
+    ap.add_argument(
+        "--only",
+        default="",
+        help="쉼표로 나눈 단계 이름만 실행 (예: worklogs). 계정 매핑은 항상 읽는다",
+    )
     args = ap.parse_args()
 
     source_root = Path(args.source).expanduser().resolve()
@@ -937,23 +1083,56 @@ def main() -> int:
         print(f"cs.db 를 찾을 수 없습니다: {db_path}")
         return 1
 
-    Base.metadata.create_all(bind=engine)
+    target_engine, session_factory, scratch = engine, SessionLocal, None
+    if args.dry_run:
+        # Work on an isolated SQLite snapshot. Bootstrap commits must never touch
+        # the actual target during a preview.
+        import tempfile
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        if not settings.is_sqlite:
+            ap.error(
+                "--dry-run은 SQLite 복제본에서 실행하세요. PostgreSQL은 별도 검증 DB를 사용하세요."
+            )
+        scratch = tempfile.TemporaryDirectory(prefix="ddeck-legacy-preview-")
+        shadow = Path(scratch.name) / "preview.db"
+        original = Path(engine.url.database)
+        if original.is_file():
+            with (
+                closing(
+                    sqlite3.connect(f"file:{original.resolve()}?mode=ro", uri=True)
+                ) as old,
+                closing(sqlite3.connect(shadow)) as new,
+            ):
+                old.backup(new)
+        target_engine = create_engine(f"sqlite:///{shadow}")
+        session_factory = sessionmaker(bind=target_engine, autoflush=False)
+        Base.metadata.create_all(bind=target_engine)
+    else:
+        from sqlalchemy import inspect
+
+        if not inspect(target_engine).has_table("alembic_version"):
+            ap.error(
+                "대상 DB에 먼저 alembic upgrade head를 실행하세요. 기존 DB는 adopt_schema.py로 검증하세요."
+            )
 
     # 부트스트랩을 먼저 돌린다. 이 스크립트가 ASSET_CATEGORY 같은 시스템
     # 코드군을 먼저 만들어 버리면 이름이 코드값 그대로 남고, 나중에 서버가
     # 떠도 이미 있다고 보고 고치지 않는다.
-    boot_db = SessionLocal()
+    boot_db = session_factory()
     try:
         bootstrap.run(boot_db)
     finally:
         boot_db.close()
 
     src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    db = SessionLocal()
+    db = session_factory()
     st = Stats()
     try:
         print(f"원본: {db_path}")
-        print(f"대상: {settings.DATABASE_URL}")
+        print(f"대상: {engine.url.render_as_string(hide_password=True)}")
         if args.dry_run:
             print("*** DRY RUN - 마지막에 되돌립니다 ***")
         print()
@@ -970,6 +1149,10 @@ def main() -> int:
             posts = migrate_board(db, src, st, users)
             migrate_events(db, src, st, users)
             migrate_files(db, src, st, source_root, tickets, posts, args.dry_run)
+        if not only or "history" in only:
+            from legacy_history import migrate
+
+            migrate(db, src, st, users, to_utc, code_for)
         if not only or "worklogs" in only:
             migrate_worklogs(db, src, st, users, source_root, args.dry_run)
 
@@ -989,6 +1172,9 @@ def main() -> int:
     finally:
         db.close()
         src.close()
+        if scratch is not None:
+            target_engine.dispose()
+            scratch.cleanup()
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ enum Role {
 }
 
 enum UserStatus {
+  unknown('UNKNOWN', '알 수 없는 상태'),
   pending('PENDING', '승인 대기'),
   approved('APPROVED', '사용중'),
   rejected('REJECTED', '반려'),
@@ -30,8 +31,10 @@ enum UserStatus {
   final String value;
   final String label;
 
-  static UserStatus parse(String? v) => UserStatus.values
-      .firstWhere((s) => s.value == v, orElse: () => UserStatus.pending);
+  static UserStatus parse(String? v) => UserStatus.values.firstWhere(
+    (s) => s.value == v,
+    orElse: () => UserStatus.unknown,
+  );
 }
 
 class UserProfile {
@@ -87,7 +90,8 @@ class UserProfile {
       phone: j['phone'] as String?,
       position: j['position'] as String?,
       departmentId: j['department_id'] as String?,
-      departmentName: j['department_name'] as String? ??
+      departmentName:
+          j['department_name'] as String? ??
           (dept is Map ? dept['name'] as String? : null),
       mustChangePassword: asBool(j['must_change_password']),
       lastLoginAt: asDate(j['last_login_at']),
@@ -113,11 +117,11 @@ class AuthSession {
   final DateTime? expiresAt;
 
   factory AuthSession.fromJson(Map<String, dynamic> j) => AuthSession(
-        accessToken: asString(j['access_token']),
-        refreshToken: asString(j['refresh_token']),
-        expiresAt: asDate(j['expires_at']),
-        user: UserProfile.fromJson(asMap(j['user'])),
-      );
+    accessToken: asString(j['access_token']),
+    refreshToken: asString(j['refresh_token']),
+    expiresAt: asDate(j['expires_at']),
+    user: UserProfile.fromJson(asMap(j['user'])),
+  );
 }
 
 class Department {
@@ -136,12 +140,12 @@ class Department {
   final int userCount;
 
   factory Department.fromJson(Map<String, dynamic> j) => Department(
-        id: asString(j['id']),
-        name: asString(j['name']),
-        code: j['code'] as String?,
-        parentId: j['parent_id'] as String?,
-        userCount: asInt(j['user_count']),
-      );
+    id: asString(j['id']),
+    name: asString(j['name']),
+    code: j['code'] as String?,
+    parentId: j['parent_id'] as String?,
+    userCount: asInt(j['user_count']),
+  );
 }
 
 class AppNotification {
@@ -167,12 +171,12 @@ class AppNotification {
   String? get route => payload?['route'] as String?;
 
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
-        id: asString(j['id']),
-        type: asString(j['type']),
-        title: asString(j['title']),
-        body: j['body'] as String?,
-        isRead: asBool(j['is_read']),
-        payload: j['payload'] is Map ? asMap(j['payload']) : null,
-        createdAt: asDate(j['created_at']),
-      );
+    id: asString(j['id']),
+    type: asString(j['type']),
+    title: asString(j['title']),
+    body: j['body'] as String?,
+    isRead: asBool(j['is_read']),
+    payload: j['payload'] is Map ? asMap(j['payload']) : null,
+    createdAt: asDate(j['created_at']),
+  );
 }

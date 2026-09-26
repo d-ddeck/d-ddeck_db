@@ -16,6 +16,8 @@ APP_DIR="/opt/ddeck"
 BACKUP_DIR="${APP_DIR}/backups"
 SERVICE="ddeck"
 KEEP_DAYS="${KEEP_DAYS:-30}"
+KEEP_MIN="${KEEP_MIN:-7}"
+umask 077
 
 GREEN=$'\e[32m'; YELLOW=$'\e[33m'; RED=$'\e[31m'; BLUE=$'\e[34m'; BOLD=$'\e[1m'; OFF=$'\e[0m'
 QUIET=0
@@ -30,17 +32,34 @@ die()  { echo; echo "${RED}${BOLD}✗ $*${OFF}" >&2; exit 1; }
 DATABASE_URL="$(grep '^DATABASE_URL=' "${APP_DIR}/backend/.env" | cut -d= -f2-)"
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
+VENV_PY="${APP_DIR}/backend/.venv/bin/python"
+SQLITE_HELPER="$(dirname "$SCRIPT_PATH")/sqlite_backup.py"
+[[ "$KEEP_MIN" =~ ^[1-9][0-9]*$ && "$KEEP_DAYS" =~ ^[0-9]+$ ]] || die "백업 보관 설정이 올바르지 않습니다."
+
 # ------------------------------------------------------------------ cron 등록
 if [[ "${1:-}" == "--install-cron" ]]; then
+  [[ -f "$APP_DIR/deploy/backup.sh" ]] || die "설치된 deploy/backup.sh 가 없습니다. 설치 프로그램을 갱신하세요."
   cat > /etc/cron.d/ddeck-backup <<CRONEOF
 # d-ddeck DB Server 자동 백업 - 매일 03:00
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-0 3 * * * root ${SCRIPT_PATH} --quiet >> /var/log/ddeck-backup.log 2>&1
+0 3 * * * root /bin/bash ${APP_DIR}/deploy/backup.sh --quiet >> /var/log/ddeck-backup.log 2>&1
+*/15 * * * * ddeck ${APP_DIR}/backend/.venv/bin/python ${APP_DIR}/deploy/monitor.py --root ${APP_DIR} 2>&1 | /usr/bin/logger -t ddeck-monitor
 CRONEOF
   chmod 644 /etc/cron.d/ddeck-backup
+  cat > /etc/logrotate.d/ddeck-backup <<LOGEOF
+/var/log/ddeck-backup.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root adm
+}
+LOGEOF
   echo "${GREEN}${BOLD}✓ 매일 새벽 3시 자동 백업 등록${OFF}"
-  echo "  보관 기간: ${KEEP_DAYS}일 (${BACKUP_DIR})"
+  echo "  보관 수: 최근 ${KEEP_MIN}개 (${BACKUP_DIR})"
   echo "  로그: /var/log/ddeck-backup.log"
   echo
   echo "  ${YELLOW}권장: 이 폴더를 NAS나 외장 디스크로도 복사하세요.${OFF}"
@@ -60,74 +79,53 @@ if [[ "${1:-}" == "--restore" ]]; then
 
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
-  tar xzf "$ARCHIVE" -C "$TMP"
+  "$VENV_PY" "$(dirname "$SCRIPT_PATH")/backup_bundle.py" --extract "$ARCHIVE" --destination "$TMP"
   # mktemp -d 는 0700 이라 postgres 사용자가 덤프를 읽지 못한다.
   chmod 755 "$TMP"
   [[ -f "$TMP/db.dump" ]] && chmod 644 "$TMP/db.dump"
 
+  [[ -d "$TMP/storage" ]] || die "백업에 storage 폴더가 없습니다."
+  if [[ "$DATABASE_URL" == postgresql* ]]; then
+    [[ -s "$TMP/db.dump" ]] || die "백업에 DB 덤프가 없습니다."
+  else
+    "$VENV_PY" "$SQLITE_HELPER" validate "$TMP/ddeck.db" || die "복원본 무결성 검사 실패"
+  fi
   systemctl stop "$SERVICE"
+  # Preserve the current database and attachments before replacing either.
+  if ! bash "$SCRIPT_PATH" --quiet; then
+    systemctl start "$SERVICE"
+    die "복원 전 백업 실패: 현재 데이터는 변경하지 않았습니다."
+  fi
 
   if [[ "$DATABASE_URL" == postgresql* ]]; then
-    DB_NAME="$(sed -E 's|.*/([^/?]+).*|\1|' <<<"$DATABASE_URL")"
-    DB_USER="$(sed -E 's|.*://([^:]+):.*|\1|' <<<"$DATABASE_URL")"
-    sudo -u postgres pg_restore -d "$DB_NAME" --clean --if-exists "$TMP"/db.dump \
-      || die "DB 복구 실패"
-    sudo -u postgres psql -q -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+    "$VENV_PY" "$(dirname "$SCRIPT_PATH")/backup_bundle.py" --root "$APP_DIR" --restore-postgres "$TMP/db.dump" \
+      || die "DB 복구 실패: 서비스를 중지 상태로 유지합니다."
   else
-    cp "$TMP"/ddeck.db "${APP_DIR}/backend/ddeck.db"
-    chown ddeck:ddeck "${APP_DIR}/backend/ddeck.db"
+    DB_PATH="$("$VENV_PY" "$(dirname "$SCRIPT_PATH")/backup_bundle.py" --root "$APP_DIR" --database-path)"
+    "$VENV_PY" "$SQLITE_HELPER" restore "$TMP/ddeck.db" "$DB_PATH"
+    chown ddeck:ddeck "$DB_PATH"
   fi
 
   if [[ -d "$TMP/storage" ]]; then
-    rm -rf "${APP_DIR}/storage"
-    cp -a "$TMP/storage" "${APP_DIR}/storage"
-    chown -R ddeck:ddeck "${APP_DIR}/storage"
+    STORAGE_PATH="$("$VENV_PY" "$(dirname "$SCRIPT_PATH")/backup_bundle.py" --root "$APP_DIR" --storage-path)"
+    mkdir -p "$STORAGE_PATH"
+    rsync -a --delete "$TMP/storage/" "$STORAGE_PATH/"
+    chown -R ddeck:ddeck "$STORAGE_PATH"
   fi
 
   systemctl start "$SERVICE"
+  RESTORED_PORT="$(grep -oP '(?<=--port )\d+' "/etc/systemd/system/${SERVICE}.service" 2>/dev/null || echo 8000)"
+  RESTORE_OK=0
+  for i in $(seq 1 30); do
+    if curl -fsS -m 2 "http://127.0.0.1:${RESTORED_PORT}/healthz" >/dev/null 2>&1; then RESTORE_OK=1; break; fi
+    sleep 1
+  done
+  if [[ "$RESTORE_OK" != 1 ]]; then systemctl stop "$SERVICE"; die "복원 후 건강 검사 실패: 서비스를 중지했습니다."; fi
   echo "${GREEN}${BOLD}✓ 복구 완료${OFF}"
   exit 0
 fi
 
 [[ "${1:-}" == "--quiet" ]] && QUIET=1
 
-# ------------------------------------------------------------------ 백업
-STAMP="$(date +%Y%m%d_%H%M%S)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$BACKUP_DIR"
-
-step "데이터베이스"
-if [[ "$DATABASE_URL" == postgresql* ]]; then
-  DB_NAME="$(sed -E 's|.*/([^/?]+).*|\1|' <<<"$DATABASE_URL")"
-  sudo -u postgres pg_dump -Fc "$DB_NAME" > "$TMP/db.dump" || die "pg_dump 실패"
-  ok "PostgreSQL 덤프 ($(du -h "$TMP/db.dump" | cut -f1))"
-else
-  # SQLite는 .backup 을 써야 쓰기 중에도 일관된 스냅샷이 나온다.
-  sqlite3 "${APP_DIR}/backend/ddeck.db" ".backup '$TMP/ddeck.db'" 2>/dev/null \
-    || cp "${APP_DIR}/backend/ddeck.db" "$TMP/ddeck.db"
-  ok "SQLite 스냅샷 ($(du -h "$TMP/ddeck.db" | cut -f1))"
-fi
-
-step "첨부파일"
-if [[ -d "${APP_DIR}/storage" ]]; then
-  cp -a "${APP_DIR}/storage" "$TMP/storage"
-  ok "storage ($(du -sh "$TMP/storage" | cut -f1))"
-else
-  mkdir -p "$TMP/storage"
-  ok "첨부파일 없음"
-fi
-
-step "압축"
-ARCHIVE="${BACKUP_DIR}/ddeck_${STAMP}.tar.gz"
-tar czf "$ARCHIVE" -C "$TMP" .
-chmod 600 "$ARCHIVE"
-ok "$(basename "$ARCHIVE") ($(du -h "$ARCHIVE" | cut -f1))"
-
-step "오래된 백업 정리"
-DELETED="$(find "$BACKUP_DIR" -name 'ddeck_*.tar.gz' -mtime "+${KEEP_DAYS}" -print -delete | wc -l)"
-ok "${KEEP_DAYS}일 초과 ${DELETED}건 삭제 / 보관 중 $(find "$BACKUP_DIR" -name 'ddeck_*.tar.gz' | wc -l)건"
-
-say
-say "${GREEN}${BOLD}백업 완료: ${ARCHIVE}${OFF}"
-say "복구:  sudo ${SCRIPT_PATH} --restore ${ARCHIVE}"
+# Shared ZIP format, verified atomically, with optional rclone upload.
+exec "$VENV_PY" "$(dirname "$SCRIPT_PATH")/backup_bundle.py" --root "$APP_DIR" --keep "$KEEP_MIN"

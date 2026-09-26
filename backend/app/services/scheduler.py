@@ -3,23 +3,24 @@
 The only job in the skeleton is the reminder sweep: it turns due EventReminder
 rows into Notification rows (and a push). Runs in-process via APScheduler, which
 is right for a single self-hosted server; if the app is ever scaled to multiple
-workers this must move to a single leader or an external queue, or every worker
-will fire the same reminder.
+workers, conditional UPDATE claims prevent duplicate notification rows.
+External push delivery will require an outbox/retry queue when implemented.
 """
+
 from __future__ import annotations
 
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import now_utc
-from app.models.calendar import Event, EventParticipant, EventReminder
+from app.models.calendar import Calendar, Event, EventParticipant, EventReminder
 from app.models.enums import EventStatus, NotificationType
-from app.services.notifications import notify
+from app.services.notifications import dispatch_push, notify
 
 log = logging.getLogger("ddeck.scheduler")
 
@@ -32,11 +33,13 @@ def dispatch_due_reminders(db: Session, limit: int = 200) -> int:
     due = db.scalars(
         select(EventReminder)
         .join(Event, Event.id == EventReminder.event_id)
+        .join(Calendar, Calendar.id == Event.calendar_id)
         .where(
             EventReminder.sent_at.is_(None),
             EventReminder.scheduled_at <= now,
             Event.status == EventStatus.SCHEDULED,
             Event.deleted_at.is_(None),
+            Calendar.deleted_at.is_(None),
         )
         .order_by(EventReminder.scheduled_at)
         .limit(limit)
@@ -44,6 +47,13 @@ def dispatch_due_reminders(db: Session, limit: int = 200) -> int:
 
     sent = 0
     for reminder in due:
+        claimed = db.execute(
+            update(EventReminder)
+            .where(EventReminder.id == reminder.id, EventReminder.sent_at.is_(None))
+            .values(sent_at=now)
+        ).rowcount
+        if claimed != 1:
+            continue
         event = db.get(Event, reminder.event_id)
         if event is None:
             reminder.sent_at = now  # orphan: retire it rather than retry forever
@@ -90,7 +100,8 @@ def _job() -> None:
     db = SessionLocal()
     try:
         dispatch_due_reminders(db)
-    except Exception:  # noqa: BLE001 - a job crash must not kill the scheduler
+        dispatch_push(db)
+    except Exception:
         log.exception("reminder sweep failed")
         db.rollback()
     finally:
@@ -110,6 +121,24 @@ def start() -> BackgroundScheduler | None:
         max_instances=1,
         coalesce=True,  # after a pause, run once instead of catching up N times
     )
+    from app.services.operations import process_backup_request
+
+    _scheduler.add_job(
+        process_backup_request,
+        "interval",
+        seconds=10,
+        id="manual_backup",
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
+        _maintenance,
+        "interval",
+        hours=6,
+        id="maintenance",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
     log.info("scheduler started (every %ds)", settings.REMINDER_SCAN_SECONDS)
     return _scheduler
@@ -120,3 +149,13 @@ def shutdown() -> None:
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
+
+
+def _maintenance():
+    with SessionLocal() as db:
+        from app.services.recurrence import maintain
+
+        maintain(db)
+        from app.services.retention import sweep
+
+        sweep(db)

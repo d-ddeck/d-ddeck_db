@@ -6,6 +6,7 @@
 
 임시 저장은 계정마다 한 장(WorkLogDraft): 쓰다 만 내용을 다른 기기에서 이어 쓴다.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -37,18 +38,22 @@ class WorkLog(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     author_name: Mapped[str] = mapped_column(String(80), nullable=False)
-    position: Mapped[str | None] = mapped_column(String(50))   # 직급 (계정 직급을 그대로)
+    position: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # 직급 (계정 직급을 그대로)
 
     work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    work_start: Mapped[str] = mapped_column(String(5), nullable=False)   # HH:MM
+    work_start: Mapped[str] = mapped_column(String(5), nullable=False)  # HH:MM
     work_end: Mapped[str] = mapped_column(String(5), nullable=False)
 
-    summary: Mapped[str] = mapped_column(Text, nullable=False)   # 금일 업무 내용 요약 (번호 매김)
-    detail: Mapped[str] = mapped_column(Text, nullable=False)    # 금일 근무 내용 상세
+    summary: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # 금일 업무 내용 요약 (번호 매김)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)  # 금일 근무 내용 상세
     overtime: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     overtime_note: Mapped[str | None] = mapped_column(String(200))
-    plan: Mapped[str | None] = mapped_column(Text)               # 예정 업무
-    needs: Mapped[str | None] = mapped_column(Text)              # 필요/요청사항
+    plan: Mapped[str | None] = mapped_column(Text)  # 예정 업무
+    needs: Mapped[str | None] = mapped_column(Text)  # 필요/요청사항
     visibility: Mapped[WorkLogVisibility] = mapped_column(
         enum_type(WorkLogVisibility), default=WorkLogVisibility.PRIVATE, nullable=False
     )

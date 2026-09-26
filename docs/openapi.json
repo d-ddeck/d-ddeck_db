@@ -3,7 +3,7 @@
   "info": {
     "title": "d-ddeck DB Server",
     "description": "사내 통합 DB 서버 API.\n\n**진입 순서**: 회원가입 → 관리자 승인 → 로그인 → 이용\n\n| 모듈 | prefix | 내용 |\n|---|---|---|\n| 인증 | `/auth` | 가입 · 로그인 · 토큰 · 세션 · 기기 등록 |\n| 사용자 | `/users` | 승인 대기열 · 권한 · 구성원 목록 |\n| 서비스(AS) | `/service` | 접수 · 처리 이력 · 부품 · **자동 통계** |\n| 재고관리 | `/inventory` | 자산 · 위치 트리 · 이동 이력 |\n| 게시판 | `/board` | 게시판 설정 · 게시글 · 댓글 |\n| 캘린더 | `/calendar` | 일정 공유 · 참석자 · 알림 |\n| 관리기능 | `/admin` | **모듈별 설정** · 분류 코드 · 부서 · 감사로그 · 상태 |\n| 첨부 | `/files` | 공통 파일 업로드/다운로드 |\n\n인증은 `Authorization: Bearer <access_token>` 헤더를 사용합니다.",
-    "version": "0.1.0"
+    "version": "1.0.6"
   },
   "paths": {
     "/api/v1/auth/signup": {
@@ -1105,6 +1105,58 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/sessions": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "User Sessions",
+        "operationId": "user_sessions_api_v1_users__user_id__sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionOut"
+                  },
+                  "title": "Response User Sessions Api V1 Users  User Id  Sessions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/service/customers": {
       "get": {
         "tags": [
@@ -1357,6 +1409,16 @@
             "required": false,
             "schema": {
               "enum": [
+                "brand_asc",
+                "brand_desc",
+                "ticket_no_asc",
+                "ticket_no_desc",
+                "store_asc",
+                "store_desc",
+                "status_asc",
+                "status_desc",
+                "completed_asc",
+                "completed_desc",
                 "received_desc",
                 "received_asc",
                 "due_asc",
@@ -1395,6 +1457,22 @@
               "title": "Size"
             },
             "description": "rows per page"
+          },
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
+            }
           },
           {
             "name": "date_from",
@@ -1841,6 +1919,22 @@
                 }
               ],
               "title": "Channel"
+            }
+          },
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
             }
           },
           {
@@ -2500,6 +2594,203 @@
         }
       }
     },
+    "/api/v1/service/tickets/{ticket_id}/history": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Ticket History",
+        "operationId": "ticket_history_api_v1_service_tickets__ticket_id__history_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-based page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "1-based page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "rows per page",
+              "default": 20,
+              "title": "Size"
+            },
+            "description": "rows per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/tickets/{ticket_id}/logs/{log_id}": {
+      "patch": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Update Log",
+        "operationId": "update_log_api_v1_service_tickets__ticket_id__logs__log_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "log_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Log Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceLogUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceLogOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Delete Log",
+        "operationId": "delete_log_api_v1_service_tickets__ticket_id__logs__log_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "log_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Log Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/service/tickets/{ticket_id}/parts": {
       "post": {
         "tags": [
@@ -2630,6 +2921,22 @@
           }
         ],
         "parameters": [
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
+            }
+          },
           {
             "name": "date_from",
             "in": "query",
@@ -3014,6 +3321,22 @@
             "description": "classification axis"
           },
           {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
+            }
+          },
+          {
             "name": "date_from",
             "in": "query",
             "required": false,
@@ -3382,6 +3705,22 @@
               "type": "string",
               "default": "day",
               "title": "Interval"
+            }
+          },
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
             }
           },
           {
@@ -3773,6 +4112,22 @@
               "type": "string",
               "default": "category",
               "title": "Cols"
+            }
+          },
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
             }
           },
           {
@@ -4183,6 +4538,22 @@
             }
           },
           {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
+            }
+          },
+          {
             "name": "date_from",
             "in": "query",
             "required": false,
@@ -4546,6 +4917,420 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/service/tickets/{ticket_id}/assets": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Related Assets",
+        "operationId": "related_assets_api_v1_service_tickets__ticket_id__assets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/service/stats/all.xlsx": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Export All Stats",
+        "operationId": "export_all_stats_api_v1_service_stats_all_xlsx_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missing"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 연도(한국 시각)",
+              "title": "Year"
+            },
+            "description": "발생 연도(한국 시각)"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 12,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "발생 월. year 와 함께",
+              "title": "Month"
+            },
+            "description": "발생 월. year 와 함께"
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee Id"
+            }
+          },
+          {
+            "name": "department_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "서비스구분 - 원인 중 하나라도",
+              "title": "Category Id"
+            },
+            "description": "서비스구분 - 원인 중 하나라도"
+          },
+          {
+            "name": "symptom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symptom Id"
+            }
+          },
+          {
+            "name": "maker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maker Id"
+            }
+          },
+          {
+            "name": "fault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fault Id"
+            }
+          },
+          {
+            "name": "responder_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Responder Id"
+            }
+          },
+          {
+            "name": "customer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Id"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "only_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Open"
+            }
+          },
+          {
+            "name": "is_warranty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Warranty"
+            }
+          },
+          {
+            "name": "is_rental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Rental"
+            }
+          },
+          {
+            "name": "rental_unreturned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "렌탈 O · 미회수만",
+              "default": false,
+              "title": "Rental Unreturned"
+            },
+            "description": "렌탈 O · 미회수만"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/inventory/locations": {
@@ -5622,7 +6407,6 @@
           "inventory"
         ],
         "summary": "Overview",
-        "description": "구 서버 재고 › 현황. 상태×종류, 브랜드×종류(매장 설치), 장소×종류(미설치), 확인 목록(AS·미상), 렌탈 중.",
         "operationId": "overview_api_v1_inventory_overview_get",
         "responses": {
           "200": {
@@ -5658,6 +6442,167 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InventorySummary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inventory/assets/{asset_id}/tickets": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Related Tickets",
+        "operationId": "related_tickets_api_v1_inventory_assets__asset_id__tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-based page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "1-based page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "rows per page",
+              "default": 20,
+              "title": "Size"
+            },
+            "description": "rows per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory/delivery-compare": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Delivery Compare",
+        "operationId": "delivery_compare_api_v1_inventory_delivery_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryCompareIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inventory/delivery-compare/xlsx": {
+      "post": {
+        "tags": [
+          "inventory"
+        ],
+        "summary": "Delivery Compare Excel",
+        "operationId": "delivery_compare_excel_api_v1_inventory_delivery_compare_xlsx_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_delivery_compare_excel_api_v1_inventory_delivery_compare_xlsx_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -5754,12 +6699,48 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "boolean",
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "폐점 매장도 포함",
-              "default": false,
               "title": "Include Closed"
             },
             "description": "폐점 매장도 포함"
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "name",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Descending"
+            }
           },
           {
             "name": "page",
@@ -6014,7 +6995,7 @@
           "stores"
         ],
         "summary": "Close Store",
-        "description": "폐점 처리 (구 서버 매장 화면의 [매장 상태 저장]): 설치 · AS 장비를 고른 회수 위치로.\n\n렌탈 중 장비는 건드리지 않는다 - 대응 기록에서 회수 처리하면 창고로 돌아온다.",
+        "description": "폐점 처리 (구 서버 매장 화면의 [매장 상태 저장]): 설치 · AS 장비를 고른 회수 위치로.\n\n렌탈 중 장비는 건드리지 않는다 - 대응 기록에서 회수 처리하면 창고로 돌아온다.\n그 매장 장비 전부를 옮기는 대량 변경이라 관리자(ADMIN) 이상만. `PATCH is_closed` 는\nADMIN 이므로 이 경로가 우회로가 되지 않게 한다.",
         "operationId": "close_store_api_v1_stores__store_id__close_post",
         "security": [
           {
@@ -6500,7 +7481,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
                 },
                 {
                   "type": "null"
@@ -6709,7 +7692,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 2100,
+                  "minimum": 2000
                 },
                 {
                   "type": "null"
@@ -6966,27 +7951,49 @@
         "summary": "List Boards",
         "description": "Only the boards this user may read, so the nav never shows a dead tab.",
         "operationId": "list_boards_api_v1_board_boards_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/BoardOut"
                   },
-                  "type": "array",
                   "title": "Response List Boards Api V1 Board Boards Get"
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       },
       "post": {
         "tags": [
@@ -6994,15 +8001,20 @@
         ],
         "summary": "Create Board",
         "operationId": "create_board_api_v1_board_boards_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BoardCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -7025,12 +8037,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/board/boards/{board_id}": {
@@ -7893,6 +8900,40 @@
               "default": false,
               "title": "Mine Only"
             }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "participant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Participant Id"
+            }
           }
         ],
         "responses": {
@@ -8531,7 +9572,7 @@
           "admin"
         ],
         "summary": "Save Module Settings",
-        "description": "What a 설정창 Save posts: the whole form at once, upserted by key.",
+        "description": "What a 설정창 Save posts: the whole form at once, upserted by key.\n\n값은 선언된 타입으로 검증·변환해 저장한다. 알려진 키는 기본 설정표의 타입이 기준이고\n(화면이 보낸 value_type 이 달라도 표를 따른다), 모르는 키는 보낸 value_type 을 따른다.",
         "operationId": "save_module_settings_api_v1_admin_settings__module__put",
         "security": [
           {
@@ -9477,6 +10518,52 @@
         ]
       }
     },
+    "/api/v1/admin/backup": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Backup Status",
+        "operationId": "backup_status_api_v1_admin_backup_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Request Backup",
+        "operationId": "request_backup_api_v1_admin_backup_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/stats": {
       "get": {
         "tags": [
@@ -9502,6 +10589,64 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/admin/history/{kind}/{identifier}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Hide History",
+        "description": "Local-console cleanup: retain source rows for stock/rental integrity and audit.",
+        "operationId": "hide_history_api_v1_admin_history__kind___identifier__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/files": {
@@ -9578,6 +10723,22 @@
               "type": "string",
               "format": "uuid",
               "title": "Entity Id"
+            }
+          },
+          {
+            "name": "photo_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Photo Category"
             }
           }
         ],
@@ -9739,6 +10900,10 @@
     "schemas": {
       "AccessToken": {
         "properties": {
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          },
           "access_token": {
             "type": "string",
             "title": "Access Token"
@@ -9756,6 +10921,7 @@
         },
         "type": "object",
         "required": [
+          "refresh_token",
           "access_token",
           "expires_at"
         ],
@@ -10017,7 +11183,8 @@
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -10249,7 +11416,8 @@
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -10268,7 +11436,8 @@
           "min_quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -10295,7 +11464,8 @@
           "purchase_price": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -10351,6 +11521,13 @@
       },
       "AssetDetail": {
         "properties": {
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -10821,7 +11998,8 @@
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -11092,6 +12270,13 @@
       },
       "AssetOut": {
         "properties": {
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -11443,7 +12628,8 @@
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -11470,7 +12656,8 @@
           "min_quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -11497,7 +12684,8 @@
           "purchase_price": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -11558,8 +12746,7 @@
           }
         },
         "type": "object",
-        "title": "AssetUpdate",
-        "description": "Location and holder changes should go through /move so history is kept."
+        "title": "AssetUpdate"
       },
       "AttentionAsset": {
         "properties": {
@@ -12156,6 +13343,32 @@
         "type": "object",
         "title": "BoardUpdate"
       },
+      "Body_delivery_compare_excel_api_v1_inventory_delivery_compare_xlsx_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_delivery_compare_excel_api_v1_inventory_delivery_compare_xlsx_post"
+      },
       "Body_upload_api_v1_files_post": {
         "properties": {
           "entity_type": {
@@ -12166,6 +13379,17 @@
             "type": "string",
             "format": "uuid",
             "title": "Entity Id"
+          },
+          "photo_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Category"
           },
           "file": {
             "type": "string",
@@ -12221,6 +13445,16 @@
           "asset_count": {
             "type": "integer",
             "title": "Asset Count"
+          },
+          "ticket_count": {
+            "type": "integer",
+            "title": "Ticket Count",
+            "default": 0
+          },
+          "open_ticket_count": {
+            "type": "integer",
+            "title": "Open Ticket Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -13386,6 +14620,11 @@
       },
       "Crosstab": {
         "properties": {
+          "tickets_without_cause": {
+            "type": "integer",
+            "title": "Tickets Without Cause",
+            "default": 0
+          },
           "rows_axis": {
             "type": "string",
             "title": "Rows Axis"
@@ -13434,8 +14673,7 @@
           "total_causes",
           "total_tickets"
         ],
-        "title": "Crosstab",
-        "description": "구 서버 통계의 표 하나: 행 축 × 열 축, 칸은 원인 수.\n\n한 건에 원인이 여러 개면 각각 센다(구 서버와 같다). 그래서 칸 합은 대응\n건수보다 클 수 있고, `total_tickets` 를 옆에 같이 보여 줘야 한다."
+        "title": "Crosstab"
       },
       "CrosstabRow": {
         "properties": {
@@ -13750,6 +14988,36 @@
         },
         "type": "object",
         "title": "CustomerUpdate"
+      },
+      "DeliveryCompareIn": {
+        "properties": {
+          "serials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Serials"
+          },
+          "store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serials"
+        ],
+        "title": "DeliveryCompareIn"
       },
       "DepartmentBrief": {
         "properties": {
@@ -14379,6 +15647,18 @@
             "format": "uuid",
             "title": "Id"
           },
+          "recurrence_parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence Parent Id"
+          },
           "calendar_id": {
             "type": "string",
             "format": "uuid",
@@ -14562,6 +15842,18 @@
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "recurrence_parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence Parent Id"
           },
           "calendar_id": {
             "type": "string",
@@ -14957,6 +16249,23 @@
             "type": "string",
             "format": "date-time",
             "title": "Server Time"
+          },
+          "schema_revisions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Schema Revisions"
+          },
+          "disk_free_bytes": {
+            "type": "integer",
+            "title": "Disk Free Bytes",
+            "default": 0
+          },
+          "backup": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Backup"
           }
         },
         "type": "object",
@@ -16312,6 +17621,21 @@
             "type": "integer",
             "title": "View Count"
           },
+          "attachment_count": {
+            "type": "integer",
+            "title": "Attachment Count",
+            "default": 0
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "comment_count": {
             "type": "integer",
             "title": "Comment Count"
@@ -16329,16 +17653,6 @@
           "content": {
             "type": "string",
             "title": "Content"
-          },
-          "author": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UserBrief"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "comments": {
             "items": {
@@ -16406,6 +17720,21 @@
           "view_count": {
             "type": "integer",
             "title": "View Count"
+          },
+          "attachment_count": {
+            "type": "integer",
+            "title": "Attachment Count",
+            "default": 0
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "comment_count": {
             "type": "integer",
@@ -16513,6 +17842,17 @@
           "refresh_token": {
             "type": "string",
             "title": "Refresh Token"
+          },
+          "push_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Push Token"
           }
         },
         "type": "object",
@@ -16932,6 +18272,11 @@
       },
       "ServiceGrouped": {
         "properties": {
+          "tickets_without_cause": {
+            "type": "integer",
+            "title": "Tickets Without Cause",
+            "default": 0
+          },
           "group_by": {
             "type": "string",
             "title": "Group By"
@@ -17089,6 +18434,35 @@
         ],
         "title": "ServiceLogOut"
       },
+      "ServiceLogUpdate": {
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "work_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Minutes"
+          }
+        },
+        "type": "object",
+        "title": "ServiceLogUpdate"
+      },
       "ServicePartIn": {
         "properties": {
           "part_name": {
@@ -17100,7 +18474,8 @@
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -17113,7 +18488,8 @@
           "unit_price": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -19205,7 +20581,8 @@
           "labor_cost": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -19220,7 +20597,8 @@
           "parts_cost": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -19269,8 +20647,7 @@
           }
         },
         "type": "object",
-        "title": "ServiceTicketUpdate",
-        "description": "All optional: PATCH semantics. Status moves go through /status instead."
+        "title": "ServiceTicketUpdate"
       },
       "ServiceTrend": {
         "properties": {
@@ -19843,6 +21220,11 @@
             ],
             "title": "Open Date"
           },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
           "is_closed": {
             "type": "boolean",
             "title": "Is Closed",
@@ -19947,6 +21329,10 @@
             ],
             "title": "Open Date"
           },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
           "is_closed": {
             "type": "boolean",
             "title": "Is Closed"
@@ -20005,26 +21391,43 @@
             "title": "Ticket Count",
             "default": 0
           },
+          "last_ticket_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ticket At"
+          },
+          "open_ticket_count": {
+            "type": "integer",
+            "title": "Open Ticket Count",
+            "default": 0
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices"
+          },
           "sets": {
             "items": {
               "$ref": "#/components/schemas/StoreSetOut"
             },
             "type": "array",
-            "title": "Sets",
-            "default": []
+            "title": "Sets"
           },
           "asset_groups": {
             "items": {
               "$ref": "#/components/schemas/StoreAssetGroup"
             },
             "type": "array",
-            "title": "Asset Groups",
-            "default": []
-          },
-          "open_ticket_count": {
-            "type": "integer",
-            "title": "Open Ticket Count",
-            "default": 0
+            "title": "Asset Groups"
           },
           "install_date": {
             "anyOf": [
@@ -20086,6 +21489,7 @@
         "required": [
           "id",
           "name",
+          "is_active",
           "is_closed",
           "created_at",
           "updated_at"
@@ -20136,6 +21540,10 @@
               }
             ],
             "title": "Open Date"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
           },
           "is_closed": {
             "type": "boolean",
@@ -20194,12 +21602,30 @@
             "type": "integer",
             "title": "Ticket Count",
             "default": 0
+          },
+          "last_ticket_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ticket At"
+          },
+          "open_ticket_count": {
+            "type": "integer",
+            "title": "Open Ticket Count",
+            "default": 0
           }
         },
         "type": "object",
         "required": [
           "id",
           "name",
+          "is_active",
           "is_closed",
           "created_at",
           "updated_at"
@@ -20471,6 +21897,17 @@
               }
             ],
             "title": "Open Date"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
           },
           "is_closed": {
             "anyOf": [

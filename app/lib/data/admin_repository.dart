@@ -10,15 +10,18 @@ class AdminRepository {
   /// classification lists that belong to the same module.
   Future<ModuleSettings> settings(SettingsModule module) async =>
       ModuleSettings.fromJson(
-          asMap(await _api.get('/admin/settings/${module.value}')));
+        asMap(await _api.get('/admin/settings/${module.value}')),
+      );
 
   /// Saves the whole form at once. The server upserts by key.
   Future<ModuleSettings> saveSettings(
     SettingsModule module,
     List<ModuleSetting> settings,
   ) async {
-    final res = await _api.put('/admin/settings/${module.value}',
-        body: {'settings': settings.map((s) => s.toJson()).toList()});
+    final res = await _api.put(
+      '/admin/settings/${module.value}',
+      body: {'settings': settings.map((s) => s.toJson()).toList()},
+    );
     return ModuleSettings.fromJson(asMap(res));
   }
 
@@ -29,7 +32,9 @@ class AdminRepository {
 
   Future<List<CodeGroup>> codeGroups({String? module}) async {
     final res = await _api.get('/admin/codes', query: {'module': module});
-    return (res as List? ?? []).map((e) => CodeGroup.fromJson(asMap(e))).toList();
+    return (res as List? ?? [])
+        .map((e) => CodeGroup.fromJson(asMap(e)))
+        .toList();
   }
 
   Future<CodeItem> addCodeItem(
@@ -40,25 +45,31 @@ class AdminRepository {
     String? parentId,
     int sortOrder = 0,
   }) async {
-    final res = await _api.post('/admin/codes/$groupId/items', body: {
-      'code': code,
-      'name': name,
-      if (color != null) 'color': color,
-      if (parentId != null) 'parent_id': parentId,
-      'sort_order': sortOrder,
-    });
+    final res = await _api.post(
+      '/admin/codes/$groupId/items',
+      body: {
+        'code': code,
+        'name': name,
+        if (color != null) 'color': color,
+        if (parentId != null) 'parent_id': parentId,
+        'sort_order': sortOrder,
+      },
+    );
     return CodeItem.fromJson(asMap(res));
   }
 
   Future<CodeItem> updateCodeItem(
-      String itemId, Map<String, dynamic> changes) async {
+    String itemId,
+    Map<String, dynamic> changes,
+  ) async {
     final res = await _api.patch('/admin/codes/items/$itemId', body: changes);
     return CodeItem.fromJson(asMap(res));
   }
 
   Future<CodeItemUsage> codeItemUsage(String itemId) async =>
       CodeItemUsage.fromJson(
-          asMap(await _api.get('/admin/codes/items/$itemId/usage')));
+        asMap(await _api.get('/admin/codes/items/$itemId/usage')),
+      );
 
   /// Removes the item from lists while preserving names in existing records.
   Future<String> deleteCodeItem(String itemId) async {
@@ -72,6 +83,10 @@ class AdminRepository {
   Future<ServerHealth> health() async =>
       ServerHealth.fromJson(asMap(await _api.get('/admin/health')));
 
+  Future<void> requestBackup() async {
+    await _api.post('/admin/backup');
+  }
+
   Future<SystemStats> stats() async =>
       SystemStats.fromJson(asMap(await _api.get('/admin/stats')));
 
@@ -82,13 +97,18 @@ class AdminRepository {
     String? module,
     String? query,
   }) async {
-    final res = await _api.get('/admin/audit-logs', query: {
-      'page': page,
-      'size': size,
-      'action': action,
-      'module': module,
-      'q': query,
-    });
-    return (res as List? ?? []).map((e) => AuditLog.fromJson(asMap(e))).toList();
+    final res = await _api.get(
+      '/admin/audit-logs',
+      query: {
+        'page': page,
+        'size': size,
+        'action': action,
+        'module': module,
+        'q': query,
+      },
+    );
+    return (res as List? ?? [])
+        .map((e) => AuditLog.fromJson(asMap(e)))
+        .toList();
   }
 }

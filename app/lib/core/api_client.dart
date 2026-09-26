@@ -17,10 +17,11 @@ import 'token_store.dart';
 /// If the refresh itself fails the session is dead, [onSessionExpired] fires,
 /// and the shell sends the user back to the login page.
 class ApiClient {
-  ApiClient({required this.tokenStore}) {
+  ApiClient({required this.tokenStore, HttpClientAdapter? adapter}) {
     _dio = Dio(
       BaseOptions(
         connectTimeout: AppConfig.connectTimeout,
+        sendTimeout: const Duration(seconds: 90),
         receiveTimeout: AppConfig.receiveTimeout,
         // We parse the error envelope ourselves, so let every status through
         // to the interceptor instead of having Dio throw on 4xx first.
@@ -28,11 +29,23 @@ class ApiClient {
         headers: {'Content-Type': 'application/json'},
       ),
     );
+    if (adapter != null) _dio.httpClientAdapter = adapter;
     _dio.interceptors.add(
-      InterceptorsWrapper(onRequest: _onRequest, onResponse: _onResponse),
+      InterceptorsWrapper(
+        onRequest: _onRequest,
+        onResponse: _onResponse,
+        onError: (error, handler) {
+          if (error.response == null ||
+              (error.response?.statusCode ?? 0) >= 500) {
+            connected.value = false;
+          }
+          handler.next(error);
+        },
+      ),
     );
   }
 
+  final ValueNotifier<bool> connected = ValueNotifier(true);
   final TokenStore tokenStore;
   late final Dio _dio;
 
@@ -89,6 +102,7 @@ class ApiClient {
     Response response,
     ResponseInterceptorHandler handler,
   ) async {
+    connected.value = true;
     final status = response.statusCode ?? 0;
     if (status < 400) {
       handler.next(response);
@@ -97,7 +111,8 @@ class ApiClient {
 
     final options = response.requestOptions;
     final code = _errorCode(response.data);
-    final canRetry = status == 401 &&
+    final canRetry =
+        status == 401 &&
         options.extra['skipAuth'] != true &&
         options.extra['isRetry'] != true &&
         code != 'INVALID_CREDENTIALS';
@@ -109,8 +124,9 @@ class ApiClient {
         );
         handler.resolve(retried);
         return;
-      } catch (_) {
-        // fall through to the normal error path
+      } on DioException catch (error) {
+        handler.reject(error);
+        return;
       }
     }
 
@@ -143,6 +159,7 @@ class ApiClient {
   }
 
   Future<bool> _doRefresh() async {
+    final revision = tokenStore.sessionRevision;
     final refresh = await tokenStore.readRefreshToken();
     if (refresh == null || refresh.isEmpty) {
       _endSession();
@@ -155,14 +172,25 @@ class ApiClient {
         options: Options(extra: {'skipAuth': true, 'isRetry': true}),
       );
       if (res.statusCode == 200 && res.data is Map) {
-        tokenStore.accessToken = res.data['access_token'] as String?;
+        final rotated = res.data['refresh_token'] as String?;
+        final access = res.data['access_token'] as String?;
+        if (rotated == null || access == null) return false;
+        final remember = await tokenStore.readRememberMe();
+        if (tokenStore.sessionRevision != revision) return false;
+        await tokenStore.saveSession(
+          accessToken: access,
+          refreshToken: rotated,
+          remember: remember,
+        );
         return tokenStore.accessToken != null;
       }
     } catch (e) {
       debugPrint('token refresh failed: $e');
       // 연결 실패는 세션 거부가 아니다. 폰의 오프라인 알람도 유지한다.
-      if (e is DioException && (e.response == null ||
-          (e.response?.statusCode ?? 0) >= 500)) {
+      if (e is DioException &&
+          (e.response == null ||
+              (e.response?.statusCode ?? 0) >= 500 ||
+              e.response?.statusCode == 429)) {
         return false;
       }
     }
@@ -181,25 +209,27 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? query,
     bool skipAuth = false,
-  }) =>
-      _send(() => _dio.get(
-            _url(path),
-            queryParameters: _clean(query),
-            options: Options(extra: {'skipAuth': skipAuth}),
-          ));
+  }) => _send(
+    () => _dio.get(
+      _url(path),
+      queryParameters: _clean(query),
+      options: Options(extra: {'skipAuth': skipAuth}),
+    ),
+  );
 
   Future<dynamic> post(
     String path, {
     Object? body,
     Map<String, dynamic>? query,
     bool skipAuth = false,
-  }) =>
-      _send(() => _dio.post(
-            _url(path),
-            data: body,
-            queryParameters: _clean(query),
-            options: Options(extra: {'skipAuth': skipAuth}),
-          ));
+  }) => _send(
+    () => _dio.post(
+      _url(path),
+      data: body,
+      queryParameters: _clean(query),
+      options: Options(extra: {'skipAuth': skipAuth}),
+    ),
+  );
 
   Future<dynamic> patch(String path, {Object? body}) =>
       _send(() => _dio.patch(_url(path), data: body));
@@ -217,12 +247,9 @@ class ApiClient {
     String path,
     FormData form, {
     void Function(int sent, int total)? onProgress,
-  }) =>
-      _send(() => _dio.post(
-            _url(path),
-            data: form,
-            onSendProgress: onProgress,
-          ));
+  }) => _send(
+    () => _dio.post(_url(path), data: form, onSendProgress: onProgress),
+  );
 
   /// 첨부 내려받기. JSON 이 아니라 원본 바이트를 그대로 받는다.
   Future<List<int>> getBytes(String path) async {

@@ -85,17 +85,17 @@ class CodeItem {
   final Map<String, dynamic> extra;
 
   factory CodeItem.fromJson(Map<String, dynamic> j) => CodeItem(
-        id: asString(j['id']),
-        code: asString(j['code']),
-        name: asString(j['name']),
-        color: j['color'] as String?,
-        sortOrder: asInt(j['sort_order']),
-        isActive: asBool(j['is_active'], true),
-        isProtected: asBool(j['is_protected']),
-        groupId: j['group_id'] as String?,
-        parentId: j['parent_id'] as String?,
-        extra: asMap(j['extra']),
-      );
+    id: asString(j['id']),
+    code: asString(j['code']),
+    name: asString(j['name']),
+    color: j['color'] as String?,
+    sortOrder: asInt(j['sort_order']),
+    isActive: asBool(j['is_active'], true),
+    isProtected: asBool(j['is_protected']),
+    groupId: j['group_id'] as String?,
+    parentId: j['parent_id'] as String?,
+    extra: asMap(j['extra']),
+  );
 }
 
 class CodeGroup {
@@ -121,17 +121,18 @@ class CodeGroup {
   List<CodeItem> get selectable => items.where((i) => i.isActive).toList();
 
   factory CodeGroup.fromJson(Map<String, dynamic> j) => CodeGroup(
-        id: asString(j['id']),
-        code: asString(j['code']),
-        name: asString(j['name']),
-        module: asString(j['module']),
-        isSystem: asBool(j['is_system']),
-        parentGroupCode: j['parent_group_code'] as String?,
-        items: (j['items'] as List? ?? [])
+    id: asString(j['id']),
+    code: asString(j['code']),
+    name: asString(j['name']),
+    module: asString(j['module']),
+    isSystem: asBool(j['is_system']),
+    parentGroupCode: j['parent_group_code'] as String?,
+    items:
+        (j['items'] as List? ?? [])
             .map((e) => CodeItem.fromJson(asMap(e)))
             .toList()
           ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)),
-      );
+  );
 }
 
 /// The embedded person shape used for authors, assignees and participants.
@@ -146,10 +147,10 @@ class UserBrief {
       position == null || position!.isEmpty ? fullName : '$fullName $position';
 
   factory UserBrief.fromJson(Map<String, dynamic> j) => UserBrief(
-        id: asString(j['id']),
-        fullName: asString(j['full_name']),
-        position: j['position'] as String?,
-      );
+    id: asString(j['id']),
+    fullName: asString(j['full_name']),
+    position: j['position'] as String?,
+  );
 }
 
 /// One row of any grouped statistic.
@@ -180,15 +181,15 @@ class StatBucket {
   final double? totalCost;
 
   factory StatBucket.fromJson(Map<String, dynamic> j) => StatBucket(
-        key: asString(j['key']),
-        label: asString(j['label']),
-        count: asInt(j['count']),
-        ticketCount: j['ticket_count'] == null ? null : asInt(j['ticket_count']),
-        ratio: asDouble(j['ratio']) ?? 0,
-        color: j['color'] as String?,
-        avgResolutionMinutes: asDouble(j['avg_resolution_minutes']),
-        totalCost: asDouble(j['total_cost']),
-      );
+    key: asString(j['key']),
+    label: asString(j['label']),
+    count: asInt(j['count']),
+    ticketCount: j['ticket_count'] == null ? null : asInt(j['ticket_count']),
+    ratio: asDouble(j['ratio']) ?? 0,
+    color: j['color'] as String?,
+    avgResolutionMinutes: asDouble(j['avg_resolution_minutes']),
+    totalCost: asDouble(j['total_cost']),
+  );
 }
 
 // ------------------------------------------------------------------ helpers

@@ -7,10 +7,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// otherwise sit in plain text on a shared office PC.
 class TokenStore {
   TokenStore([FlutterSecureStorage? storage])
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          );
 
   final FlutterSecureStorage _storage;
 
@@ -23,9 +24,10 @@ class TokenStore {
   // default", so IT can move the server and have clients follow.
   static const _kAppliedDefault = 'applied_default_url';
 
-  /// Short-lived (60 min) and deliberately memory-only, so it never reaches
+  /// Short-lived (15 min by default) and deliberately memory-only, so it never reaches
   /// disk. A restart rebuilds it from the refresh token.
   String? accessToken;
+  int sessionRevision = 0;
 
   /// The current session's refresh token.
   ///
@@ -45,8 +47,7 @@ class TokenStore {
 
   /// Whether the user asked to stay signed in. Defaults to true: the common
   /// case is a personal work device, and the login screen lets them opt out.
-  Future<bool> readRememberMe() async =>
-      (await _read(_kRememberMe)) != 'false';
+  Future<bool> readRememberMe() async => (await _read(_kRememberMe)) != 'false';
 
   Future<void> saveRememberMe(bool value) =>
       _write(_kRememberMe, value ? 'true' : 'false');
@@ -59,6 +60,7 @@ class TokenStore {
     required bool remember,
     String? email,
   }) async {
+    sessionRevision++;
     this.accessToken = accessToken;
     _refreshInMemory = refreshToken;
     await saveRememberMe(remember);
@@ -77,6 +79,7 @@ class TokenStore {
   /// Clears credentials but keeps the server address, last email and the
   /// remember-me choice, so the next login screen is pre-filled.
   Future<void> clearSession() async {
+    sessionRevision++;
     accessToken = null;
     _refreshInMemory = null;
     await _delete(_kRefresh);

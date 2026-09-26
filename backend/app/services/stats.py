@@ -15,11 +15,12 @@ queries working on both SQLite (dev) and PostgreSQL (prod):
     함께 달린 건의 다른 원인은 그 탭에 들어가지 않는다.
   * 연도는 한국 시각 기준이다 (received_at 은 UTC 로 저장된다).
 """
+
 from __future__ import annotations
 
 import uuid
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -30,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.errors import AppError
 from app.core.security import now_utc
-from app.models.admin import CodeGroup, CodeItem
+from app.models.admin import CodeItem
 from app.models.enums import (
     OPEN_SERVICE_STATUSES,
     ServicePriority,
@@ -57,13 +58,24 @@ from app.schemas.service import (
     StoreYears,
     TrendPoint,
 )
+from app.services import code_master
 
 Interval = Literal["day", "week", "month", "year"]
 GroupBy = Literal[
-    "category", "symptom", "maker",
-    "cause", "action", "fault",
-    "assignee", "status", "priority", "channel", "department",
-    "store", "brand", "responder",
+    "category",
+    "symptom",
+    "maker",
+    "cause",
+    "action",
+    "fault",
+    "assignee",
+    "status",
+    "priority",
+    "channel",
+    "department",
+    "store",
+    "brand",
+    "responder",
 ]
 CrossAxis = Literal["year", "brand", "store", "category", "symptom", "maker"]
 
@@ -118,9 +130,12 @@ def resolution_minutes_expr():
     """completed_at - received_at, in minutes, as a float column expression."""
     if settings.is_postgres:
         # extract(epoch from interval) yields seconds.
-        return func.extract(
-            "epoch", ServiceTicket.completed_at - ServiceTicket.received_at
-        ) / 60.0
+        return (
+            func.extract(
+                "epoch", ServiceTicket.completed_at - ServiceTicket.received_at
+            )
+            / 60.0
+        )
     # SQLite: julianday returns fractional days.
     return (
         func.julianday(ServiceTicket.completed_at)
@@ -132,7 +147,7 @@ def local_expr(column):
     """UTC 컬럼을 한국 시각으로. 연·월 경계가 자정(KST)에 맞게."""
     if settings.is_postgres:
         return func.timezone(LOCAL_TZ.key, column)
-    hours = int(LOCAL_TZ.utcoffset(datetime.now()).total_seconds() // 3600)
+    hours = int(LOCAL_TZ.utcoffset(datetime.now(LOCAL_TZ)).total_seconds() // 3600)
     return func.datetime(column, f"{hours:+d} hours")
 
 
@@ -140,11 +155,18 @@ def period_expr(column, interval: Interval):
     """A sortable text bucket label for the given column."""
     local = local_expr(column)
     if settings.is_postgres:
-        fmt = {"day": "YYYY-MM-DD", "week": 'IYYY-"W"IW', "month": "YYYY-MM", "year": "YYYY"}[interval]
+        fmt = {
+            "day": "YYYY-MM-DD",
+            "week": 'IYYY-"W"IW',
+            "month": "YYYY-MM",
+            "year": "YYYY",
+        }[interval]
         return func.to_char(func.date_trunc(interval, local), fmt)
     # SQLite has no ISO-week format; %W is Monday-based week-of-year, which is
     # close enough for a trend chart but is not strictly ISO 8601.
-    fmt = {"day": "%Y-%m-%d", "week": "%Y-W%W", "month": "%Y-%m", "year": "%Y"}[interval]
+    fmt = {"day": "%Y-%m-%d", "week": "%Y-W%W", "month": "%Y-%m", "year": "%Y"}[
+        interval
+    ]
     return func.strftime(fmt, local)
 
 
@@ -194,6 +216,7 @@ def apply_filters(
     is_warranty: bool | None = None,
     is_rental: bool | None = None,
     rental_unreturned: bool | None = None,
+    missing: str | None = None,
 ) -> Select:
     """The one filter definition shared by the list endpoint and every stat.
 
@@ -201,9 +224,44 @@ def apply_filters(
     포함한다(구 서버의 EXISTS 와 같다). 대표 분류만 보면 두 번째 원인이 빠진다.
     """
     stmt = stmt.where(ServiceTicket.deleted_at.is_(None))
+    for axis in (missing or "").split(","):
+        if axis in {"category", "symptom", "maker"}:
+            column = getattr(ServiceTicketCause, axis + "_id")
+            stmt = stmt.where(
+                ServiceTicket.id.in_(
+                    select(ServiceTicket.id)
+                    .outerjoin(
+                        ServiceTicketCause,
+                        ServiceTicketCause.ticket_id == ServiceTicket.id,
+                    )
+                    .where(column.is_(None))
+                )
+            )
+        elif axis in {"store", "fault", "assignee", "department", "customer"}:
+            stmt = stmt.where(getattr(ServiceTicket, axis + "_id").is_(None))
+        elif axis == "brand":
+            stmt = stmt.where(
+                or_(
+                    ServiceTicket.store_id.is_(None),
+                    ServiceTicket.store_id.in_(
+                        select(Store.id).where(Store.brand_id.is_(None))
+                    ),
+                )
+            )
+        elif axis == "responder":
+            stmt = stmt.where(
+                ~ServiceTicket.id.in_(
+                    select(ServiceTicketResponder.ticket_id).where(
+                        ServiceTicketResponder.responder_id.is_not(None)
+                    )
+                )
+            )
+
     if year is not None:
         lo, hi = local_range(year, month)
-        stmt = stmt.where(ServiceTicket.received_at >= lo, ServiceTicket.received_at < hi)
+        stmt = stmt.where(
+            ServiceTicket.received_at >= lo, ServiceTicket.received_at < hi
+        )
     if date_from is not None:
         stmt = stmt.where(ServiceTicket.received_at >= date_from)
     if date_to is not None:
@@ -237,7 +295,9 @@ def apply_filters(
     if maker_id is not None:
         stmt = stmt.where(
             ServiceTicket.id.in_(
-                select(ServiceTicketCause.ticket_id).where(ServiceTicketCause.maker_id == maker_id)
+                select(ServiceTicketCause.ticket_id).where(
+                    ServiceTicketCause.maker_id == maker_id
+                )
             )
         )
     if fault_id is not None:
@@ -257,7 +317,9 @@ def apply_filters(
     if brand_id is not None:
         stmt = stmt.where(
             ServiceTicket.store_id.in_(
-                select(Store.id).where(Store.brand_id == brand_id, Store.deleted_at.is_(None))
+                select(Store.id).where(
+                    Store.brand_id == brand_id, Store.deleted_at.is_(None)
+                )
             )
         )
     if status is not None:
@@ -267,7 +329,9 @@ def apply_filters(
     if is_warranty is not None:
         stmt = stmt.where(ServiceTicket.is_warranty.is_(is_warranty))
     if rental_unreturned:
-        stmt = stmt.where(ServiceTicket.is_rental.is_(True), ServiceTicket.rental_returned.is_(False))
+        stmt = stmt.where(
+            ServiceTicket.is_rental.is_(True), ServiceTicket.rental_returned.is_(False)
+        )
     elif is_rental is not None:
         stmt = stmt.where(ServiceTicket.is_rental.is_(is_rental))
     return stmt
@@ -304,7 +368,9 @@ def _buckets(
                 count=count,
                 ticket_count=tickets,
                 ratio=round(count / total, 4) if total else 0.0,
-                avg_resolution_minutes=round(avg_min, 1) if avg_min is not None else None,
+                avg_resolution_minutes=round(avg_min, 1)
+                if avg_min is not None
+                else None,
                 total_cost=Decimal(str(cost)) if cost is not None else None,
             )
         )
@@ -321,8 +387,12 @@ def summary(db: Session, **filters) -> ServiceSummary:
             func.sum(
                 case((ServiceTicket.status.in_(OPEN_SERVICE_STATUSES), 1), else_=0)
             ),
-            func.sum(case((ServiceTicket.status == ServiceStatus.COMPLETED, 1), else_=0)),
-            func.sum(case((ServiceTicket.status == ServiceStatus.CANCELED, 1), else_=0)),
+            func.sum(
+                case((ServiceTicket.status == ServiceStatus.COMPLETED, 1), else_=0)
+            ),
+            func.sum(
+                case((ServiceTicket.status == ServiceStatus.CANCELED, 1), else_=0)
+            ),
             func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
             func.avg(cast(ServiceTicket.satisfaction, Float)),
             func.sum(ServiceTicket.total_cost),
@@ -332,18 +402,21 @@ def summary(db: Session, **filters) -> ServiceSummary:
     total, open_c, done_c, cancel_c, avg_res, avg_sat, cost = db.execute(base).one()
     total = total or 0
 
-    overdue = db.scalar(
-        apply_filters(
-            select(func.count(ServiceTicket.id)).where(
-                and_(
-                    ServiceTicket.due_at.isnot(None),
-                    ServiceTicket.due_at < now_utc(),
-                    ServiceTicket.status.in_(OPEN_SERVICE_STATUSES),
-                )
-            ),
-            **filters,
+    overdue = (
+        db.scalar(
+            apply_filters(
+                select(func.count(ServiceTicket.id)).where(
+                    and_(
+                        ServiceTicket.due_at.isnot(None),
+                        ServiceTicket.due_at < now_utc(),
+                        ServiceTicket.status.in_(OPEN_SERVICE_STATUSES),
+                    )
+                ),
+                **filters,
+            )
         )
-    ) or 0
+        or 0
+    )
 
     by_status = grouped(db, "status", **filters).buckets
     by_priority = grouped(db, "priority", **filters).buckets
@@ -357,7 +430,9 @@ def summary(db: Session, **filters) -> ServiceSummary:
         canceled_count=int(cancel_c or 0),
         overdue_count=overdue,
         completion_rate=round((done_c or 0) / total, 4) if total else 0.0,
-        avg_resolution_minutes=round(float(avg_res), 1) if avg_res is not None else None,
+        avg_resolution_minutes=round(float(avg_res), 1)
+        if avg_res is not None
+        else None,
         avg_satisfaction=round(float(avg_sat), 2) if avg_sat is not None else None,
         total_cost=Decimal(str(cost)) if cost is not None else None,
         by_status=by_status,
@@ -389,100 +464,159 @@ _CAUSE_AXES = {
 def _store_grouped(db: Session, total: int, **filters) -> ServiceGrouped:
     """매장별. 구 서버 통계의 1차 축 중 하나였다."""
     res_min = resolution_minutes_expr()
-    stmt = apply_filters(
-        select(
-            func.coalesce(Store.name, NO_STORE),
-            func.count(ServiceTicket.id),
-            func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
-            func.sum(ServiceTicket.total_cost),
+    stmt = (
+        apply_filters(
+            select(
+                Store.id,
+                func.count(ServiceTicket.id),
+                func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
+                func.sum(ServiceTicket.total_cost),
+            )
+            .select_from(ServiceTicket)
+            .outerjoin(Store, Store.id == ServiceTicket.store_id),
+            **filters,
         )
-        .select_from(ServiceTicket)
-        .outerjoin(Store, Store.id == ServiceTicket.store_id),
-        **filters,
-    ).group_by(Store.id, Store.name).order_by(func.count(ServiceTicket.id).desc())
+        .group_by(Store.id, Store.name)
+        .order_by(func.count(ServiceTicket.id).desc())
+    )
     return ServiceGrouped(
-        group_by="store", total=total, buckets=_buckets(list(db.execute(stmt).all()), total)
+        group_by="store",
+        total=total,
+        buckets=_buckets(
+            list(db.execute(stmt).all()),
+            total,
+            labels={
+                **dict(db.execute(select(Store.id, Store.name)).all()),
+                None: NO_STORE,
+            },
+        ),
     )
 
 
 def _brand_grouped(db: Session, total: int, **filters) -> ServiceGrouped:
     """브랜드별. 매장에 달린 브랜드 코드를 한 번 더 타고 올라간다."""
     res_min = resolution_minutes_expr()
-    stmt = apply_filters(
-        select(
-            func.coalesce(CodeItem.name, NO_BRAND),
-            func.count(ServiceTicket.id),
-            func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
-            func.sum(ServiceTicket.total_cost),
+    stmt = (
+        apply_filters(
+            select(
+                CodeItem.id,
+                func.count(ServiceTicket.id),
+                func.avg(case((ServiceTicket.completed_at.isnot(None), res_min))),
+                func.sum(ServiceTicket.total_cost),
+            )
+            .select_from(ServiceTicket)
+            .outerjoin(Store, Store.id == ServiceTicket.store_id)
+            .outerjoin(CodeItem, CodeItem.id == Store.brand_id),
+            **filters,
         )
-        .select_from(ServiceTicket)
-        .outerjoin(Store, Store.id == ServiceTicket.store_id)
-        .outerjoin(CodeItem, CodeItem.id == Store.brand_id),
-        **filters,
-    ).group_by(CodeItem.id, CodeItem.name).order_by(func.count(ServiceTicket.id).desc())
+        .group_by(CodeItem.id, CodeItem.name)
+        .order_by(func.count(ServiceTicket.id).desc())
+    )
     return ServiceGrouped(
-        group_by="brand", total=total, buckets=_buckets(list(db.execute(stmt).all()), total)
+        group_by="brand",
+        total=total,
+        buckets=_buckets(
+            list(db.execute(stmt).all()),
+            total,
+            labels={
+                **dict(db.execute(select(CodeItem.id, CodeItem.name)).all()),
+                None: "미분류",
+            },
+        ),
     )
 
 
 def _responder_grouped(db: Session, total: int, **filters) -> ServiceGrouped:
     """대응인원별. 한 건에 여러 명이 나가므로 사람 행을 센다."""
-    stmt = apply_filters(
-        select(
-            func.coalesce(CodeItem.name, "미지정"),
-            func.count(ServiceTicketResponder.id),
-            None,
-            None,
-            func.count(distinct(ServiceTicket.id)),
-        )
-        .select_from(ServiceTicket)
-        .join(ServiceTicketResponder, ServiceTicketResponder.ticket_id == ServiceTicket.id)
-        .outerjoin(CodeItem, CodeItem.id == ServiceTicketResponder.responder_id),
-        **filters,
-    ).group_by(CodeItem.id, CodeItem.name).order_by(func.count(ServiceTicketResponder.id).desc())
-    rows = list(db.execute(stmt).all())
-    denom = sum(r[1] for r in rows)
-    return ServiceGrouped(
-        group_by="responder", total=total, total_causes=denom, buckets=_buckets(rows, denom)
-    )
-
-
-def _cause_grouped(db: Session, group_by: GroupBy, total: int, **filters) -> ServiceGrouped:
-    """분류 / 증상 / 제조사 - 원인 행을 세는 축."""
-    col = _CAUSE_AXES[group_by]
-    empty_label = {"category": NO_CATEGORY, "symptom": NO_SYMPTOM, "maker": NO_MAKER}[group_by]
-    total_causes = db.scalar(
-        _cause_scope(
-            apply_filters(
-                select(func.count(ServiceTicketCause.id))
-                .select_from(ServiceTicket)
-                .join(ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id),
-                **filters,
-            ),
-            filters,
-        )
-    ) or 0
-
-    stmt = _cause_scope(
+    stmt = (
         apply_filters(
             select(
-                func.coalesce(CodeItem.name, empty_label),
-                func.count(ServiceTicketCause.id),
+                CodeItem.id,
+                func.count(ServiceTicketResponder.id),
                 None,
                 None,
                 func.count(distinct(ServiceTicket.id)),
             )
             .select_from(ServiceTicket)
-            .join(ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id)
-            .outerjoin(CodeItem, CodeItem.id == col),
+            .join(
+                ServiceTicketResponder,
+                ServiceTicketResponder.ticket_id == ServiceTicket.id,
+            )
+            .outerjoin(CodeItem, CodeItem.id == ServiceTicketResponder.responder_id),
             **filters,
+        )
+        .group_by(CodeItem.id, CodeItem.name)
+        .order_by(func.count(ServiceTicketResponder.id).desc())
+    )
+    rows = list(db.execute(stmt).all())
+    denom = sum(r[1] for r in rows)
+    return ServiceGrouped(
+        group_by="responder",
+        total=total,
+        total_causes=denom,
+        buckets=_buckets(
+            rows,
+            denom,
+            labels={
+                **dict(db.execute(select(CodeItem.id, CodeItem.name)).all()),
+                None: "미분류",
+            },
         ),
-        filters,
-    ).group_by(CodeItem.id, CodeItem.name).order_by(func.count(ServiceTicketCause.id).desc())
+    )
+
+
+def _cause_grouped(
+    db: Session, group_by: GroupBy, total: int, **filters
+) -> ServiceGrouped:
+    """분류 / 증상 / 제조사 - 원인 행을 세는 축."""
+    col = _CAUSE_AXES[group_by]
+    empty_label = {"category": NO_CATEGORY, "symptom": NO_SYMPTOM, "maker": NO_MAKER}[
+        group_by
+    ]
+    total_causes = (
+        db.scalar(
+            _cause_scope(
+                apply_filters(
+                    select(func.count(ServiceTicketCause.id))
+                    .select_from(ServiceTicket)
+                    .join(
+                        ServiceTicketCause,
+                        ServiceTicketCause.ticket_id == ServiceTicket.id,
+                    ),
+                    **filters,
+                ),
+                filters,
+            )
+        )
+        or 0
+    )
+
+    stmt = (
+        _cause_scope(
+            apply_filters(
+                select(
+                    CodeItem.id,
+                    func.count(ServiceTicketCause.id),
+                    None,
+                    None,
+                    func.count(distinct(ServiceTicket.id)),
+                )
+                .select_from(ServiceTicket)
+                .join(
+                    ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id
+                )
+                .outerjoin(CodeItem, CodeItem.id == col),
+                **filters,
+            ),
+            filters,
+        )
+        .group_by(CodeItem.id, CodeItem.name)
+        .order_by(func.count(ServiceTicketCause.id).desc())
+    )
 
     color_stmt = _cause_scope(
         apply_filters(
-            select(func.coalesce(CodeItem.name, empty_label), CodeItem.color)
+            select(CodeItem.id, CodeItem.color)
             .select_from(ServiceTicket)
             .join(ServiceTicketCause, ServiceTicketCause.ticket_id == ServiceTicket.id)
             .outerjoin(CodeItem, CodeItem.id == col),
@@ -490,14 +624,27 @@ def _cause_grouped(db: Session, group_by: GroupBy, total: int, **filters) -> Ser
         ),
         filters,
     ).group_by(CodeItem.id, CodeItem.name, CodeItem.color)
-    colors = {name: c for name, c in db.execute(color_stmt).all()}
+    colors = {
+        str(key) if key else "UNASSIGNED": c for key, c in db.execute(color_stmt).all()
+    }
 
     # 비율의 분모는 원인 총수다. 대응 건수로 나누면 합이 1 을 넘는다.
-    buckets = _buckets(list(db.execute(stmt).all()), total_causes)
+    buckets = _buckets(
+        list(db.execute(stmt).all()),
+        total_causes,
+        labels={
+            **dict(db.execute(select(CodeItem.id, CodeItem.name)).all()),
+            None: empty_label,
+        },
+    )
     for b in buckets:
         b.color = colors.get(b.key)
     return ServiceGrouped(
-        group_by=group_by, total=total, total_causes=total_causes, buckets=buckets
+        group_by=group_by,
+        total=total,
+        total_causes=total_causes,
+        buckets=buckets,
+        tickets_without_cause=_tickets_without_cause(db, **filters),
     )
 
 
@@ -507,9 +654,9 @@ def grouped(db: Session, group_by: GroupBy, **filters) -> ServiceGrouped:
     avg_res = func.avg(case((ServiceTicket.completed_at.isnot(None), res_min)))
     cost_sum = func.sum(ServiceTicket.total_cost)
 
-    total = db.scalar(
-        apply_filters(select(func.count(ServiceTicket.id)), **filters)
-    ) or 0
+    total = (
+        db.scalar(apply_filters(select(func.count(ServiceTicket.id)), **filters)) or 0
+    )
 
     if group_by in _CAUSE_AXES:
         return _cause_grouped(db, group_by, total, **filters)
@@ -525,45 +672,72 @@ def grouped(db: Session, group_by: GroupBy, **filters) -> ServiceGrouped:
 
     if group_by in _CODE_AXES:
         col = _CODE_AXES[group_by]
-        stmt = apply_filters(
-            select(
-                func.coalesce(CodeItem.name, NO_CATEGORY),
-                func.count(ServiceTicket.id),
-                avg_res,
-                cost_sum,
+        stmt = (
+            apply_filters(
+                select(
+                    CodeItem.id,
+                    func.count(ServiceTicket.id),
+                    avg_res,
+                    cost_sum,
+                )
+                .select_from(ServiceTicket)
+                .outerjoin(CodeItem, CodeItem.id == col),
+                **filters,
             )
-            .select_from(ServiceTicket)
-            .outerjoin(CodeItem, CodeItem.id == col),
-            **filters,
-        ).group_by(CodeItem.id, CodeItem.name).order_by(func.count(ServiceTicket.id).desc())
+            .group_by(CodeItem.id, CodeItem.name)
+            .order_by(func.count(ServiceTicket.id).desc())
+        )
         # Colour comes from the code master so chart and chips agree.
         color_stmt = apply_filters(
-            select(func.coalesce(CodeItem.name, NO_CATEGORY), CodeItem.color)
+            select(CodeItem.id, CodeItem.color)
             .select_from(ServiceTicket)
             .outerjoin(CodeItem, CodeItem.id == col),
             **filters,
         ).group_by(CodeItem.id, CodeItem.name, CodeItem.color)
-        colors = {name: c for name, c in db.execute(color_stmt).all()}
+        colors = {
+            str(key) if key else "UNASSIGNED": c
+            for key, c in db.execute(color_stmt).all()
+        }
         rows = db.execute(stmt).all()
-        buckets = _buckets(list(rows), total)
+        buckets = _buckets(
+            list(rows),
+            total,
+            labels={
+                **dict(db.execute(select(CodeItem.id, CodeItem.name)).all()),
+                None: NO_CATEGORY,
+            },
+        )
         for b in buckets:
             b.color = colors.get(b.key)
         return ServiceGrouped(group_by=group_by, total=total, buckets=buckets)
 
     if group_by == "assignee":
-        stmt = apply_filters(
-            select(
-                func.coalesce(User.full_name, "미배정"),
-                func.count(ServiceTicket.id),
-                avg_res,
-                cost_sum,
+        stmt = (
+            apply_filters(
+                select(
+                    User.id,
+                    func.count(ServiceTicket.id),
+                    avg_res,
+                    cost_sum,
+                )
+                .select_from(ServiceTicket)
+                .outerjoin(User, User.id == ServiceTicket.assignee_id),
+                **filters,
             )
-            .select_from(ServiceTicket)
-            .outerjoin(User, User.id == ServiceTicket.assignee_id),
-            **filters,
-        ).group_by(User.id, User.full_name).order_by(func.count(ServiceTicket.id).desc())
+            .group_by(User.id, User.full_name)
+            .order_by(func.count(ServiceTicket.id).desc())
+        )
         return ServiceGrouped(
-            group_by=group_by, total=total, buckets=_buckets(list(db.execute(stmt).all()), total)
+            group_by=group_by,
+            total=total,
+            buckets=_buckets(
+                list(db.execute(stmt).all()),
+                total,
+                labels={
+                    **dict(db.execute(select(User.id, User.full_name)).all()),
+                    None: "미배정",
+                },
+            ),
         )
 
     simple = {
@@ -576,9 +750,13 @@ def grouped(db: Session, group_by: GroupBy, **filters) -> ServiceGrouped:
         raise AppError("BAD_GROUP_BY", f"지원하지 않는 그룹 기준입니다: {group_by}")
 
     col, labels, colors = simple[group_by]
-    stmt = apply_filters(
-        select(col, func.count(ServiceTicket.id), avg_res, cost_sum), **filters
-    ).group_by(col).order_by(func.count(ServiceTicket.id).desc())
+    stmt = (
+        apply_filters(
+            select(col, func.count(ServiceTicket.id), avg_res, cost_sum), **filters
+        )
+        .group_by(col)
+        .order_by(func.count(ServiceTicket.id).desc())
+    )
     return ServiceGrouped(
         group_by=group_by,
         total=total,
@@ -626,7 +804,7 @@ class _CauseRow:
     연 수백 건 규모라 SQL 크로스탭보다 이쪽이 읽기 쉽고 방언도 안 탄다.
     """
 
-    __slots__ = ("ticket_id", "year", "brand", "store", "category", "symptom", "maker")
+    __slots__ = ("brand", "category", "maker", "store", "symptom", "ticket_id", "year")
 
     def __init__(self, ticket_id, year, brand, store, category, symptom, maker):
         self.ticket_id = ticket_id
@@ -663,16 +841,10 @@ def _cause_rows(db: Session, **filters) -> list[_CauseRow]:
     ]
 
 
-def _code_items_of(db: Session, group_code: str, parent_id: uuid.UUID | None = None) -> list[CodeItem]:
-    group = db.scalar(select(CodeGroup).where(CodeGroup.code == group_code))
-    if group is None:
-        return []
-    stmt = select(CodeItem).where(
-        CodeItem.group_id == group.id, CodeItem.deleted_at.is_(None), CodeItem.is_active.is_(True)
-    )
-    if parent_id is not None:
-        stmt = stmt.where(CodeItem.parent_id == parent_id)
-    return list(db.scalars(stmt.order_by(CodeItem.sort_order, CodeItem.name)))
+def _code_items_of(
+    db: Session, group_code: str, parent_id: uuid.UUID | None = None
+) -> list[CodeItem]:
+    return code_master.items(db, group_code, parent_id=parent_id)
 
 
 def _axis_keys(
@@ -693,7 +865,18 @@ def _axis_keys(
         keys = [AxisKey(key=str(i.id), label=i.name, color=i.color) for i in items]
         known = {k.key for k in keys}
         used = {str(r.brand) for r in rows if r.brand} - known
-        names = {str(i.id): i.name for i in db.scalars(select(CodeItem).where(CodeItem.id.in_([uuid.UUID(u) for u in used])))} if used else {}
+        names = (
+            {
+                str(i.id): i.name
+                for i in db.scalars(
+                    select(CodeItem).where(
+                        CodeItem.id.in_([uuid.UUID(u) for u in used])
+                    )
+                )
+            }
+            if used
+            else {}
+        )
         keys += [AxisKey(key=u, label=names.get(u, u)) for u in sorted(used)]
         if any(r.brand is None for r in rows):
             keys.append(AxisKey(key="-", label=NO_BRAND))
@@ -702,10 +885,17 @@ def _axis_keys(
     if axis == "store":
         totals = Counter(str(r.store) if r.store else "-" for r in rows)
         ids = [uuid.UUID(k) for k in totals if k != "-"]
-        stores = {str(s.id): s for s in db.scalars(select(Store).where(Store.id.in_(ids)))} if ids else {}
-        ordered = sorted(totals, key=lambda k: (-totals[k], stores[k].name if k in stores else "~"))
+        stores = (
+            {str(s.id): s for s in db.scalars(select(Store).where(Store.id.in_(ids)))}
+            if ids
+            else {}
+        )
+        ordered = sorted(
+            totals, key=lambda k: (-totals[k], stores[k].name if k in stores else "~")
+        )
         keys = [
-            AxisKey(key=k, label=(stores[k].name if k in stores else NO_STORE)) for k in ordered
+            AxisKey(key=k, label=(stores[k].name if k in stores else NO_STORE))
+            for k in ordered
         ]
         return keys, (lambda r: str(r.store) if r.store else "-")
 
@@ -714,7 +904,18 @@ def _axis_keys(
         keys = [AxisKey(key=str(i.id), label=i.name, color=i.color) for i in items]
         known = {k.key for k in keys}
         used = {str(r.category) for r in rows if r.category} - known
-        names = {str(i.id): i.name for i in db.scalars(select(CodeItem).where(CodeItem.id.in_([uuid.UUID(u) for u in used])))} if used else {}
+        names = (
+            {
+                str(i.id): i.name
+                for i in db.scalars(
+                    select(CodeItem).where(
+                        CodeItem.id.in_([uuid.UUID(u) for u in used])
+                    )
+                )
+            }
+            if used
+            else {}
+        )
         keys += [AxisKey(key=u, label=names.get(u, u)) for u in sorted(used)]
         if any(r.category is None for r in rows):
             keys.append(AxisKey(key="-", label=NO_CATEGORY))
@@ -728,8 +929,20 @@ def _axis_keys(
         known = {k.key for k in keys}
         used = {str(r.symptom) for r in rows if r.symptom} - known
         if used:
-            extra = {str(i.id): i for i in db.scalars(select(CodeItem).where(CodeItem.id.in_([uuid.UUID(u) for u in used])))}
-            keys += [AxisKey(key=u, label=extra[u].name if u in extra else u) for u in sorted(used, key=lambda u: (extra[u].sort_order if u in extra else 999))]
+            extra = {
+                str(i.id): i
+                for i in db.scalars(
+                    select(CodeItem).where(
+                        CodeItem.id.in_([uuid.UUID(u) for u in used])
+                    )
+                )
+            }
+            keys += [
+                AxisKey(key=u, label=extra[u].name if u in extra else u)
+                for u in sorted(
+                    used, key=lambda u: extra[u].sort_order if u in extra else 999
+                )
+            ]
         if any(r.symptom is None for r in rows):
             keys.append(AxisKey(key="-", label=NO_SYMPTOM))
         return keys, (lambda r: str(r.symptom) if r.symptom else "-")
@@ -737,15 +950,34 @@ def _axis_keys(
     if axis == "maker":
         totals = Counter(str(r.maker) if r.maker else "-" for r in rows)
         ids = [uuid.UUID(k) for k in totals if k != "-"]
-        makers = {str(i.id): i for i in db.scalars(select(CodeItem).where(CodeItem.id.in_(ids)))} if ids else {}
-        ordered = sorted(totals, key=lambda k: (k == "-", -totals[k], makers[k].name if k in makers else ""))
-        keys = [AxisKey(key=k, label=(makers[k].name if k in makers else NO_MAKER), color=(makers[k].color if k in makers else None)) for k in ordered]
+        makers = (
+            {
+                str(i.id): i
+                for i in db.scalars(select(CodeItem).where(CodeItem.id.in_(ids)))
+            }
+            if ids
+            else {}
+        )
+        ordered = sorted(
+            totals,
+            key=lambda k: (k == "-", -totals[k], makers[k].name if k in makers else ""),
+        )
+        keys = [
+            AxisKey(
+                key=k,
+                label=(makers[k].name if k in makers else NO_MAKER),
+                color=(makers[k].color if k in makers else None),
+            )
+            for k in ordered
+        ]
         return keys, (lambda r: str(r.maker) if r.maker else "-")
 
     raise AppError("BAD_AXIS", f"지원하지 않는 축입니다: {axis}")
 
 
-def crosstab(db: Session, rows_axis: CrossAxis, cols_axis: CrossAxis, **filters) -> Crosstab:
+def crosstab(
+    db: Session, rows_axis: CrossAxis, cols_axis: CrossAxis, **filters
+) -> Crosstab:
     """행 축 × 열 축 표. 칸은 원인 수, 줄 끝에 합계 · 대응 건수 · 비율."""
     if rows_axis == cols_axis:
         raise AppError("BAD_AXIS", "행과 열에 같은 축을 쓸 수 없습니다.")
@@ -785,7 +1017,9 @@ def crosstab(db: Session, rows_axis: CrossAxis, cols_axis: CrossAxis, **filters)
         rows=out_rows,
         col_totals={c.key: col_totals.get(c.key, 0) for c in col_keys},
         total_causes=total,
-        total_tickets=len({r.ticket_id for r in rows}),
+        total_tickets=len({r.ticket_id for r in rows})
+        + _tickets_without_cause(db, **filters),
+        tickets_without_cause=_tickets_without_cause(db, **filters),
     )
 
 
@@ -820,15 +1054,23 @@ def store_years(db: Session) -> StoreYears:
     installed: dict[uuid.UUID, date] = {}
     for sid, d in db.execute(
         select(Asset.store_id, func.min(Asset.purchase_date))
-        .where(Asset.deleted_at.is_(None), Asset.store_id.isnot(None), Asset.purchase_date.isnot(None))
+        .where(
+            Asset.deleted_at.is_(None),
+            Asset.store_id.isnot(None),
+            Asset.purchase_date.isnot(None),
+        )
         .group_by(Asset.store_id)
     ).all():
         if d:
-            installed[sid] = d if isinstance(d, date) else date.fromisoformat(str(d)[:10])
+            installed[sid] = (
+                d if isinstance(d, date) else date.fromisoformat(str(d)[:10])
+            )
 
     brands = {i.id: i for i in _code_items_of(db, "STORE_BRAND")}
     order_b = {bid: n for n, bid in enumerate(brands)}
-    stores = list(db.scalars(select(Store).where(Store.deleted_at.is_(None)).order_by(Store.name)))
+    stores = list(
+        db.scalars(select(Store).where(Store.deleted_at.is_(None)).order_by(Store.name))
+    )
 
     info = []
     for s in stores:
@@ -873,11 +1115,19 @@ def store_years(db: Session) -> StoreYears:
         )
 
     by_brand: list[BrandYearRow] = []
-    brand_ids = sorted({t[0].brand_id for t in info if t[1]}, key=lambda b: (order_b.get(b, 99), str(b)))
+    brand_ids = sorted(
+        {t[0].brand_id for t in info if t[1]},
+        key=lambda b: (order_b.get(b, 99), str(b)),
+    )
     for bid in brand_ids:
         label = brands[bid].name if bid in brands else NO_BRAND
         by_brand.append(
-            BrandYearRow(brand=label, counts={y: sum(1 for t in op[y] if t[0].brand_id == bid) for y in years})
+            BrandYearRow(
+                brand=label,
+                counts={
+                    y: sum(1 for t in op[y] if t[0].brand_id == bid) for y in years
+                },
+            )
         )
     by_brand.append(BrandYearRow(brand="전체", counts={y: len(op[y]) for y in years}))
 
@@ -888,4 +1138,20 @@ def store_years(db: Session) -> StoreYears:
         total_stores=len(info),
         closed_stores=sum(1 for t in info if t[0].is_closed),
         unknown_open=[t[0].name for t in info if not t[1]],
+    )
+
+
+def _tickets_without_cause(db: Session, **filters) -> int:
+    return (
+        db.scalar(
+            apply_filters(
+                select(func.count(ServiceTicket.id)).where(
+                    ~select(ServiceTicketCause.id)
+                    .where(ServiceTicketCause.ticket_id == ServiceTicket.id)
+                    .exists()
+                ),
+                **filters,
+            )
+        )
+        or 0
     )

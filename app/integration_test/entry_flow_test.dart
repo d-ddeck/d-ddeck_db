@@ -108,10 +108,10 @@ void main() {
     await waitFor(tester, find.textContaining('님, 안녕하세요'));
     await waitFor(tester, find.text('AS 접수 (당월)'));
     expect(find.text('완료율'), findsOneWidget);
-    expect(find.text('보유 자산'), findsOneWidget);
+    expect(find.text('보유 장비'), findsOneWidget);
 
     final assetTile = find.ancestor(
-      of: find.text('보유 자산'),
+      of: find.text('보유 장비'),
       matching: find.byType(Card),
     );
     expect(assetTile, findsOneWidget);
@@ -122,12 +122,12 @@ void main() {
     );
 
     // ------------------------------------------- 4. 권한에 맞는 탭 구성 (ADMIN)
-    for (final label in ['홈', '서비스', '재고', '게시판', '캘린더', '관리']) {
+    for (final label in ['홈', '대응', '장비·매장', '게시판', '캘린더', '관리']) {
       expect(find.text(label), findsWidgets, reason: '$label 탭이 없다');
     }
 
     // ------------------------------------------------- 5. 모듈 화면으로 이동
-    await tester.tap(find.text('서비스').first);
+    await tester.tap(find.text('대응').first);
     await tester.pump(const Duration(milliseconds: 400));
     await waitFor(tester, find.text('자동 통계'),
         reason: '서비스 모듈에 통계 탭이 있어야 한다');

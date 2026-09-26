@@ -1,14 +1,16 @@
 """서비스(AS) payloads, including the auto-statistics response shapes."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import ServiceChannel, ServicePriority, ServiceStatus
-from app.schemas.common import CodeItemBrief, ORMModel, UserBrief
+from app.schemas.common import CodeItemBrief, ORMModel, PatchModel, UserBrief
 
 
 # ---------------------------------------------------------------- customers
@@ -22,7 +24,9 @@ class CustomerCreate(BaseModel):
     note: str | None = None
 
 
-class CustomerUpdate(BaseModel):
+class CustomerUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"name", "is_active"}
+
     name: str | None = Field(None, max_length=150)
     contact_name: str | None = Field(None, max_length=80)
     phone: str | None = Field(None, max_length=50)
@@ -47,8 +51,8 @@ class CustomerOut(ORMModel):
 # ---------------------------------------------------------------- parts / logs
 class ServicePartIn(BaseModel):
     part_name: str = Field(min_length=1, max_length=150)
-    quantity: Decimal = Decimal(1)
-    unit_price: Decimal | None = None
+    quantity: Decimal = Field(default=Decimal(1), ge=0)
+    unit_price: Decimal | None = Field(default=None, ge=0)
     asset_id: uuid.UUID | None = None
     note: str | None = None
 
@@ -66,6 +70,11 @@ class ServiceLogIn(BaseModel):
     content: str = Field(min_length=1)
     work_minutes: int | None = Field(None, ge=0)
     to_status: ServiceStatus | None = None
+
+
+class ServiceLogUpdate(PatchModel):
+    content: str | None = None
+    work_minutes: int | None = Field(None, ge=0)
 
 
 class ServiceLogOut(ORMModel):
@@ -119,7 +128,9 @@ class _RentalFields(BaseModel):
     # 회수 O 면 실제 회수일 필수. 서버가 검사한다.
     is_rental: bool | None = None
     rental_type_id: uuid.UUID | None = None
-    rental_serials: str | None = Field(None, max_length=300, description="쉼표 구분 S/N")
+    rental_serials: str | None = Field(
+        None, max_length=300, description="쉼표 구분 S/N"
+    )
     rental_due_date: date | None = None
     rental_returned: bool | None = None
     rental_return_date: date | None = None
@@ -164,7 +175,17 @@ class ServiceTicketCreate(_RentalFields):
     is_rental: bool = False
 
 
-class ServiceTicketUpdate(_RentalFields):
+class ServiceTicketUpdate(_RentalFields, PatchModel):
+    non_nullable = {
+        "is_rental",
+        "rental_returned",
+        "is_warranty",
+        "priority",
+        "received_at",
+        "channel",
+        "title",
+    }
+
     """All optional: PATCH semantics. Status moves go through /status instead."""
 
     title: str | None = Field(None, max_length=250)
@@ -192,8 +213,8 @@ class ServiceTicketUpdate(_RentalFields):
     due_at: datetime | None = None
     is_warranty: bool | None = None
     work_minutes: int | None = Field(None, ge=0)
-    labor_cost: Decimal | None = None
-    parts_cost: Decimal | None = None
+    labor_cost: Decimal | None = Field(default=None, ge=0)
+    parts_cost: Decimal | None = Field(default=None, ge=0)
     description: str | None = None
     result_note: str | None = None
     satisfaction: int | None = Field(None, ge=1, le=5)
@@ -203,7 +224,9 @@ class ServiceStatusChange(BaseModel):
     status: ServiceStatus
     note: str | None = None
     work_minutes: int | None = Field(None, ge=0)
-    result_note: str | None = Field(None, description="required when moving to COMPLETED")
+    result_note: str | None = Field(
+        None, description="required when moving to COMPLETED"
+    )
     # 종결(COMPLETED)에는 대응인원이 있어야 한다(설정 require_responder_on_complete).
     # 아직 없으면 여기서 같이 보낸다.
     responder_ids: list[uuid.UUID] | None = None
@@ -281,7 +304,9 @@ class ServiceTicketDetail(ServiceTicketOut):
     # ORM 의 같은 이름 관계(원인 행 · 대응인원 행)를 그대로 읽지 않도록 별칭을 둔다.
     # _detail() 이 코드 이름을 붙여 채운다.
     causes: list[CauseOut] = Field(default_factory=list, validation_alias="causes_out")
-    responders: list[CodeItemBrief] = Field(default_factory=list, validation_alias="responders_out")
+    responders: list[CodeItemBrief] = Field(
+        default_factory=list, validation_alias="responders_out"
+    )
     parts: list[ServicePartOut] = Field(default_factory=list)
     logs: list[ServiceLogOut] = Field(default_factory=list)
     resolution_minutes: int | None = None
@@ -329,7 +354,9 @@ class ServiceSummary(BaseModel):
 
 
 class TrendPoint(BaseModel):
-    period: str = Field(description="YYYY-MM-DD, YYYY-Www, YYYY-MM or YYYY per interval")
+    period: str = Field(
+        description="YYYY-MM-DD, YYYY-Www, YYYY-MM or YYYY per interval"
+    )
     received: int
     completed: int
 
@@ -340,6 +367,7 @@ class ServiceTrend(BaseModel):
 
 
 class ServiceGrouped(BaseModel):
+    tickets_without_cause: int = 0
     group_by: str
     total: int = Field(description="대응 건수 - tickets matching the filters")
     # Set on multi-value axes (분류 / 증상 / 제조사). It is the denominator of
@@ -367,6 +395,7 @@ class CrosstabRow(BaseModel):
 
 
 class Crosstab(BaseModel):
+    tickets_without_cause: int = 0
     """구 서버 통계의 표 하나: 행 축 × 열 축, 칸은 원인 수.
 
     한 건에 원인이 여러 개면 각각 센다(구 서버와 같다). 그래서 칸 합은 대응

@@ -24,10 +24,15 @@ class ApiException implements Exception {
   bool get isAccountInactive => code == 'ACCOUNT_NOT_ACTIVE';
 
   /// Credentials are gone for good; the shell should bounce to the login page.
-  bool get requiresReauth =>
-      statusCode == 401 || isAccountInactive || code == 'SESSION_EXPIRED';
 
-  bool get isNotFound => statusCode == 404;
+  /// 서버의 판정을 받지 못한 실패.
+  ///
+  /// 응답이 없거나(연결 실패·시간 초과), 서버 쪽 장애(5xx)이거나, 오류 봉투가
+  /// 아닌 응답(프록시 오류 페이지 등)이라 인증 상태를 알 수 없는 경우다.
+  /// 저장된 세션이 살았는지에 대한 정보가 없으므로 세션을 지우는 근거로
+  /// 쓰면 안 된다.
+  bool get isConnectivityProblem =>
+      code == 'NETWORK_ERROR' || statusCode == null || statusCode! >= 500;
 
   /// Field-level problems from a 422, as {field: message}.
   Map<String, String> get fieldErrors {
@@ -71,8 +76,7 @@ class ApiException implements Exception {
     final message = switch (e.type) {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||
-      DioExceptionType.receiveTimeout =>
-        '서버 응답이 없습니다. 네트워크와 서버 주소를 확인해 주세요.',
+      DioExceptionType.receiveTimeout => '서버 응답이 없습니다. 네트워크와 서버 주소를 확인해 주세요.',
       DioExceptionType.connectionError =>
         '서버에 연결할 수 없습니다. 서버 주소와 실행 상태를 확인해 주세요.',
       DioExceptionType.badCertificate => '서버 인증서를 확인할 수 없습니다.',

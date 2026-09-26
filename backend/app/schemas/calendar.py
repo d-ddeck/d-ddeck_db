@@ -1,8 +1,10 @@
 """캘린더 payloads: calendars, events, participants, reminders, notifications."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import ClassVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -13,7 +15,7 @@ from app.models.enums import (
     ParticipantResponse,
     ReminderMethod,
 )
-from app.schemas.common import ORMModel, UserBrief
+from app.schemas.common import ORMModel, PatchModel, UserBrief
 
 
 # ---------------------------------------------------------------- calendars
@@ -27,7 +29,15 @@ class CalendarCreate(BaseModel):
     default_reminder_minutes: int | None = Field(30, ge=0, le=20160)
 
 
-class CalendarUpdate(BaseModel):
+class CalendarUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {
+        "name",
+        "color",
+        "type",
+        "is_shared",
+        "is_active",
+    }
+
     name: str | None = Field(None, max_length=120)
     color: str | None = Field(None, max_length=20)
     description: str | None = None
@@ -113,13 +123,23 @@ class EventCreate(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _end_after_start(self) -> "EventCreate":
+    def _end_after_start(self) -> EventCreate:
         if self.ends_at < self.starts_at:
             raise ValueError("종료 시각은 시작 시각보다 빠를 수 없습니다.")
         return self
 
 
-class EventUpdate(BaseModel):
+class EventUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {
+        "timezone",
+        "all_day",
+        "starts_at",
+        "title",
+        "status",
+        "is_private",
+        "ends_at",
+    }
+
     title: str | None = Field(None, max_length=250)
     description: str | None = None
     location: str | None = Field(None, max_length=250)
@@ -143,6 +163,7 @@ class EventUpdate(BaseModel):
 
 class EventOut(ORMModel):
     id: uuid.UUID
+    recurrence_parent_id: uuid.UUID | None = None
     calendar_id: uuid.UUID
     title: str
     description: str | None = None

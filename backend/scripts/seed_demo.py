@@ -8,31 +8,32 @@ tree, board posts and a week of calendar events.
 Run:  python scripts/seed_demo.py            (adds to the current DB)
       python scripts/seed_demo.py --reset    (drops and recreates first)
 """
+
 from __future__ import annotations
 
 import random
 import sys
-from datetime import date, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from sqlalchemy import select  # noqa: E402
-
-from app.core.database import SessionLocal, engine  # noqa: E402
-from app.core.security import hash_password, now_utc  # noqa: E402
-from app.models import Base  # noqa: E402
-from app.models.admin import CodeGroup, CodeItem  # noqa: E402
-from app.models.board import Board, Post, PostComment  # noqa: E402
-from app.models.calendar import (  # noqa: E402
+from app.core.config import settings
+from app.core.database import SessionLocal, engine
+from app.core.security import hash_password, now_utc
+from app.models import Base
+from app.models.admin import CodeGroup, CodeItem
+from app.models.board import Board, Post, PostComment
+from app.models.calendar import (
     Calendar,
     Event,
     EventParticipant,
     EventReminder,
 )
-from app.models.enums import (  # noqa: E402
+from app.models.enums import (
     AssetStatus,
     CalendarType,
     LocationType,
@@ -45,10 +46,16 @@ from app.models.enums import (  # noqa: E402
     ServiceStatus,
     UserStatus,
 )
-from app.models.inventory import Asset, AssetMovement, Location  # noqa: E402
-from app.models.service import Customer, ServiceLog, ServicePart, ServiceTicket  # noqa: E402
-from app.models.user import Department, User  # noqa: E402
-from app.services import bootstrap  # noqa: E402
+from app.models.inventory import Asset, AssetMovement, Location
+from app.models.service import (
+    Customer,
+    ServiceLog,
+    ServicePart,
+    ServiceTicket,
+)
+from app.models.user import Department, User
+from app.services import bootstrap
+from sqlalchemy import select
 
 rng = random.Random(20260920)  # fixed seed: the same demo data every run
 
@@ -93,6 +100,10 @@ RESULT_TEXT = [
 
 
 def main() -> None:
+    if settings.ENVIRONMENT.strip().lower() == "production":
+        raise SystemExit(
+            "운영 환경에서는 데모 데이터 생성/초기화를 실행할 수 없습니다."
+        )
     if "--reset" in sys.argv:
         print("dropping all tables...")
         Base.metadata.drop_all(bind=engine)
@@ -122,7 +133,7 @@ def main() -> None:
         print("\n로그인 계정 (비밀번호는 모두 demo1234):")
         for name, login, role, _, dept in PEOPLE:
             print(f"  {login}@ddeck.local  {name:5s} {role.value:10s} {dept}")
-        print("  admin@ddeck.local   최고관리자 (SUPERADMIN, 비밀번호 admin1234)")
+        print("  최고관리자 계정과 최초 비밀번호는 FIRST_SUPERADMIN_* 설정을 확인하세요.")
     finally:
         db.close()
 
@@ -213,16 +224,19 @@ def seed_tickets(db, users, customers, codes) -> None:
     causes = list(codes["SERVICE_CAUSE"].values())
     actions = list(codes["SERVICE_ACTION"].values())
     engineers = [u for u in users if u.department_id == users[0].department_id]
+    weights = ([35, 30, 15, 10, 7, 3, 1] + [1] * len(cats))[: len(cats)]
 
     now = now_utc()
     for i in range(60):
         received = now - timedelta(
-            days=rng.randint(0, 89), hours=rng.randint(0, 23), minutes=rng.randint(0, 59)
+            days=rng.randint(0, 89),
+            hours=rng.randint(0, 23),
+            minutes=rng.randint(0, 59),
         )
         customer = rng.choice(customers)
         product, model, maker = rng.choice(PRODUCTS)
         assignee = rng.choice(engineers)
-        category = rng.choices(cats, weights=[35, 30, 15, 10, 7, 3, 1][: len(cats)])[0]
+        category = rng.choices(cats, weights=weights)[0]
 
         # 80% closed, the rest spread across the open states.
         closed = rng.random() < 0.8
@@ -237,9 +251,7 @@ def seed_tickets(db, users, customers, codes) -> None:
             serial_no=f"SN-{maker[:2].upper()}{rng.randint(10000, 99999)}",
             category_id=category.id,
             symptom_id=rng.choice(symptoms).id,
-            priority=rng.choices(
-                list(ServicePriority), weights=[10, 60, 25, 5]
-            )[0],
+            priority=rng.choices(list(ServicePriority), weights=[10, 60, 25, 5])[0],
             channel=rng.choices(list(ServiceChannel), weights=[50, 10, 20, 15, 5])[0],
             assignee_id=assignee.id,
             department_id=assignee.department_id,
@@ -350,25 +362,95 @@ def seed_locations(db, users) -> dict[str, Location]:
 def seed_assets(db, users, locations, codes) -> None:
     cats = codes["ASSET_CATEGORY"]
     catalog = [
-        ("노트북 ThinkPad E14", "IT", "Lenovo", 1_350_000, "HQ-2F-OF", AssetStatus.IN_USE),
-        ("노트북 MacBook Air M3", "IT", "Apple", 1_890_000, "HQ-2F-OF", AssetStatus.IN_USE),
-        ("데스크탑 워크스테이션", "IT", "HP", 2_400_000, "HQ-2F-OF", AssetStatus.IN_USE),
+        (
+            "노트북 ThinkPad E14",
+            "IT",
+            "Lenovo",
+            1_350_000,
+            "HQ-2F-OF",
+            AssetStatus.IN_USE,
+        ),
+        (
+            "노트북 MacBook Air M3",
+            "IT",
+            "Apple",
+            1_890_000,
+            "HQ-2F-OF",
+            AssetStatus.IN_USE,
+        ),
+        (
+            "데스크탑 워크스테이션",
+            "IT",
+            "HP",
+            2_400_000,
+            "HQ-2F-OF",
+            AssetStatus.IN_USE,
+        ),
         ("서버 R750", "IT", "Dell", 8_900_000, "HQ-2F-SR", AssetStatus.IN_USE),
-        ("네트워크 스위치 48P", "IT", "Cisco", 1_200_000, "HQ-2F-SR", AssetStatus.IN_USE),
+        (
+            "네트워크 스위치 48P",
+            "IT",
+            "Cisco",
+            1_200_000,
+            "HQ-2F-SR",
+            AssetStatus.IN_USE,
+        ),
         ("무정전 전원장치 3kVA", "IT", "APC", 950_000, "HQ-2F-SR", AssetStatus.IN_USE),
-        ("복합기 C4080", "OFFICE", "신도리코", 1_100_000, "HQ-2F-OF", AssetStatus.IN_USE),
-        ("프로젝터 EB-2250U", "OFFICE", "Epson", 890_000, "HQ-2F-OF", AssetStatus.IN_STOCK),
+        (
+            "복합기 C4080",
+            "OFFICE",
+            "신도리코",
+            1_100_000,
+            "HQ-2F-OF",
+            AssetStatus.IN_USE,
+        ),
+        (
+            "프로젝터 EB-2250U",
+            "OFFICE",
+            "Epson",
+            890_000,
+            "HQ-2F-OF",
+            AssetStatus.IN_STOCK,
+        ),
         ("디지털 멀티미터", "TOOL", "Fluke", 420_000, "HQ-1F-SV", AssetStatus.IN_STOCK),
-        ("적외선 열화상 카메라", "TOOL", "FLIR", 2_800_000, "HQ-1F-SV", AssetStatus.IN_USE),
+        (
+            "적외선 열화상 카메라",
+            "TOOL",
+            "FLIR",
+            2_800_000,
+            "HQ-1F-SV",
+            AssetStatus.IN_USE,
+        ),
         ("진동 측정기", "TOOL", "SKF", 1_650_000, "VAN-01", AssetStatus.IN_USE),
         ("토크 렌치 세트", "TOOL", "Stahlwille", 380_000, "VAN-01", AssetStatus.IN_USE),
         ("전동 임팩트 드릴", "TOOL", "Bosch", 240_000, "VAN-02", AssetStatus.IN_USE),
-        ("유압 프레스 20T", "TOOL", "한국유압", 3_200_000, "HQ-1F-SV", AssetStatus.REPAIR),
+        (
+            "유압 프레스 20T",
+            "TOOL",
+            "한국유압",
+            3_200_000,
+            "HQ-1F-SV",
+            AssetStatus.REPAIR,
+        ),
         ("승합차 스타리아", "VEHICLE", "현대", 38_000_000, "HQ", AssetStatus.IN_USE),
         ("화물차 포터2", "VEHICLE", "현대", 22_000_000, "HQ", AssetStatus.IN_USE),
         ("사무용 책상", "FURNITURE", "퍼시스", 320_000, "HQ-2F-OF", AssetStatus.IN_USE),
-        ("회의용 테이블", "FURNITURE", "리바트", 680_000, "HQ-2F-OF", AssetStatus.IN_USE),
-        ("철제 캐비닛", "FURNITURE", "코아스", 190_000, "HQ-1F-WH", AssetStatus.IN_STOCK),
+        (
+            "회의용 테이블",
+            "FURNITURE",
+            "리바트",
+            680_000,
+            "HQ-2F-OF",
+            AssetStatus.IN_USE,
+        ),
+        (
+            "철제 캐비닛",
+            "FURNITURE",
+            "코아스",
+            190_000,
+            "HQ-1F-WH",
+            AssetStatus.IN_STOCK,
+        ),
     ]
     consumables = [
         ("압축기 오일 필터", "PART", 2, 10, "HQ-1F-WH"),
@@ -393,10 +475,12 @@ def seed_assets(db, users, locations, codes) -> None:
             location_id=locations[loc_code].id,
             holder_id=holder.id if holder else None,
             quantity=Decimal(1),
-            purchase_date=date.today() - timedelta(days=rng.randint(60, 1200)),
+            purchase_date=datetime.now(ZoneInfo("Asia/Seoul")).date()
+            - timedelta(days=rng.randint(60, 1200)),
             purchase_price=Decimal(price),
             supplier=rng.choice(["오피스디포", "테크몰", "직거래", "조달청"]),
-            warranty_until=date.today() + timedelta(days=rng.randint(-200, 500)),
+            warranty_until=datetime.now(ZoneInfo("Asia/Seoul")).date()
+            + timedelta(days=rng.randint(-200, 500)),
         )
         db.add(asset)
         db.flush()
@@ -444,15 +528,60 @@ def seed_assets(db, users, locations, codes) -> None:
 def seed_posts(db, users) -> None:
     boards = {b.code: b for b in db.scalars(select(Board)).all()}
     content = [
-        ("NOTICE", "2026년 하계 휴가 일정 안내", "8월 1일부터 8월 9일까지 전사 휴가입니다.\n\n긴급 AS 대응 당번은 별도 공지합니다.", True),
-        ("NOTICE", "사내 DB 서버 오픈 안내", "AS 접수, 재고, 일정이 하나의 시스템으로 통합되었습니다.\n\n문의는 관리팀으로 부탁드립니다.", True),
-        ("NOTICE", "9월 정기 안전교육 실시", "9월 25일 14시, 2층 회의실에서 진행합니다.", False),
-        ("FREE", "출동 차량 블랙박스 메모리 교체했습니다", "1호차, 2호차 모두 교체 완료했습니다.", False),
-        ("FREE", "점심 맛집 추천받습니다", "사무실 근처 새로 생긴 곳 아시는 분?", False),
-        ("QNA", "칠러 CH-450 냉매 규격 문의", "R-410A 맞나요? 매뉴얼이 안 보여서요.", False),
-        ("QNA", "자산 반납 절차가 어떻게 되나요", "노트북 교체받았는데 기존 장비 처리 방법 문의드립니다.", False),
-        ("ARCHIVE", "컴프레서 AC-2200X 정비 매뉴얼", "정비 주기 및 분해 순서 정리본입니다.", False),
-        ("ARCHIVE", "AS 보고서 표준 양식 v2", "2026년 3월부터 이 양식을 사용합니다.", False),
+        (
+            "NOTICE",
+            "2026년 하계 휴가 일정 안내",
+            "8월 1일부터 8월 9일까지 전사 휴가입니다.\n\n긴급 AS 대응 당번은 별도 공지합니다.",
+            True,
+        ),
+        (
+            "NOTICE",
+            "사내 DB 서버 오픈 안내",
+            "AS 접수, 재고, 일정이 하나의 시스템으로 통합되었습니다.\n\n문의는 관리팀으로 부탁드립니다.",
+            True,
+        ),
+        (
+            "NOTICE",
+            "9월 정기 안전교육 실시",
+            "9월 25일 14시, 2층 회의실에서 진행합니다.",
+            False,
+        ),
+        (
+            "FREE",
+            "출동 차량 블랙박스 메모리 교체했습니다",
+            "1호차, 2호차 모두 교체 완료했습니다.",
+            False,
+        ),
+        (
+            "FREE",
+            "점심 맛집 추천받습니다",
+            "사무실 근처 새로 생긴 곳 아시는 분?",
+            False,
+        ),
+        (
+            "QNA",
+            "칠러 CH-450 냉매 규격 문의",
+            "R-410A 맞나요? 매뉴얼이 안 보여서요.",
+            False,
+        ),
+        (
+            "QNA",
+            "자산 반납 절차가 어떻게 되나요",
+            "노트북 교체받았는데 기존 장비 처리 방법 문의드립니다.",
+            False,
+        ),
+        (
+            "ARCHIVE",
+            "컴프레서 AC-2200X 정비 매뉴얼",
+            "정비 주기 및 분해 순서 정리본입니다.",
+            False,
+        ),
+        (
+            "ARCHIVE",
+            "AS 보고서 표준 양식 v2",
+            "2026년 3월부터 이 양식을 사용합니다.",
+            False,
+        ),
     ]
     for board_code, title, body, pinned in content:
         author = rng.choice(users)
@@ -473,7 +602,12 @@ def seed_posts(db, users) -> None:
                     post_id=post.id,
                     author_id=rng.choice(users).id,
                     content=rng.choice(
-                        ["확인했습니다.", "감사합니다!", "참고하겠습니다.", "저도 같은 의견입니다."]
+                        [
+                            "확인했습니다.",
+                            "감사합니다!",
+                            "참고하겠습니다.",
+                            "저도 같은 의견입니다.",
+                        ]
                     ),
                 )
             )

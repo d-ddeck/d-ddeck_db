@@ -71,11 +71,15 @@ Endpoint = 1.2.3.4:51820
     });
 
     test('WireGuard 설정이 아니면 거절한다', () {
-      expect(() => WireguardConfig.parse('https://example.com'),
-          throwsA(isA<WireguardConfigException>()));
-      expect(() => WireguardConfig.parse('[Interface]\nAddress = 10.0.0.1/24'),
-          throwsA(isA<WireguardConfigException>()),
-          reason: 'Peer 가 없으면 접속할 대상이 없다');
+      expect(
+        () => WireguardConfig.parse('https://example.com'),
+        throwsA(isA<WireguardConfigException>()),
+      );
+      expect(
+        () => WireguardConfig.parse('[Interface]\nAddress = 10.0.0.1/24'),
+        throwsA(isA<WireguardConfigException>()),
+        reason: 'Peer 가 없으면 접속할 대상이 없다',
+      );
     });
   });
 
@@ -108,8 +112,11 @@ Endpoint = 1.2.3.4:51820
 
     test('대역 밖이면 false', () {
       final c = WireguardConfig.parse(splitTunnel);
-      expect(c.covers('192.168.1.20'), isFalse,
-          reason: '192.168.0.0/24 에 192.168.1.x 는 없다');
+      expect(
+        c.covers('192.168.1.20'),
+        isFalse,
+        reason: '192.168.0.0/24 에 192.168.1.x 는 없다',
+      );
       expect(c.covers('8.8.8.8'), isFalse);
     });
 
@@ -118,8 +125,10 @@ Endpoint = 1.2.3.4:51820
     });
 
     test('호스트 이름은 판단하지 않는다', () {
-      expect(WireguardConfig.parse(splitTunnel).covers('miniserver.local'),
-          isNull);
+      expect(
+        WireguardConfig.parse(splitTunnel).covers('miniserver.local'),
+        isNull,
+      );
     });
   });
 
@@ -136,8 +145,14 @@ Endpoint = 1.2.3.4:51820
     test('비밀키를 그대로 보존한다', () {
       final fixed = WireguardConfig.parse(routerDefault).toSplitTunnel();
       // 내보낸 텍스트에는 있어야 공식 앱이 터널을 올릴 수 있다.
-      expect(fixed.toIni(), contains('qJ8vZ1nKQ0pR3sT5uW7xY9aB2cD4eF6gH8iJ0kL2mN0='));
-      expect(fixed.toIni(), contains('zY9xW8vU7tS6rQ5pO4nM3lK2jI1hG0fE9dC8bA7zY6x='));
+      expect(
+        fixed.toIni(),
+        contains('qJ8vZ1nKQ0pR3sT5uW7xY9aB2cD4eF6gH8iJ0kL2mN0='),
+      );
+      expect(
+        fixed.toIni(),
+        contains('zY9xW8vU7tS6rQ5pO4nM3lK2jI1hG0fE9dC8bA7zY6x='),
+      );
     });
 
     test('고친 결과를 다시 읽을 수 있다', () {
@@ -153,7 +168,10 @@ Endpoint = 1.2.3.4:51820
     expect(red, isNot(contains('qJ8vZ1nK')));
     expect(red, isNot(contains('zY9xW8vU')));
     expect(red, contains('PrivateKey = (가림)'));
-    expect(red, contains('Endpoint = ddeck.iptime.org:51820'),
-        reason: '비밀이 아닌 값은 남아야 문제 파악에 쓸모가 있다');
+    expect(
+      red,
+      contains('Endpoint = ddeck.iptime.org:51820'),
+      reason: '비밀이 아닌 값은 남아야 문제 파악에 쓸모가 있다',
+    );
   });
 }

@@ -13,11 +13,16 @@ abstract final class AppRadius {
 
 /// Resolve status foregrounds against the current surface, including dark mode.
 abstract final class AppColors {
-  static Color success(BuildContext context) => _tone(context, const Color(0xFF146C43), const Color(0xFF75DBA5));
-  static Color warning(BuildContext context) => _tone(context, const Color(0xFF805500), const Color(0xFFFFD574));
-  static Color danger(BuildContext context) => Theme.of(context).colorScheme.error;
-  static Color info(BuildContext context) => _tone(context, const Color(0xFF175DA8), const Color(0xFFA2C9FF));
-  static Color muted(BuildContext context) => Theme.of(context).colorScheme.onSurfaceVariant;
+  static Color success(BuildContext context) =>
+      _tone(context, const Color(0xFF146C43), const Color(0xFF75DBA5));
+  static Color warning(BuildContext context) =>
+      _tone(context, const Color(0xFF805500), const Color(0xFFFFD574));
+  static Color danger(BuildContext context) =>
+      Theme.of(context).colorScheme.error;
+  static Color info(BuildContext context) =>
+      _tone(context, const Color(0xFF175DA8), const Color(0xFFA2C9FF));
+  static Color muted(BuildContext context) =>
+      Theme.of(context).colorScheme.onSurfaceVariant;
   static Color _tone(BuildContext context, Color light, Color dark) =>
       Theme.of(context).brightness == Brightness.dark ? dark : light;
 
@@ -27,9 +32,14 @@ abstract final class AppColors {
     final target = Theme.of(context).colorScheme.onSurface;
     for (var step = 0; step <= 20; step++) {
       final candidate = Color.lerp(color, target, step / 20)!;
-      final background = Color.alphaBlend(candidate.withValues(alpha: 0.14), surface);
+      final background = Color.alphaBlend(
+        candidate.withValues(alpha: 0.14),
+        surface,
+      );
       final a = candidate.computeLuminance(), b = background.computeLuminance();
-      if ((a > b ? (a + 0.05) / (b + 0.05) : (b + 0.05) / (a + 0.05)) >= 4.5) return candidate;
+      if ((a > b ? (a + 0.05) / (b + 0.05) : (b + 0.05) / (a + 0.05)) >= 4.5) {
+        return candidate;
+      }
     }
     return target;
   }
@@ -49,10 +59,12 @@ class AppTheme {
   static bool isWide(BuildContext context) =>
       MediaQuery.sizeOf(context).width >= wideBreakpoint;
 
-  static ThemeData light() => _build(Brightness.light);
-  static ThemeData dark() => _build(Brightness.dark);
+  static ThemeData light({bool compact = false}) =>
+      _build(Brightness.light, compact);
+  static ThemeData dark({bool compact = false}) =>
+      _build(Brightness.dark, compact);
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData _build(Brightness brightness, bool compact) {
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: brightness,
@@ -60,21 +72,42 @@ class AppTheme {
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
-      visualDensity: VisualDensity.standard,
-      listTileTheme: ListTileThemeData(minTileHeight: 56,
-        subtitleTextStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13, height: 1.4)),
+      visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
+      focusColor: scheme.primary.withValues(alpha: 0.22),
+      listTileTheme: ListTileThemeData(
+        minTileHeight: 56,
+        subtitleTextStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 13,
+          height: 1.4,
+        ),
+      ),
       textTheme: const TextTheme(
-        titleLarge: TextStyle(fontSize: 22, height: 1.4, fontWeight: FontWeight.w700),
-        titleMedium: TextStyle(fontSize: 16, height: 1.4, fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(
+          fontSize: 22,
+          height: 1.4,
+          fontWeight: FontWeight.w700,
+        ),
+        titleMedium: TextStyle(
+          fontSize: 16,
+          height: 1.4,
+          fontWeight: FontWeight.w600,
+        ),
         bodyMedium: TextStyle(fontSize: 14, height: 1.5),
         labelSmall: TextStyle(fontSize: 12, height: 1.4),
       ),
       dataTableTheme: DataTableThemeData(
-        dataTextStyle: TextStyle(fontSize: 13, height: 1.4, color: scheme.onSurface),
+        dataTextStyle: TextStyle(
+          fontSize: 13,
+          height: 1.4,
+          color: scheme.onSurface,
+        ),
         dividerThickness: 1,
-        dataRowMinHeight: 44,
+        dataRowMinHeight: compact ? 44 : 56,
       ),
-      iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(minimumSize: const Size(44, 44))),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
+      ),
       appBarTheme: AppBarTheme(
         centerTitle: false,
         backgroundColor: scheme.surface,
@@ -91,9 +124,14 @@ class AppTheme {
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: AppSpace.md),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: AppSpace.md,
+        ),
         floatingLabelBehavior: FloatingLabelBehavior.always,
         helperMaxLines: 2,
       ),
@@ -112,7 +150,9 @@ class AppTheme {
         style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
       ),
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
         side: BorderSide.none,
       ),
       dividerTheme: DividerThemeData(
@@ -141,7 +181,10 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.readable(context, this.color ?? AppColors.muted(context));
+    final color = AppColors.readable(
+      context,
+      this.color ?? AppColors.muted(context),
+    );
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: dense ? 6 : 8,
@@ -193,8 +236,13 @@ class StatePlaceholder extends StatelessWidget {
     return EmptyState(
       icon: icon,
       message: text,
-      action: onRetry == null ? null : OutlinedButton.icon(
-        onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('다시 시도')),
+      action: onRetry == null
+          ? null
+          : OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('다시 시도'),
+            ),
     );
   }
 }
@@ -239,17 +287,19 @@ class StatTile extends StatelessWidget {
               Row(
                 children: [
                   if (icon != null || iconWidget != null) ...[
-                    IconTheme(data: IconThemeData(size: 15, color: accent), child: iconWidget ?? Icon(icon)),
+                    IconTheme(
+                      data: IconThemeData(size: 15, color: accent),
+                      child: iconWidget ?? Icon(icon),
+                    ),
                     const SizedBox(width: 6),
                   ],
                   Flexible(
                     child: Text(
                       label,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(color: scheme.onSurfaceVariant),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
@@ -259,10 +309,11 @@ class StatTile extends StatelessWidget {
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: (compact ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.headlineSmall)?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: accent,
-                    ),
+                style:
+                    (compact
+                            ? Theme.of(context).textTheme.titleMedium
+                            : Theme.of(context).textTheme.headlineSmall)
+                        ?.copyWith(fontWeight: FontWeight.w700, color: accent),
               ),
               if (hint != null) ...[
                 const SizedBox(height: 2),
@@ -270,10 +321,9 @@ class StatTile extends StatelessWidget {
                   hint!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ],

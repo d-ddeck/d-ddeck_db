@@ -1,3 +1,8 @@
+import '../data/board_repository.dart';
+import 'board/board_page.dart';
+import 'calendar/event_detail_sheet.dart';
+import 'service/service_detail_page.dart';
+import 'admin/admin_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,8 +18,8 @@ import 'format.dart';
 /// In-app notification inbox.
 ///
 /// The server creates these rows for invitations, reminders, AS assignments,
-/// board comments and account approvals. Push mirroring is not live on the
-/// backend yet, so this list plus the badge poll is the delivery path.
+/// board comments and account approvals. The inbox remains available when
+/// optional Firebase push delivery is not configured.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
 
@@ -51,86 +56,136 @@ class _NotificationsPageState extends State<NotificationsPage> {
             },
           ),
         ],
-
       ),
-      body: PageBody(child: Column(children: [
-        FilterBar(appliedFilters: [if (_unreadOnly) '읽지 않음만'],
-          onReset: () { setState(() => _unreadOnly = false); _refresh(); }, children: [FilterChip(
+      body: PageBody(
+        child: Column(
+          children: [
+            FilterBar(
+              appliedFilters: [if (_unreadOnly) '읽지 않음만'],
+              onReset: () {
+                setState(() => _unreadOnly = false);
+                _refresh();
+              },
+              children: [
+                FilterChip(
                   label: const Text('읽지 않음만'),
                   selected: _unreadOnly,
                   onSelected: (v) => setState(() {
                     _unreadOnly = v;
                     _viewKey.currentState?.reload();
                   }),
-                )]),
-        Expanded(child: AsyncView<PagedList<AppNotification>>(
-        key: _viewKey,
-        load: () => repo.notifications(unreadOnly: _unreadOnly, size: 50),
-        emptyCheck: (p) => p.isEmpty,
-        emptyMessage: '아직 등록된 알림이 없습니다',
-        emptyIcon: Icons.notifications_none,
-        builder: (context, page, reload) => ListView.separated(
-          itemCount: page.items.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final n = page.items[i];
-            return ListTile(
-              leading: Icon(
-                _iconFor(n.type),
-                color: n.isRead
-                    ? Theme.of(context).colorScheme.outline
-                    : Theme.of(context).colorScheme.primary,
-              ),
-              title: Text(
-                n.title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: n.isRead ? FontWeight.w400 : FontWeight.w700,
+                ),
+              ],
+            ),
+            Expanded(
+              child: AsyncView<PagedList<AppNotification>>(
+                key: _viewKey,
+                load: () =>
+                    repo.notifications(unreadOnly: _unreadOnly, size: 50),
+                emptyCheck: (p) => p.isEmpty,
+                emptyMessage: '아직 등록된 알림이 없습니다',
+                emptyIcon: Icons.notifications_none,
+                builder: (context, page, reload) => ListView.separated(
+                  itemCount: page.items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final n = page.items[i];
+                    return ListTile(
+                      leading: Icon(
+                        _iconFor(n.type),
+                        color: n.isRead
+                            ? Theme.of(context).colorScheme.outline
+                            : Theme.of(context).colorScheme.primary,
+                      ),
+                      title: Text(
+                        n.title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: n.isRead
+                              ? FontWeight.w400
+                              : FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (n.body != null)
+                            Text(n.body!, style: const TextStyle(fontSize: 12)),
+                          Text(
+                            Fmt.relative(n.createdAt),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                      trailing: n.isRead
+                          ? null
+                          : Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                      onTap: () async {
+                        if (!n.isRead) {
+                          await runGuarded(context, () => repo.markRead(n.id));
+                          if (!context.mounted) return;
+                          _refresh();
+                        }
+                        if (context.mounted) {
+                          await runGuarded(context, () => _open(context, n));
+                        }
+                      },
+                    );
+                  },
                 ),
               ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (n.body != null)
-                    Text(n.body!, style: const TextStyle(fontSize: 12)),
-                  Text(
-                    Fmt.relative(n.createdAt),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              trailing: n.isRead
-                  ? null
-                  : Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-              onTap: () async {
-                if (!n.isRead) {
-                  await runGuarded(context, () => repo.markRead(n.id));
-                  if (!context.mounted) return;
-                  _refresh();
-                }
-                // The payload carries a deep-link route. Wiring it to a router
-                // is the next step; for now the destination is shown so the
-                // contract is visible to whoever picks this up.
-                if (n.route != null && context.mounted) {
-                  AppSnack.show(context, '이동 대상: ${n.route}');
-                }
-              },
-            );
-          },
+            ),
+          ],
         ),
-      )),
-      ])),
+      ),
     );
+  }
+
+  Future<void> _open(BuildContext context, AppNotification notification) async {
+    final payload = notification.payload ?? {};
+    Widget? page;
+    switch (notification.route) {
+      case '/service/ticket':
+        final id = payload['ticket_id'];
+        if (id is String) page = ServiceDetailPage(ticketId: id);
+      case '/board/post':
+        final id = payload['post_id'];
+        if (id is! String) break;
+        final repository = context.read<BoardRepository>();
+        final post = await repository.post(id);
+        final boards = await repository.boards();
+        final board = boards.where((b) => b.id == post.boardId).firstOrNull;
+        if (board != null) page = PostDetailPage(postId: id, board: board);
+      case '/calendar/event':
+        final id = payload['event_id'];
+        if (id is! String) break;
+        final event = await context.read<CalendarRepository>().event(id);
+        if (context.mounted) await EventDetailSheet.show(context, event);
+        return;
+      case '/admin/users/pending':
+        if (context.read<AuthState>().isAdmin) page = const AdminPage();
+    }
+    if (!context.mounted) return;
+    if (page != null) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => page!),
+      );
+    } else {
+      AppSnack.show(context, '이 알림은 이동할 수 있는 화면이 없습니다.');
+    }
   }
 
   static const _icons = <String, IconData>{

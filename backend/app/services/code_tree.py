@@ -7,6 +7,7 @@
 상위를 먼저 고르게 하고, 서버는 하위 항목에 상위가 빠지거나 다른 분류를 가리키는
 것을 거절한다.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -43,7 +44,9 @@ def resolve_parent(
             return None
         parent = _alive(db, parent_id)
         if parent is None or parent.group_id != group.id:
-            raise AppError("PARENT_MISMATCH", "상위 항목은 같은 분류 안의 항목이어야 합니다.")
+            raise AppError(
+                "PARENT_MISMATCH", "상위 항목은 같은 분류 안의 항목이어야 합니다."
+            )
         return parent
 
     parent_group = db.scalar(select(CodeGroup).where(CodeGroup.code == want))

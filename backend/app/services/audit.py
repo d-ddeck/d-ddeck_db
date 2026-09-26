@@ -1,4 +1,5 @@
 """Audit-trail helper. Every admin-visible mutation should call record()."""
+
 from __future__ import annotations
 
 import uuid
@@ -13,7 +14,17 @@ from app.models.enums import AuditAction, ModuleKey
 from app.models.user import User
 
 # Never copy these into the changes diff, even if a caller passes them in.
-_REDACTED = {"password", "password_hash", "new_password", "current_password", "token"}
+_REDACTED = {
+    "password",
+    "password_hash",
+    "new_password",
+    "current_password",
+    "token",
+    "push_token",
+    "token_hash",
+    "access_token",
+    "refresh_token",
+}
 
 
 def diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, list[Any]]:

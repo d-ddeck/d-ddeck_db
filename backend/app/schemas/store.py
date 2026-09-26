@@ -1,12 +1,14 @@
 """매장 요청/응답 스키마."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import CodeItemBrief, ORMModel
+from app.schemas.common import CodeItemBrief, ORMModel, PatchModel
 
 
 class StoreSetOut(ORMModel):
@@ -19,6 +21,7 @@ class StoreCreate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     brand_id: uuid.UUID | None = None
     open_date: date | None = None
+    is_active: bool = True
     is_closed: bool = False
     closed_date: date | None = None
     gripper_type: str | None = Field(None, max_length=20)
@@ -26,12 +29,15 @@ class StoreCreate(BaseModel):
     customer_id: uuid.UUID | None = None
 
 
-class StoreUpdate(BaseModel):
+class StoreUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"name", "is_closed", "is_active"}
+
     name: str | None = Field(None, min_length=1, max_length=150)
     # 폐점(is_closed=true)으로 저장하면서 설치 장비를 보낼 상태. 비우면 장비는 그대로.
     recover_to_status_item_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
     open_date: date | None = None
+    is_active: bool | None = None
     is_closed: bool | None = None
     closed_date: date | None = None
     gripper_type: str | None = Field(None, max_length=20)
@@ -45,6 +51,7 @@ class StoreOut(ORMModel):
     brand_id: uuid.UUID | None = None
     brand: CodeItemBrief | None = None
     open_date: date | None = None
+    is_active: bool
     is_closed: bool
     closed_date: date | None = None
     gripper_type: str | None = None
@@ -55,6 +62,8 @@ class StoreOut(ORMModel):
     # 목록 화면이 매장마다 한 번 더 조회하지 않도록 같이 실어 보낸다.
     asset_count: int = 0
     ticket_count: int = 0
+    last_ticket_at: datetime | None = None
+    open_ticket_count: int = 0
 
 
 class AssetInStore(BaseModel):
@@ -90,6 +99,8 @@ class BrandSummary(BaseModel):
     store_count: int
     open_store_count: int
     asset_count: int
+    ticket_count: int = 0
+    open_ticket_count: int = 0
 
 
 # ---------------------------------------------------------------- 구 서버 매장 화면용
@@ -120,18 +131,24 @@ class CategoryCount(BaseModel):
 
 
 class StoreDetail(StoreOut):
-    sets: list[StoreSetOut] = []
-    asset_groups: list[StoreAssetGroup] = []
+    notices: list[str] = Field(default_factory=list)
+    sets: list[StoreSetOut] = Field(default_factory=list)
+    asset_groups: list[StoreAssetGroup] = Field(default_factory=list)
     # 구 서버 매장 화면의 나머지: 서비스구분별 발생 · 미회수 렌탈 · 대응 이력 · 폐점 회수 안내
     open_ticket_count: int = 0
     install_date: date | None = Field(None, description="보유 장비 중 가장 이른 설치일")
-    category_counts: list[CategoryCount] = Field(default_factory=list, description="서비스구분별 원인 수")
+    category_counts: list[CategoryCount] = Field(
+        default_factory=list, description="서비스구분별 원인 수"
+    )
     unreturned_rentals: list[StoreRentalRow] = Field(default_factory=list)
     recent_tickets: list[StoreTicketBrief] = Field(default_factory=list)
     recover_options: list[CodeItemBrief] = Field(
-        default_factory=list, description="폐점 때 장비를 보낼 수 있는 상태. 첫 항목이 기본값"
+        default_factory=list,
+        description="폐점 때 장비를 보낼 수 있는 상태. 첫 항목이 기본값",
     )
-    movable_count: int = Field(0, description="폐점 때 회수될 장비 수 (설치 · AS 대기 · AS 반출)")
+    movable_count: int = Field(
+        0, description="폐점 때 회수될 장비 수 (설치 · AS 대기 · AS 반출)"
+    )
     rental_count: int = Field(0, description="렌탈 중 장비 수 - 폐점 때 옮기지 않음")
 
 

@@ -1,14 +1,15 @@
 """관리기능 payloads: module settings, code master, audit log, health."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import AuditAction, ModuleKey
-from app.schemas.common import ORMModel
+from app.schemas.common import ORMModel, PatchModel
 
 
 # ---------------------------------------------------------------- settings
@@ -46,7 +47,7 @@ class ModuleSettingsOut(BaseModel):
 
     module: ModuleKey
     settings: list[SettingOut]
-    code_groups: list["CodeGroupOut"] = Field(default_factory=list)
+    code_groups: list[CodeGroupOut] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- code master
@@ -57,7 +58,9 @@ class CodeGroupCreate(BaseModel):
     description: str | None = None
 
 
-class CodeGroupUpdate(BaseModel):
+class CodeGroupUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"name"}
+
     name: str | None = Field(None, max_length=100)
     description: str | None = None
 
@@ -71,7 +74,9 @@ class CodeItemCreate(BaseModel):
     extra: dict | None = None
 
 
-class CodeItemUpdate(BaseModel):
+class CodeItemUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"name", "sort_order", "is_active"}
+
     name: str | None = Field(None, max_length=120)
     parent_id: uuid.UUID | None = None
     color: str | None = Field(None, max_length=20)
@@ -131,7 +136,9 @@ class DepartmentCreate(BaseModel):
     sort_order: int = 0
 
 
-class DepartmentUpdate(BaseModel):
+class DepartmentUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"name", "sort_order"}
+
     name: str | None = Field(None, max_length=100)
     code: str | None = Field(None, max_length=50)
     parent_id: uuid.UUID | None = None
@@ -176,6 +183,9 @@ class HealthOut(BaseModel):
     database_ok: bool
     uptime_seconds: float
     server_time: datetime
+    schema_revisions: list[str] = Field(default_factory=list)
+    disk_free_bytes: int = 0
+    backup: dict = Field(default_factory=dict)
 
 
 class SystemStats(BaseModel):

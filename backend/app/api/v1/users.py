@@ -1,4 +1,5 @@
 """User administration: the approval queue, roles, and the member directory."""
+
 from __future__ import annotations
 
 import uuid
@@ -18,10 +19,11 @@ from app.models.enums import (
     Role,
     UserStatus,
 )
-from app.models.user import RefreshToken, User
+from app.models.user import Device, RefreshToken, User
 from app.schemas.auth import (
     ApproveRequest,
     RejectRequest,
+    SessionOut,
     UserAdminView,
     UserUpdateAdmin,
 )
@@ -81,7 +83,11 @@ def list_users(
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(
-            or_(User.full_name.ilike(like), User.email.ilike(like), User.employee_no.ilike(like))
+            or_(
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.employee_no.ilike(like),
+            )
         )
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
@@ -124,6 +130,7 @@ def approve(
     client: Client,
 ) -> UserAdminView:
     user = _load(db, user_id)
+    _guard_target(admin, user)
     if user.status == UserStatus.APPROVED:
         raise AppError("ALREADY_APPROVED", "이미 승인된 계정입니다.")
     _guard_role_grant(admin, payload.role)
@@ -172,6 +179,10 @@ def reject(
     client: Client,
 ) -> UserAdminView:
     user = _load(db, user_id)
+    _guard_target(admin, user)
+    if user.status != UserStatus.PENDING:
+        # 반려는 승인 대기열의 동작이다. 승인된 계정을 막으려면 정지(PATCH status)를 쓴다.
+        raise AppError("NOT_PENDING", "승인 대기 중인 계정만 반려할 수 있습니다.")
     user.status = UserStatus.REJECTED
     user.rejection_reason = payload.reason
     user.approved_by_id = admin.id
@@ -212,6 +223,7 @@ def update_user(
     client: Client,
 ) -> UserAdminView:
     user = _load(db, user_id)
+    _guard_target(admin, user)
     data = payload.model_dump(exclude_unset=True)
 
     if "role" in data and data["role"] is not None:
@@ -219,6 +231,29 @@ def update_user(
         if user.id == admin.id and ROLE_LEVEL[data["role"]] < ROLE_LEVEL[admin.role]:
             raise AppError("CANNOT_DEMOTE_SELF", "본인의 권한은 낮출 수 없습니다.")
 
+    if (
+        user.status == UserStatus.APPROVED
+        and ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.ADMIN]
+        and (
+            data.get("status", user.status) != UserStatus.APPROVED
+            or ROLE_LEVEL[data.get("role", user.role)] < ROLE_LEVEL[Role.ADMIN]
+        )
+    ):
+        remaining = (
+            db.scalar(
+                select(func.count(User.id)).where(
+                    User.id != user.id,
+                    User.deleted_at.is_(None),
+                    User.status == UserStatus.APPROVED,
+                    User.role.in_([Role.ADMIN, Role.SUPERADMIN]),
+                )
+            )
+            or 0
+        )
+        if remaining == 0:
+            raise AppError(
+                "LAST_ADMIN", "마지막 관리자는 정지하거나 강등할 수 없습니다."
+            )
     before = {k: getattr(user, k) for k in data}
     for field, value in data.items():
         setattr(user, field, value)
@@ -252,6 +287,7 @@ def reset_password(
     import secrets
 
     user = _load(db, user_id)
+    _guard_target(admin, user)
     temp = secrets.token_urlsafe(9)
     user.password_hash = hash_password(temp)
     user.must_change_password = True
@@ -282,21 +318,21 @@ def deactivate(
     user = _load(db, user_id)
     if user.id == admin.id:
         raise AppError("CANNOT_DELETE_SELF", "본인 계정은 삭제할 수 없습니다.")
-    if user.role == Role.SUPERADMIN and admin.role != Role.SUPERADMIN:
-        raise AppError(
-            "FORBIDDEN", "최고 관리자 계정은 삭제할 수 없습니다.", status.HTTP_403_FORBIDDEN
-        )
+    _guard_target(admin, user)
     # 구 서버 규칙: 마지막 관리자 계정은 지울 수 없다. 관리자가 한 명도 안 남으면
     # 승인·설정을 아무도 못 하게 된다.
     if ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.ADMIN]:
-        remaining = db.scalar(
-            select(func.count(User.id)).where(
-                User.id != user.id,
-                User.deleted_at.is_(None),
-                User.status == UserStatus.APPROVED,
-                User.role.in_([Role.ADMIN, Role.SUPERADMIN]),
+        remaining = (
+            db.scalar(
+                select(func.count(User.id)).where(
+                    User.id != user.id,
+                    User.deleted_at.is_(None),
+                    User.status == UserStatus.APPROVED,
+                    User.role.in_([Role.ADMIN, Role.SUPERADMIN]),
+                )
             )
-        ) or 0
+            or 0
+        )
         if remaining == 0:
             raise AppError(
                 "LAST_ADMIN",
@@ -324,13 +360,36 @@ def deactivate(
 def _load(db, user_id: uuid.UUID) -> User:
     user = db.scalar(select(User).where(User.id == user_id, User.deleted_at.is_(None)))
     if user is None:
-        raise AppError("NOT_FOUND", "계정을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "계정을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return user
+
+
+def _guard_target(admin: User, target: User) -> None:
+    """관리자는 자기보다 낮은 권한의 계정만 다룰 수 있다 (SUPERADMIN 은 예외).
+
+    이 가드가 없으면 ADMIN 이 SUPERADMIN 의 비밀번호를 초기화해 그 계정으로 들어가거나,
+    강등·정지시켜 최고관리자를 잠글 수 있다. 본인 계정은 통과시키고(자기 강등·삭제는
+    각 엔드포인트가 따로 막는다) 승인·반려·수정·초기화·삭제 모두 같은 규칙을 쓴다.
+    """
+    if target.id == admin.id or admin.role == Role.SUPERADMIN:
+        return
+    if ROLE_LEVEL[target.role] >= ROLE_LEVEL[admin.role]:
+        raise AppError(
+            "FORBIDDEN",
+            "같거나 높은 권한의 계정은 변경할 수 없습니다.",
+            status.HTTP_403_FORBIDDEN,
+            {"target_role": target.role.value, "your_role": admin.role.value},
+        )
 
 
 def _guard_role_grant(admin: User, target_role: Role) -> None:
     """Nobody may hand out a role at or above their own level."""
-    if ROLE_LEVEL[target_role] >= ROLE_LEVEL[admin.role] and admin.role != Role.SUPERADMIN:
+    if (
+        ROLE_LEVEL[target_role] >= ROLE_LEVEL[admin.role]
+        and admin.role != Role.SUPERADMIN
+    ):
         raise AppError(
             "FORBIDDEN",
             "자신과 같거나 높은 권한은 부여할 수 없습니다.",
@@ -339,6 +398,8 @@ def _guard_role_grant(admin: User, target_role: Role) -> None:
 
 
 def _revoke_all_sessions(db, user_id: uuid.UUID) -> None:
+    for device in db.scalars(select(Device).where(Device.user_id == user_id)).all():
+        device.is_active = False
     now = now_utc()
     for row in db.scalars(
         select(RefreshToken).where(
@@ -346,3 +407,21 @@ def _revoke_all_sessions(db, user_id: uuid.UUID) -> None:
         )
     ).all():
         row.revoked_at = now
+
+
+@router.get("/{user_id}/sessions", response_model=list[SessionOut])
+def user_sessions(user_id: uuid.UUID, db: DbSession, admin: AdminUser):
+    target = db.get(User, user_id)
+    if target is None or target.deleted_at is not None:
+        raise AppError("NOT_FOUND", "계정을 찾을 수 없습니다.", 404)
+    _guard_target(admin, target)
+    rows = db.scalars(
+        select(RefreshToken)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked_at.is_(None),
+            RefreshToken.expires_at > now_utc(),
+        )
+        .order_by(RefreshToken.created_at.desc())
+    ).all()
+    return [SessionOut.model_validate(row) for row in rows]

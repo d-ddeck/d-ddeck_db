@@ -4,17 +4,18 @@
 서비스구분·증상·제조사 여러 쌍, 대응인원, 렌탈(재고 연동), 종결 규칙, 검색 조건,
 엑셀 내려받기, 통계 표(크로스탭), 첫 화면(대시보드).
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.core.deps import (
     Client,
@@ -45,9 +46,8 @@ from app.models.service import (
 )
 from app.models.store import Store
 from app.models.user import User
-from app.schemas.common import CodeItemBrief, Message, Page, UserBrief
+from app.schemas.common import Message, Page, UserBrief
 from app.schemas.service import (
-    CauseOut,
     Crosstab,
     CustomerCreate,
     CustomerOut,
@@ -66,30 +66,58 @@ from app.schemas.service import (
     ServiceTicketOut,
     ServiceTicketUpdate,
     ServiceTrend,
-    StoreRef,
     StoreYears,
     TicketBrief,
     YearCount,
 )
-from app.services import audit, excel, notifications, settings_store, stats, ticket_rules
+from app.services import (
+    audit,
+    excel,
+    notifications,
+    settings_store,
+    stats,
+    ticket_rules,
+)
+from app.services.ticket_view import _detail, _enrich, _extras
 
 router = APIRouter(prefix="/service", tags=["service"])
 
 SortKey = Literal[
-    "received_desc", "received_asc", "due_asc", "priority_desc",
-    "created_desc", "updated_desc",
+    "brand_asc",
+    "brand_desc",
+    "ticket_no_asc",
+    "ticket_no_desc",
+    "store_asc",
+    "store_desc",
+    "status_asc",
+    "status_desc",
+    "completed_asc",
+    "completed_desc",
+    "received_desc",
+    "received_asc",
+    "due_asc",
+    "priority_desc",
+    "created_desc",
+    "updated_desc",
 ]
 
 
 # ================================================================== 공통 검색 조건
 def ticket_filters(
+    missing: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-    year: Annotated[int | None, Query(ge=2000, le=2100, description="발생 연도(한국 시각)")] = None,
-    month: Annotated[int | None, Query(ge=1, le=12, description="발생 월. year 와 함께")] = None,
+    year: Annotated[
+        int | None, Query(ge=2000, le=2100, description="발생 연도(한국 시각)")
+    ] = None,
+    month: Annotated[
+        int | None, Query(ge=1, le=12, description="발생 월. year 와 함께")
+    ] = None,
     assignee_id: uuid.UUID | None = None,
     department_id: uuid.UUID | None = None,
-    category_id: Annotated[uuid.UUID | None, Query(description="서비스구분 - 원인 중 하나라도")] = None,
+    category_id: Annotated[
+        uuid.UUID | None, Query(description="서비스구분 - 원인 중 하나라도")
+    ] = None,
     symptom_id: uuid.UUID | None = None,
     maker_id: uuid.UUID | None = None,
     fault_id: uuid.UUID | None = None,
@@ -104,7 +132,27 @@ def ticket_filters(
     rental_unreturned: Annotated[bool, Query(description="렌탈 O · 미회수만")] = False,
 ) -> dict:
     """목록 · 통계 · 엑셀이 같은 조건을 쓴다. 조건이 같으면 숫자도 같아야 한다."""
+    if date_from is not None and date_from.tzinfo is None:
+        date_from = date_from.replace(tzinfo=stats.LOCAL_TZ)
+    if date_to is not None and date_to.tzinfo is None:
+        date_to = date_to.replace(tzinfo=stats.LOCAL_TZ)
+    if date_from and date_to and date_from > date_to:
+        raise AppError("INVALID_DATE_RANGE", "시작일은 종료일보다 늦을 수 없습니다.")
+    if missing and set(missing.split(",")) - {
+        "category",
+        "symptom",
+        "maker",
+        "store",
+        "brand",
+        "fault",
+        "responder",
+        "assignee",
+        "department",
+        "customer",
+    }:
+        raise AppError("INVALID_FILTER", "지원하지 않는 미분류 조건입니다.")
     return {
+        "missing": missing,
         "date_from": date_from,
         "date_to": date_to,
         "year": year,
@@ -139,7 +187,11 @@ def list_customers(
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(
-            or_(Customer.name.ilike(like), Customer.phone.ilike(like), Customer.code.ilike(like))
+            or_(
+                Customer.name.ilike(like),
+                Customer.phone.ilike(like),
+                Customer.code.ilike(like),
+            )
         )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
@@ -150,7 +202,9 @@ def list_customers(
     )
 
 
-@router.post("/customers", response_model=CustomerOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/customers", response_model=CustomerOut, status_code=status.HTTP_201_CREATED
+)
 def create_customer(
     payload: CustomerCreate, db: DbSession, user: CurrentUser
 ) -> CustomerOut:
@@ -166,10 +220,14 @@ def update_customer(
     customer_id: uuid.UUID, payload: CustomerUpdate, db: DbSession, user: CurrentUser
 ) -> CustomerOut:
     customer = db.scalar(
-        select(Customer).where(Customer.id == customer_id, Customer.deleted_at.is_(None))
+        select(Customer).where(
+            Customer.id == customer_id, Customer.deleted_at.is_(None)
+        )
     )
     if customer is None:
-        raise AppError("NOT_FOUND", "거래처를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "거래처를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(customer, field, value)
     customer.updated_by_id = user.id
@@ -200,6 +258,13 @@ def _ticket_query(
         code_ids = select(CodeItem.id).where(CodeItem.name.ilike(like))
         stmt = stmt.where(
             or_(
+                ServiceTicket.id.in_(
+                    select(Attachment.entity_id).where(
+                        Attachment.entity_type == "service_ticket",
+                        Attachment.deleted_at.is_(None),
+                        Attachment.original_name.ilike(like),
+                    )
+                ),
                 ServiceTicket.ticket_no == text,
                 ServiceTicket.ticket_no.ilike(like),
                 ServiceTicket.title.ilike(like),
@@ -208,7 +273,9 @@ def _ticket_query(
                 ServiceTicket.serial_no.ilike(like),
                 ServiceTicket.rental_serials.ilike(like),
                 ServiceTicket.customer_name.ilike(like),
-                ServiceTicket.store_id.in_(select(Store.id).where(Store.name.ilike(like))),
+                ServiceTicket.store_id.in_(
+                    select(Store.id).where(Store.name.ilike(like))
+                ),
                 ServiceTicket.fault_id.in_(code_ids),
                 ServiceTicket.rental_type_id.in_(code_ids),
                 ServiceTicket.id.in_(
@@ -233,13 +300,62 @@ def _ticket_query(
     return stmt
 
 
+def _brand_order():
+    return (
+        select(CodeItem.name)
+        .join(Store, Store.brand_id == CodeItem.id)
+        .where(Store.id == ServiceTicket.store_id)
+        .scalar_subquery()
+    )
+
+
 _ORDER = {
-    "received_desc": lambda: (ServiceTicket.received_at.desc(), ServiceTicket.created_at.desc()),
-    "received_asc": lambda: (ServiceTicket.received_at.asc(), ServiceTicket.created_at.asc()),
-    "due_asc": lambda: (ServiceTicket.due_at.asc(),),
-    "priority_desc": lambda: (ServiceTicket.priority.desc(), ServiceTicket.received_at.desc()),
+    "brand_asc": lambda: (_brand_order().asc().nulls_last(),),
+    "brand_desc": lambda: (_brand_order().desc().nulls_last(),),
+    "ticket_no_asc": lambda: (
+        ServiceTicket.legacy_no.asc().nulls_last(),
+        ServiceTicket.ticket_no.asc(),
+    ),
+    "ticket_no_desc": lambda: (
+        ServiceTicket.legacy_no.desc().nulls_last(),
+        ServiceTicket.ticket_no.desc(),
+    ),
+    "store_asc": lambda: (
+        select(Store.name)
+        .where(Store.id == ServiceTicket.store_id)
+        .scalar_subquery()
+        .asc()
+        .nulls_last(),
+    ),
+    "store_desc": lambda: (
+        select(Store.name)
+        .where(Store.id == ServiceTicket.store_id)
+        .scalar_subquery()
+        .desc()
+        .nulls_last(),
+    ),
+    "status_asc": lambda: (ServiceTicket.status.asc(),),
+    "status_desc": lambda: (ServiceTicket.status.desc(),),
+    "completed_asc": lambda: (ServiceTicket.completed_at.asc().nulls_last(),),
+    "completed_desc": lambda: (ServiceTicket.completed_at.desc().nulls_last(),),
+    "received_desc": lambda: (
+        ServiceTicket.received_at.desc(),
+        ServiceTicket.created_at.desc(),
+    ),
+    "received_asc": lambda: (
+        ServiceTicket.received_at.asc(),
+        ServiceTicket.created_at.asc(),
+    ),
+    "due_asc": lambda: (ServiceTicket.due_at.asc().nulls_last(),),
+    "priority_desc": lambda: (
+        ServiceTicket.priority.desc(),
+        ServiceTicket.received_at.desc(),
+    ),
     "created_desc": lambda: (ServiceTicket.created_at.desc(),),
-    "updated_desc": lambda: (ServiceTicket.updated_at.desc(), ServiceTicket.created_at.desc()),
+    "updated_desc": lambda: (
+        ServiceTicket.updated_at.desc(),
+        ServiceTicket.created_at.desc(),
+    ),
 }
 
 
@@ -249,14 +365,23 @@ def list_tickets(
     _: CurrentUser,
     page: PageParams,
     filters: Filters,
-    q: Annotated[str | None, Query(description="번호 · 제목 · 내용 · 시리얼 · 매장 · 분류 · 대응인원 · 댓글")] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            description="번호 · 제목 · 내용 · 시리얼 · 매장 · 분류 · 대응인원 · 댓글"
+        ),
+    ] = None,
     priority: ServicePriority | None = None,
     channel: ServiceChannel | None = None,
     sort: Annotated[SortKey, Query()] = "received_desc",
 ) -> Page[ServiceTicketOut]:
     stmt = _ticket_query(db, filters, q=q, priority=priority, channel=channel)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = db.scalars(stmt.order_by(*_ORDER[sort]()).offset(page.offset).limit(page.size)).all()
+    rows = db.scalars(
+        stmt.order_by(*_ORDER[sort](), ServiceTicket.id)
+        .offset(page.offset)
+        .limit(page.size)
+    ).all()
     return Page.build(_enrich(db, list(rows)), total, page.page, page.size)
 
 
@@ -271,16 +396,43 @@ def export_tickets(
 ):
     """검색 조건 그대로 엑셀. 열 구성은 구 서버 '대응기록_날짜.xlsx' 와 같다."""
     stmt = _ticket_query(db, filters, q=q, priority=priority, channel=channel)
-    tickets = list(db.scalars(stmt.order_by(ServiceTicket.received_at, ServiceTicket.created_at)).all())
+    tickets = list(
+        db.scalars(
+            stmt.order_by(ServiceTicket.received_at, ServiceTicket.created_at)
+        ).all()
+    )
     extras = _extras(db, tickets)
+    log_text = {}
+    for ticket_id, content in db.execute(
+        select(ServiceLog.ticket_id, ServiceLog.content)
+        .where(ServiceLog.ticket_id.in_([t.id for t in tickets]))
+        .order_by(ServiceLog.created_at)
+    ):
+        log_text.setdefault(ticket_id, []).append(content or "")
     n_cause = max([3] + [len(extras[t.id]["causes"]) for t in tickets])
 
     head = ["번호", "브랜드", "매장명"]
     for i in range(1, n_cause + 1):
         head += [f"서비스구분 {i}", f"세부분류 {i}", f"제조사 {i}"]
-    head += ["과실", "발생일", "발생 내용", "대응일", "대응 내용", "종결 여부", "상태", "대응인원",
-             "렌탈 여부", "렌탈 장비 종류", "렌탈 장비 시리얼", "회수 예정일", "실제 회수일", "회수 여부",
-             "첨부 수", "처리 이력 수"]
+    head += [
+        "과실",
+        "발생일",
+        "발생 내용",
+        "대응일",
+        "대응 내용",
+        "종결 여부",
+        "상태",
+        "대응인원",
+        "렌탈 여부",
+        "렌탈 장비 종류",
+        "렌탈 장비 시리얼",
+        "회수 예정일",
+        "실제 회수일",
+        "회수 여부",
+        "첨부 수",
+        "처리 이력 수",
+        "처리 이력 내용",
+    ]
 
     def rows():
         for t in tickets:
@@ -296,9 +448,9 @@ def export_tickets(
             completed = stats.to_local(t.completed_at)
             line += [
                 e["fault_name"],
-                received.date().isoformat() if received else "",
+                received.date() if received else None,
                 t.description or t.title,
-                completed.date().isoformat() if completed else "",
+                completed.date() if completed else None,
                 t.result_note or "",
                 "종결" if t.status == ServiceStatus.COMPLETED else "미종결",
                 stats.STATUS_LABELS.get(t.status, t.status.value),
@@ -306,20 +458,27 @@ def export_tickets(
                 "O" if t.is_rental else "X",
                 e["rental_type"] or "",
                 t.rental_serials or "",
-                t.rental_due_date.isoformat() if t.rental_due_date else "",
-                t.rental_return_date.isoformat() if t.rental_return_date else "",
+                t.rental_due_date,
+                t.rental_return_date,
                 ("O" if t.rental_returned else "X") if t.is_rental else "",
                 e["attachment_count"],
                 e["log_count"],
+                "\n".join(log_text.get(t.id, [])),
             ]
             yield line
 
     wb = excel.workbook()
     ws = wb.create_sheet("대응 기록")
-    widths = [8, 10, 18] + [14, 22, 13] * n_cause + [12, 11, 46, 11, 46, 10, 8, 14, 9, 16, 18, 11, 11, 9, 7, 9]
+    widths = (
+        [8, 10, 18]
+        + [14, 22, 13] * n_cause
+        + [12, 11, 46, 11, 46, 10, 8, 14, 9, 16, 18, 11, 11, 9, 7, 9, 50]
+    )
     wrap = [head.index("발생 내용"), head.index("대응 내용")]
     excel.fill_sheet(ws, head, rows(), widths, wrap_cols=wrap)
-    return excel.to_response(wb, f"대응기록_{datetime.now(stats.LOCAL_TZ).date().isoformat()}.xlsx")
+    return excel.to_response(
+        wb, f"대응기록_{datetime.now(stats.LOCAL_TZ).date().isoformat()}.xlsx"
+    )
 
 
 # ------------------------------------------------------------------ 대시보드 (구 서버 첫 화면)
@@ -336,14 +495,22 @@ def dashboard(
 
     total = db.scalar(select(func.count(ServiceTicket.id)).where(live)) or 0
     lo, hi = stats.local_range(this_year)
-    this_year_n = db.scalar(
-        select(func.count(ServiceTicket.id)).where(
-            live, ServiceTicket.received_at >= lo, ServiceTicket.received_at < hi
+    this_year_n = (
+        db.scalar(
+            select(func.count(ServiceTicket.id)).where(
+                live, ServiceTicket.received_at >= lo, ServiceTicket.received_at < hi
+            )
         )
-    ) or 0
-    open_count = db.scalar(
-        select(func.count(ServiceTicket.id)).where(live, ServiceTicket.status.in_(OPEN_SERVICE_STATUSES))
-    ) or 0
+        or 0
+    )
+    open_count = (
+        db.scalar(
+            select(func.count(ServiceTicket.id)).where(
+                live, ServiceTicket.status.in_(OPEN_SERVICE_STATUSES)
+            )
+        )
+        or 0
+    )
 
     open_rows = list(
         db.scalars(
@@ -356,9 +523,13 @@ def dashboard(
     open_ex = _extras(db, open_rows)
     open_tickets = [
         TicketBrief(
-            id=t.id, ticket_no=t.ticket_no, title=t.title,
-            store_name=open_ex[t.id]["store_name"], brand_name=open_ex[t.id]["brand_name"],
-            status=t.status, received_at=t.received_at,
+            id=t.id,
+            ticket_no=t.ticket_no,
+            title=t.title,
+            store_name=open_ex[t.id]["store_name"],
+            brand_name=open_ex[t.id]["brand_name"],
+            status=t.status,
+            received_at=t.received_at,
             days_open=(today_local - stats.to_local(t.received_at).date()).days,
         )
         for t in open_rows
@@ -367,15 +538,22 @@ def dashboard(
     rent_rows = list(
         db.scalars(
             select(ServiceTicket)
-            .where(live, ServiceTicket.is_rental.is_(True), ServiceTicket.rental_returned.is_(False))
+            .where(
+                live,
+                ServiceTicket.is_rental.is_(True),
+                ServiceTicket.rental_returned.is_(False),
+            )
             .order_by(ServiceTicket.rental_due_date.asc().nulls_last())
         ).all()
     )
     rent_ex = _extras(db, rent_rows)
     rentals = [
         RentalRow(
-            ticket_id=t.id, ticket_no=t.ticket_no, store_name=rent_ex[t.id]["store_name"],
-            rental_type=rent_ex[t.id]["rental_type"], serials=t.rental_serials,
+            ticket_id=t.id,
+            ticket_no=t.ticket_no,
+            store_name=rent_ex[t.id]["store_name"],
+            rental_type=rent_ex[t.id]["rental_type"],
+            serials=t.rental_serials,
             due_date=t.rental_due_date,
             dday=(t.rental_due_date - today_local).days if t.rental_due_date else None,
         )
@@ -384,7 +562,8 @@ def dashboard(
 
     recent = list(
         db.scalars(
-            select(ServiceTicket).where(live)
+            select(ServiceTicket)
+            .where(live)
             .order_by(ServiceTicket.updated_at.desc(), ServiceTicket.created_at.desc())
             .limit(limit)
         ).all()
@@ -393,19 +572,28 @@ def dashboard(
     by_year = [
         YearCount(year=str(y), count=n)
         for y, n in db.execute(
-            select(year_expr.label("y"), func.count(ServiceTicket.id)).where(live).group_by("y").order_by("y")
+            select(year_expr.label("y"), func.count(ServiceTicket.id))
+            .where(live)
+            .group_by("y")
+            .order_by("y")
         ).all()
         if y is not None
     ]
     return ServiceDashboard(
-        total=total, this_year=this_year_n, open_count=open_count,
-        open_tickets=open_tickets, unreturned_rentals=rentals,
-        recent=_enrich(db, recent), by_year=by_year,
+        total=total,
+        this_year=this_year_n,
+        open_count=open_count,
+        open_tickets=open_tickets,
+        unreturned_rentals=rentals,
+        recent=_enrich(db, recent),
+        by_year=by_year,
     )
 
 
 # ------------------------------------------------------------------ 등록 · 수정
-@router.post("/tickets", response_model=ServiceTicketDetail, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tickets", response_model=ServiceTicketDetail, status_code=status.HTTP_201_CREATED
+)
 def create_ticket(
     payload: ServiceTicketCreate, db: DbSession, user: CurrentUser, client: Client
 ) -> ServiceTicketDetail:
@@ -430,7 +618,9 @@ def create_ticket(
     ticket = ServiceTicket(
         **data,
         received_at=received_at,
-        status=ServiceStatus.ASSIGNED if data.get("assignee_id") else ServiceStatus.RECEIVED,
+        status=ServiceStatus.ASSIGNED
+        if data.get("assignee_id")
+        else ServiceStatus.RECEIVED,
         created_by_id=user.id,
     )
 
@@ -439,12 +629,17 @@ def create_ticket(
     if payload.causes is not None:
         causes = ticket_rules.validate_causes(db, payload.causes)
     else:
-        if ticket.category_id is None and settings_store.get(db, ModuleKey.SERVICE, "require_category", True):
+        if ticket.category_id is None and settings_store.get(
+            db, ModuleKey.SERVICE, "require_category", True
+        ):
             raise AppError("CATEGORY_REQUIRED", "서비스구분 1을 고르세요.")
-        ticket_rules.check_code(db, ticket.category_id, "SERVICE_CATEGORY", "서비스구분")
+        ticket_rules.check_code(
+            db, ticket.category_id, "SERVICE_CATEGORY", "서비스구분"
+        )
     responders = (
         ticket_rules.validate_responder_ids(db, payload.responder_ids)
-        if payload.responder_ids is not None else None
+        if payload.responder_ids is not None
+        else None
     )
     ticket_rules.validate_rental(db, ticket)
 
@@ -482,18 +677,28 @@ def create_ticket(
     )
     db.commit()
     out = _detail(db, ticket.id)
-    out.notices = notices
+    out.notices = notices + (
+        ["폐점 매장에 등록된 대응 기록입니다."]
+        if ticket.store_id and db.get(Store, ticket.store_id).is_closed
+        else []
+    )
     return out
 
 
 @router.get("/tickets/{ticket_id}", response_model=ServiceTicketDetail)
-def get_ticket(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser) -> ServiceTicketDetail:
+def get_ticket(
+    ticket_id: uuid.UUID, db: DbSession, _: CurrentUser
+) -> ServiceTicketDetail:
     return _detail(db, ticket_id)
 
 
 RENTAL_KEYS = {
-    "is_rental", "rental_type_id", "rental_serials", "rental_due_date",
-    "rental_returned", "rental_return_date",
+    "is_rental",
+    "rental_type_id",
+    "rental_serials",
+    "rental_due_date",
+    "rental_returned",
+    "rental_return_date",
 }
 
 
@@ -506,6 +711,7 @@ def update_ticket(
     client: Client,
 ) -> ServiceTicketDetail:
     ticket = _load(db, ticket_id)
+    previous_serials = ticket.rental_serials if ticket.is_rental else None
     data = payload.model_dump(exclude_unset=True, exclude={"causes", "responder_ids"})
     before = {k: getattr(ticket, k) for k in data}
 
@@ -513,7 +719,9 @@ def update_ticket(
         store = ticket_rules.resolve_store(db, data["store_id"])
         # 매장이 바뀌면 표시용 거래처 이름도 따라간다 - 손으로 다른 이름을 적어 둔 건은 그대로.
         prev_store = db.get(Store, before["store_id"]) if before["store_id"] else None
-        follows_store = not ticket.customer_name or (prev_store is not None and ticket.customer_name == prev_store.name)
+        follows_store = not ticket.customer_name or (
+            prev_store is not None and ticket.customer_name == prev_store.name
+        )
         if store is not None and "customer_name" not in data and follows_store:
             data["customer_name"] = store.name
     if "fault_id" in data:
@@ -522,6 +730,11 @@ def update_ticket(
         data["rental_returned"] = False
     if "is_rental" in data and data["is_rental"] is None:
         data["is_rental"] = False
+
+    if "received_at" in data:
+        if data["received_at"] is None:
+            raise AppError("INVALID_RECEIVED_AT", "접수일은 비울 수 없습니다.")
+        _check_completion_date(data["received_at"], ticket.completed_at)
 
     previous_assignee = ticket.assignee_id
     for field, value in data.items():
@@ -532,7 +745,9 @@ def update_ticket(
     if payload.causes is not None:
         ticket_rules.apply_causes(db, ticket, payload.causes, is_new=False)
     elif "category_id" in data or "symptom_id" in data:
-        ticket_rules.check_code(db, ticket.category_id, "SERVICE_CATEGORY", "서비스구분")
+        ticket_rules.check_code(
+            db, ticket.category_id, "SERVICE_CATEGORY", "서비스구분"
+        )
         ticket_rules.sync_head_cause(db, ticket)
     if payload.responder_ids is not None:
         ticket_rules.apply_responders(db, ticket, payload.responder_ids, is_new=False)
@@ -540,7 +755,8 @@ def update_ticket(
     notices: list[str] = []
     if RENTAL_KEYS & set(data) or ("store_id" in data and ticket.is_rental):
         ticket_rules.validate_rental(db, ticket)
-        notices = ticket_rules.sync_rental_assets(db, ticket, user)
+        notices = ticket_rules.unsync_rental_assets(db, ticket, previous_serials, user)
+        notices += ticket_rules.sync_rental_assets(db, ticket, user)
 
     if "assignee_id" in data and data["assignee_id"] != previous_assignee:
         if ticket.status == ServiceStatus.RECEIVED and ticket.assignee_id:
@@ -560,7 +776,11 @@ def update_ticket(
     )
     db.commit()
     out = _detail(db, ticket_id)
-    out.notices = notices
+    out.notices = notices + (
+        ["폐점 매장에 등록된 대응 기록입니다."]
+        if ticket.store_id and db.get(Store, ticket.store_id).is_closed
+        else []
+    )
     return out
 
 
@@ -577,24 +797,92 @@ def change_status(
     종결(COMPLETED)은 구 서버 규칙대로 대응 내용과 대응인원이 있어야 한다.
     """
     ticket = _load(db, ticket_id)
+    _transition_status(db, ticket, payload, user, client)
+    db.commit()
+    return _detail(db, ticket_id)
+
+
+# Closed tickets must be explicitly reopened into active work before completion.
+_ALLOWED_TRANSITIONS = {
+    ServiceStatus.RECEIVED: {
+        ServiceStatus.ASSIGNED,
+        ServiceStatus.IN_PROGRESS,
+        ServiceStatus.PENDING_PARTS,
+        ServiceStatus.COMPLETED,
+        ServiceStatus.CANCELED,
+    },
+    ServiceStatus.ASSIGNED: {
+        ServiceStatus.IN_PROGRESS,
+        ServiceStatus.PENDING_PARTS,
+        ServiceStatus.COMPLETED,
+        ServiceStatus.CANCELED,
+    },
+    ServiceStatus.IN_PROGRESS: {
+        ServiceStatus.ASSIGNED,
+        ServiceStatus.PENDING_PARTS,
+        ServiceStatus.COMPLETED,
+        ServiceStatus.CANCELED,
+    },
+    ServiceStatus.PENDING_PARTS: {
+        ServiceStatus.ASSIGNED,
+        ServiceStatus.IN_PROGRESS,
+        ServiceStatus.COMPLETED,
+        ServiceStatus.CANCELED,
+    },
+    ServiceStatus.COMPLETED: {ServiceStatus.IN_PROGRESS},
+    ServiceStatus.CANCELED: {ServiceStatus.RECEIVED, ServiceStatus.IN_PROGRESS},
+}
+
+
+def _check_completion_date(
+    received_at: datetime, completed_at: datetime | None
+) -> None:
+    if completed_at is None:
+        return
+    received = received_at.replace(tzinfo=received_at.tzinfo or timezone.utc)
+    completed = completed_at.replace(tzinfo=completed_at.tzinfo or timezone.utc)
+    if completed < received:
+        raise AppError(
+            "INVALID_COMPLETION_DATE", "대응일은 접수일보다 빠를 수 없습니다."
+        )
+
+
+def _transition_status(
+    db: Session,
+    ticket: ServiceTicket,
+    payload: ServiceStatusChange,
+    user: User,
+    client,
+) -> ServiceLog:
+    """Both status and log endpoints enforce the same completion rules."""
     old = ticket.status
     if old == payload.status:
         raise AppError("SAME_STATUS", "이미 해당 상태입니다.")
+
+    if payload.status not in _ALLOWED_TRANSITIONS[old]:
+        raise AppError(
+            "INVALID_STATUS_TRANSITION",
+            "허용되지 않는 상태 변경입니다. 종결 건은 진행 중으로, 취소 건은 접수 또는 진행 중으로 다시 열어 주세요.",
+        )
 
     if payload.responder_ids is not None:
         ticket_rules.apply_responders(db, ticket, payload.responder_ids, is_new=False)
 
     if payload.status == ServiceStatus.COMPLETED:
-        require_note = settings_store.get(db, ModuleKey.SERVICE, "require_result_note", True)
+        require_note = settings_store.get(
+            db, ModuleKey.SERVICE, "require_result_note", True
+        )
         note = payload.result_note or ticket.result_note
-        if require_note and not note:
+        if require_note and not (note or "").strip():
             raise AppError("RESULT_NOTE_REQUIRED", "종결하려면 대응 내용을 입력하세요.")
         ticket_rules.require_responders_on_complete(db, ticket)
         ticket.result_note = note
         ticket.completed_at = payload.completed_at or now_utc()
-    elif old == ServiceStatus.COMPLETED:
+        _check_completion_date(ticket.received_at, ticket.completed_at)
+    elif old in (ServiceStatus.COMPLETED, ServiceStatus.CANCELED):
         # Reopening: clear the completion stamp so duration stats stay honest.
         ticket.completed_at = None
+        ticket.result_note = None
 
     if payload.status == ServiceStatus.IN_PROGRESS and ticket.started_at is None:
         ticket.started_at = now_utc()
@@ -604,16 +892,15 @@ def change_status(
     if payload.work_minutes is not None:
         ticket.work_minutes = (ticket.work_minutes or 0) + payload.work_minutes
 
-    db.add(
-        ServiceLog(
-            ticket_id=ticket.id,
-            author_id=user.id,
-            from_status=old,
-            to_status=payload.status,
-            content=payload.note or f"{old.value} -> {payload.status.value}",
-            work_minutes=payload.work_minutes,
-        )
+    entry = ServiceLog(
+        ticket_id=ticket.id,
+        author_id=user.id,
+        from_status=old,
+        to_status=payload.status,
+        content=payload.note or f"{old.value} -> {payload.status.value}",
+        work_minutes=payload.work_minutes,
     )
+    db.add(entry)
     audit.record(
         db,
         action=AuditAction.UPDATE,
@@ -624,27 +911,40 @@ def change_status(
         summary=f"AS 상태 변경 {ticket.ticket_no}: {old.value} -> {payload.status.value}",
         client=client,
     )
-    db.commit()
-    return _detail(db, ticket_id)
+    return entry
 
 
 @router.post("/tickets/{ticket_id}/logs", response_model=ServiceLogOut)
 def add_log(
-    ticket_id: uuid.UUID, payload: ServiceLogIn, db: DbSession, user: CurrentUser
+    ticket_id: uuid.UUID,
+    payload: ServiceLogIn,
+    db: DbSession,
+    user: CurrentUser,
+    client: Client,
 ) -> ServiceLogOut:
     ticket = _load(db, ticket_id)
-    entry = ServiceLog(
-        ticket_id=ticket.id,
-        author_id=user.id,
-        content=payload.content,
-        work_minutes=payload.work_minutes,
-        from_status=ticket.status,
-        to_status=payload.to_status,
-    )
-    if payload.work_minutes:
-        ticket.work_minutes = (ticket.work_minutes or 0) + payload.work_minutes
-    if payload.to_status:
-        ticket.status = payload.to_status
+    if payload.to_status is not None:
+        entry = _transition_status(
+            db,
+            ticket,
+            ServiceStatusChange(
+                status=payload.to_status,
+                note=payload.content,
+                work_minutes=payload.work_minutes,
+            ),
+            user,
+            client,
+        )
+    else:
+        entry = ServiceLog(
+            ticket_id=ticket.id,
+            author_id=user.id,
+            content=payload.content,
+            work_minutes=payload.work_minutes,
+            from_status=ticket.status,
+        )
+        if payload.work_minutes is not None:
+            ticket.work_minutes = (ticket.work_minutes or 0) + payload.work_minutes
     # 댓글이 달리면 마지막 수정 시각도 올려 대시보드 '최근 기록'에 나오게 (구 서버 touch_record)
     ticket.updated_at = now_utc()
     ticket.updated_by_id = user.id
@@ -656,13 +956,150 @@ def add_log(
     return out
 
 
+@router.get("/tickets/{ticket_id}/history")
+def ticket_history(
+    ticket_id: uuid.UUID, db: DbSession, _: CurrentUser, page: PageParams
+):
+    from app.models.admin import AuditLog
+    from app.schemas.admin import AuditLogOut
+
+    _load(db, ticket_id)
+    scope = select(AuditLog).where(
+        AuditLog.entity_type == "service_ticket",
+        AuditLog.entity_id == str(ticket_id),
+        AuditLog.hidden_at.is_(None),
+    )
+    total = db.scalar(select(func.count()).select_from(scope.subquery())) or 0
+    rows = db.scalars(
+        scope.order_by(AuditLog.created_at.desc(), AuditLog.id)
+        .offset(page.offset)
+        .limit(page.size)
+    ).all()
+    return Page.build(
+        [AuditLogOut.model_validate(row) for row in rows], total, page.page, page.size
+    )
+
+
+def _editable_log(db, ticket_id, log_id, user):
+    from app.models.enums import ROLE_LEVEL, Role
+
+    ticket = _load(db, ticket_id)
+    entry = db.scalar(
+        select(ServiceLog).where(
+            ServiceLog.id == log_id, ServiceLog.ticket_id == ticket_id
+        )
+    )
+    if entry is None:
+        raise AppError("NOT_FOUND", "처리 이력을 찾을 수 없습니다.", 404)
+    if entry.author_id != user.id and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
+        raise AppError("FORBIDDEN", "작성자 또는 팀장 이상만 변경할 수 있습니다.", 403)
+    return ticket, entry
+
+
+from app.schemas.service import ServiceLogUpdate
+
+
+@router.patch("/tickets/{ticket_id}/logs/{log_id}", response_model=ServiceLogOut)
+def update_log(
+    ticket_id: uuid.UUID,
+    log_id: uuid.UUID,
+    payload: ServiceLogUpdate,
+    db: DbSession,
+    user: CurrentUser,
+    client: Client,
+):
+    ticket, entry = _editable_log(db, ticket_id, log_id, user)
+    data = payload.model_dump(exclude_unset=True)
+    before = {key: getattr(entry, key) for key in data}
+    if "work_minutes" in data:
+        ticket.work_minutes = max(
+            0,
+            (ticket.work_minutes or 0)
+            - (entry.work_minutes or 0)
+            + (data["work_minutes"] or 0),
+        )
+    for key, value in data.items():
+        setattr(entry, key, value)
+    ticket.updated_at, ticket.updated_by_id = now_utc(), user.id
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=user,
+        module=ModuleKey.SERVICE,
+        entity_type="service_ticket",
+        entity_id=ticket.id,
+        summary="처리 이력 수정",
+        changes=audit.diff(before, data),
+        client=client,
+    )
+    db.commit()
+    return ServiceLogOut.model_validate(entry)
+
+
+@router.delete("/tickets/{ticket_id}/logs/{log_id}", response_model=Message)
+def delete_log(
+    ticket_id: uuid.UUID,
+    log_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    client: Client,
+):
+    ticket, entry = _editable_log(db, ticket_id, log_id, user)
+    if entry.to_status is not None:
+        raise AppError(
+            "STATUS_HISTORY",
+            "상태 변경 이력은 삭제할 수 없습니다. 내용은 수정할 수 있습니다.",
+            400,
+        )
+    ticket.work_minutes = max(0, (ticket.work_minutes or 0) - (entry.work_minutes or 0))
+    ticket.updated_at, ticket.updated_by_id = now_utc(), user.id
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=user,
+        module=ModuleKey.SERVICE,
+        entity_type="service_ticket",
+        entity_id=ticket.id,
+        summary="처리 이력 삭제",
+        changes={
+            "content": [entry.content, None],
+            "work_minutes": [entry.work_minutes, None],
+        },
+        client=client,
+    )
+    db.delete(entry)
+    db.commit()
+    return Message(message="삭제되었습니다.")
+
+
 @router.post("/tickets/{ticket_id}/parts", response_model=ServicePartOut)
 def add_part(
-    ticket_id: uuid.UUID, payload: ServicePartIn, db: DbSession, user: CurrentUser
+    ticket_id: uuid.UUID,
+    payload: ServicePartIn,
+    db: DbSession,
+    user: CurrentUser,
+    client: Client,
 ) -> ServicePartOut:
     ticket = _load(db, ticket_id)
     part = ServicePart(ticket_id=ticket.id, **payload.model_dump())
+    from app.services.part_stock import deduct
+
+    deduct(db, part, user)
     db.add(part)
+    audit.record(
+        db,
+        action=AuditAction.CREATE,
+        actor=user,
+        module=ModuleKey.SERVICE,
+        entity_type="service_ticket",
+        entity_id=ticket.id,
+        summary="사용 부품 추가",
+        changes={
+            "part_name": [None, part.part_name],
+            "quantity": [None, str(part.quantity)],
+        },
+        client=client,
+    )
     db.flush()
     _recalc_costs(db, ticket)
     ticket.updated_by_id = user.id
@@ -673,14 +1110,35 @@ def add_part(
 
 @router.delete("/tickets/{ticket_id}/parts/{part_id}", response_model=Message)
 def remove_part(
-    ticket_id: uuid.UUID, part_id: uuid.UUID, db: DbSession, _: CurrentUser
+    ticket_id: uuid.UUID,
+    part_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    client: Client,
 ) -> Message:
     ticket = _load(db, ticket_id)
     part = db.scalar(
-        select(ServicePart).where(ServicePart.id == part_id, ServicePart.ticket_id == ticket.id)
+        select(ServicePart).where(
+            ServicePart.id == part_id, ServicePart.ticket_id == ticket.id
+        )
     )
     if part is None:
-        raise AppError("NOT_FOUND", "부품 내역을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "부품 내역을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
+    from app.services.part_stock import restore
+
+    restore(db, part, user)
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=user,
+        module=ModuleKey.SERVICE,
+        entity_type="service_ticket",
+        entity_id=ticket.id,
+        summary="사용 부품 삭제·차감 수량 복구",
+        client=client,
+    )
     db.delete(part)
     db.flush()
     _recalc_costs(db, ticket)
@@ -693,7 +1151,16 @@ def delete_ticket(
     ticket_id: uuid.UUID, db: DbSession, manager: ManagerUser, client: Client
 ) -> Message:
     ticket = _load(db, ticket_id)
+    from app.services.part_stock import restore
+
+    for part in ticket.parts:
+        restore(db, part, manager)
+    previous_serials = ticket.rental_serials if ticket.is_rental else None
     ticket.deleted_at = now_utc()
+    from app.services.attachment_lifecycle import soft_delete
+
+    soft_delete(db, "service_ticket", ticket.id)
+    ticket_rules.unsync_rental_assets(db, ticket, previous_serials, manager)
     audit.record(
         db,
         action=AuditAction.DELETE,
@@ -718,10 +1185,20 @@ def stats_summary(db: DbSession, _: CurrentUser, filters: Filters) -> ServiceSum
 GroupByParam = Annotated[
     # stats.GroupBy 와 같은 목록이어야 한다. 두 군데에 적혀 있으니 축을 더할 때 둘 다 고쳐야 한다.
     Literal[
-        "category", "symptom", "maker",
-        "cause", "action", "fault",
-        "assignee", "status", "priority", "channel", "department",
-        "store", "brand", "responder",
+        "category",
+        "symptom",
+        "maker",
+        "cause",
+        "action",
+        "fault",
+        "assignee",
+        "status",
+        "priority",
+        "channel",
+        "department",
+        "store",
+        "brand",
+        "responder",
     ],
     Query(description="classification axis"),
 ]
@@ -781,21 +1258,42 @@ def stats_crosstab_xlsx(
     title: Annotated[str | None, Query(max_length=60)] = None,
 ):
     ct = stats.crosstab(db, rows, cols, **filters)
-    head = [_AXIS_LABEL[rows]] + [c.label for c in ct.cols] + ["합계", "대응 건수", "비율(%)"]
+    head = (
+        [_AXIS_LABEL[rows]]
+        + [c.label for c in ct.cols]
+        + ["합계", "대응 건수", "비율(%)"]
+    )
     lines = [
-        [r.label] + [r.cells.get(c.key, 0) or None for c in ct.cols] + [r.total, r.ticket_count, round(r.ratio * 100, 1)]
+        [r.label]
+        + [r.cells.get(c.key, 0) or None for c in ct.cols]
+        + [r.total, r.ticket_count, round(r.ratio * 100, 1)]
         for r in ct.rows
     ]
-    lines.append(["전체"] + [ct.col_totals.get(c.key, 0) for c in ct.cols] + [ct.total_causes, ct.total_tickets, 100.0])
+    lines.append(
+        ["전체"]
+        + [ct.col_totals.get(c.key, 0) for c in ct.cols]
+        + [ct.total_causes, ct.total_tickets, 100.0]
+    )
     wb = excel.workbook()
-    ws = wb.create_sheet(excel.sheet_title(title or f"{_AXIS_LABEL[rows]}별 {_AXIS_LABEL[cols]}별"))
-    excel.fill_sheet(ws, head, lines, [22] + [12] * len(ct.cols) + [8, 10, 9], freeze="B2")
-    return excel.to_response(wb, f"통계_{_AXIS_LABEL[rows]}x{_AXIS_LABEL[cols]}_{datetime.now(stats.LOCAL_TZ).date().isoformat()}.xlsx")
+    ws = wb.create_sheet(
+        excel.sheet_title(title or f"{_AXIS_LABEL[rows]}별 {_AXIS_LABEL[cols]}별")
+    )
+    excel.fill_sheet(
+        ws, head, lines, [22] + [12] * len(ct.cols) + [8, 10, 9], freeze="B2"
+    )
+    return excel.to_response(
+        wb,
+        f"통계_{_AXIS_LABEL[rows]}x{_AXIS_LABEL[cols]}_{datetime.now(stats.LOCAL_TZ).date().isoformat()}.xlsx",
+    )
 
 
 _AXIS_LABEL = {
-    "year": "연도", "brand": "브랜드", "store": "매장",
-    "category": "서비스구분", "symptom": "세부분류", "maker": "제조사",
+    "year": "연도",
+    "brand": "브랜드",
+    "store": "매장",
+    "category": "서비스구분",
+    "symptom": "세부분류",
+    "maker": "제조사",
 }
 
 
@@ -813,166 +1311,31 @@ def _load(db: Session, ticket_id: uuid.UUID) -> ServiceTicket:
         )
     )
     if ticket is None:
-        raise AppError("NOT_FOUND", "접수 건을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "접수 건을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return ticket
-
-
-def _extras(db: Session, tickets: list[ServiceTicket]) -> dict[uuid.UUID, dict]:
-    """목록 한 장에 필요한 곁 정보를 쿼리 몇 번으로. 건마다 따로 물으면 수십 번 나간다."""
-    ids = [t.id for t in tickets]
-    out: dict[uuid.UUID, dict] = {
-        t.id: {
-            "causes": [], "responders": [], "responder_ids": [], "store_name": None, "brand_name": None,
-            "brand_id": None, "store_closed": False, "fault_name": None, "rental_type": None,
-            "attachment_count": 0, "log_count": 0,
-        }
-        for t in tickets
-    }
-    if not ids:
-        return out
-
-    code_ids: set[uuid.UUID] = set()
-    cause_rows = db.scalars(
-        select(ServiceTicketCause).where(ServiceTicketCause.ticket_id.in_(ids)).order_by(ServiceTicketCause.seq)
-    ).all()
-    resp_rows = db.scalars(
-        select(ServiceTicketResponder).where(ServiceTicketResponder.ticket_id.in_(ids)).order_by(ServiceTicketResponder.seq)
-    ).all()
-    for c in cause_rows:
-        code_ids |= {x for x in (c.category_id, c.symptom_id, c.maker_id) if x}
-    for r in resp_rows:
-        if r.responder_id:
-            code_ids.add(r.responder_id)
-    for t in tickets:
-        code_ids |= {x for x in (t.fault_id, t.rental_type_id) if x}
-
-    store_ids = {t.store_id for t in tickets if t.store_id}
-    stores = {s.id: s for s in db.scalars(select(Store).where(Store.id.in_(store_ids))).all()} if store_ids else {}
-    code_ids |= {s.brand_id for s in stores.values() if s.brand_id}
-    codes = {c.id: c for c in db.scalars(select(CodeItem).where(CodeItem.id.in_(code_ids))).all()} if code_ids else {}
-
-    def name(cid):
-        item = codes.get(cid) if cid else None
-        return item.name if item else None
-
-    for c in cause_rows:
-        out[c.ticket_id]["causes"].append(
-            {"row": c, "category": name(c.category_id) or "", "symptom": name(c.symptom_id) or "", "maker": name(c.maker_id) or ""}
-        )
-    for r in resp_rows:
-        n = name(r.responder_id)
-        if n:
-            out[r.ticket_id]["responders"].append(n)
-            out[r.ticket_id]["responder_ids"].append(r.responder_id)
-    for t in tickets:
-        e = out[t.id]
-        s = stores.get(t.store_id) if t.store_id else None
-        if s is not None:
-            e["store_name"] = s.name
-            e["brand_id"] = s.brand_id
-            e["brand_name"] = name(s.brand_id)
-            e["store_closed"] = s.is_closed
-        e["fault_name"] = name(t.fault_id)
-        e["rental_type"] = name(t.rental_type_id)
-
-    for tid, n in db.execute(
-        select(Attachment.entity_id, func.count(Attachment.id))
-        .where(Attachment.entity_type == "service_ticket", Attachment.entity_id.in_(ids), Attachment.deleted_at.is_(None))
-        .group_by(Attachment.entity_id)
-    ).all():
-        if tid in out:
-            out[tid]["attachment_count"] = n
-    for tid, n in db.execute(
-        select(ServiceLog.ticket_id, func.count(ServiceLog.id)).where(ServiceLog.ticket_id.in_(ids)).group_by(ServiceLog.ticket_id)
-    ).all():
-        out[tid]["log_count"] = n
-    out["_codes"] = codes
-    return out
-
-
-def _cause_label(c: dict) -> str:
-    label = f"{c['category']} > {c['symptom']}" if c["symptom"] else c["category"]
-    return f"{label} ({c['maker']})" if c["maker"] else label
-
-
-def _apply_extras(out: ServiceTicketOut, e: dict) -> ServiceTicketOut:
-    out.cause_labels = [_cause_label(c) for c in e["causes"]]
-    out.responder_names = list(e["responders"])
-    out.store_name = e["store_name"]
-    out.brand_name = e["brand_name"]
-    out.attachment_count = e["attachment_count"]
-    out.log_count = e["log_count"]
-    return out
-
-
-def _enrich(db: Session, tickets: list[ServiceTicket]) -> list[ServiceTicketOut]:
-    extras = _extras(db, tickets)
-    return [_apply_extras(ServiceTicketOut.model_validate(t), extras[t.id]) for t in tickets]
-
-
-def _detail(db: Session, ticket_id: uuid.UUID) -> ServiceTicketDetail:
-    ticket = db.scalar(
-        select(ServiceTicket)
-        .where(ServiceTicket.id == ticket_id)
-        .options(
-            selectinload(ServiceTicket.parts),
-            selectinload(ServiceTicket.logs),
-            selectinload(ServiceTicket.customer),
-        )
-    )
-    if ticket is None:
-        raise AppError("NOT_FOUND", "접수 건을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
-
-    out = ServiceTicketDetail.model_validate(ticket)
-    out.resolution_minutes = ticket.resolution_minutes
-    extras = _extras(db, [ticket])
-    e = extras[ticket.id]
-    codes = extras["_codes"]
-    _apply_extras(out, e)
-
-    def brief(cid):
-        item = codes.get(cid) if cid else None
-        return CodeItemBrief.model_validate(item) if item else None
-
-    out.causes = [
-        CauseOut(
-            id=c["row"].id, seq=c["row"].seq,
-            category_id=c["row"].category_id, symptom_id=c["row"].symptom_id, maker_id=c["row"].maker_id,
-            category=brief(c["row"].category_id), symptom=brief(c["row"].symptom_id), maker=brief(c["row"].maker_id),
-        )
-        for c in e["causes"]
-    ]
-    out.responders = [b for b in (brief(rid) for rid in e["responder_ids"]) if b]
-    out.fault = brief(ticket.fault_id)
-    out.rental_type = brief(ticket.rental_type_id)
-    if ticket.store_id:
-        s = db.get(Store, ticket.store_id)
-        if s is not None:
-            out.store = StoreRef(id=s.id, name=s.name, brand_id=s.brand_id, brand_name=e["brand_name"], is_closed=s.is_closed)
-    if ticket.assignee_id:
-        assignee = db.get(User, ticket.assignee_id)
-        if assignee:
-            out.assignee = UserBrief.model_validate(assignee)
-    author_ids = {l.author_id for l in ticket.logs if l.author_id}
-    authors = {u.id: u for u in db.scalars(select(User).where(User.id.in_(author_ids))).all()} if author_ids else {}
-    for log_out, log in zip(out.logs, ticket.logs):
-        u = authors.get(log.author_id) if log.author_id else None
-        log_out.author = UserBrief.model_validate(u) if u else None
-    return out
 
 
 def _next_ticket_no(db: Session, attempt: int = 0) -> str:
     """AS-YYYYMM-0001, restarting the sequence each month."""
     prefix = settings_store.get(db, ModuleKey.SERVICE, "ticket_prefix", "AS") or "AS"
-    stamp = now_utc().strftime("%Y%m")
+    stamp = now_utc().astimezone(stats.LOCAL_TZ).strftime("%Y%m")
     like = f"{prefix}-{stamp}-%"
-    count = db.scalar(
-        select(func.count(ServiceTicket.id)).where(ServiceTicket.ticket_no.like(like))
-    ) or 0
+    count = (
+        db.scalar(
+            select(func.count(ServiceTicket.id)).where(
+                ServiceTicket.ticket_no.like(like)
+            )
+        )
+        or 0
+    )
     return f"{prefix}-{stamp}-{count + 1 + attempt:04d}"
 
 
-def _insert_with_ticket_no(db: Session, ticket: ServiceTicket, retries: int = 5) -> None:
+def _insert_with_ticket_no(
+    db: Session, ticket: ServiceTicket, retries: int = 5
+) -> None:
     """Counting rows races under concurrent inserts, so the unique index on
     ticket_no is the real guard and we retry with the next number on collision.
 
@@ -1000,9 +1363,9 @@ def _recalc_costs(db: Session, ticket: ServiceTicket) -> None:
     # invisible to this aggregate unless we flush them first.
     db.flush()
     parts_total = db.scalar(
-        select(func.sum(ServicePart.quantity * func.coalesce(ServicePart.unit_price, 0))).where(
-            ServicePart.ticket_id == ticket.id
-        )
+        select(
+            func.sum(ServicePart.quantity * func.coalesce(ServicePart.unit_price, 0))
+        ).where(ServicePart.ticket_id == ticket.id)
     )
     ticket.parts_cost = Decimal(str(parts_total)) if parts_total is not None else None
     labor = ticket.labor_cost or Decimal(0)
@@ -1025,3 +1388,70 @@ def _notify_assignee(db: Session, ticket: ServiceTicket, actor_id: uuid.UUID) ->
         entity_type="service_ticket",
         entity_id=ticket.id,
     )
+
+
+@router.get("/tickets/{ticket_id}/assets")
+def related_assets(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
+    from app.models.inventory import Asset
+    from app.services.ticket_rules import split_serials
+
+    ticket = _load(db, ticket_id)
+    serials = {s.strip().lower() for s in split_serials(ticket.rental_serials)}
+    if ticket.serial_no:
+        serials.add(ticket.serial_no.strip().lower())
+    rows = db.scalars(
+        select(Asset)
+        .where(
+            Asset.deleted_at.is_(None),
+            or_(
+                Asset.id == ticket.asset_id,
+                func.lower(func.trim(Asset.serial_no)).in_(serials),
+            ),
+        )
+        .order_by(Asset.name, Asset.serial_no)
+    ).all()
+    return [
+        {
+            "id": str(row.id),
+            "name": row.name,
+            "serial_no": row.serial_no,
+            "asset_no": row.asset_no,
+        }
+        for row in rows
+    ]
+
+
+@router.get("/stats/all.xlsx")
+def export_all_stats(db: DbSession, _: CurrentUser, filters: Filters):
+    workbook = excel.workbook()
+    for axis, label in [
+        ("category", "서비스구분"),
+        ("symptom", "세부분류"),
+        ("maker", "제조사"),
+        ("brand", "브랜드"),
+        ("store", "매장"),
+        ("responder", "대응인원"),
+    ]:
+        data = stats.grouped(db, axis, **filters)
+        excel.fill_sheet(
+            workbook.create_sheet(label),
+            ["분류", "발생 건수", "비율"],
+            [[bucket.label, bucket.count, bucket.ratio] for bucket in data.buckets],
+            [30, 16, 16],
+        )
+    for rows, cols, label in [
+        ("year", "category", "연도별 서비스구분"),
+        ("maker", "year", "제조사 연도별"),
+        ("brand", "year", "브랜드 연도별"),
+        ("store", "year", "매장 연도별"),
+    ]:
+        data = stats.crosstab(db, rows, cols, **filters)
+        excel.fill_sheet(
+            workbook.create_sheet(label),
+            [label] + [column.label for column in data.cols],
+            [
+                [row.label] + [row.cells.get(column.key, 0) for column in data.cols]
+                for row in data.rows
+            ],
+        )
+    return excel.to_response(workbook, "전체통계.xlsx")

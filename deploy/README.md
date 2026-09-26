@@ -21,24 +21,24 @@ Windows PC 에서 서버용 설치 파일을 만듭니다.
 python installer/build_server_package.py
 ```
 
-`dist/ddeck-server-1.0.0.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
+`dist/ddeck-server-1.0.5.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
 
 ```powershell
-scp dist/ddeck-server-1.0.0.run 사용자명@미니PC주소:~/
+scp dist/ddeck-server-1.0.5.run 사용자명@미니PC주소:~/
 ```
 
 미니PC 에서:
 
 ```bash
-chmod +x ddeck-server-1.0.0.run
-sudo ./ddeck-server-1.0.0.run
+chmod +x ddeck-server-1.0.5.run
+sudo ./ddeck-server-1.0.5.run
 ```
 
 끝입니다. 아래 "파일 옮기기" 와 "설치" 를 한 번에 처리합니다.
 옵션도 그대로 전달됩니다:
 
 ```bash
-sudo ./ddeck-server-1.0.0.run --port 8080 --admin it@mycompany.co.kr
+sudo ./ddeck-server-1.0.5.run --port 8080 --admin it@mycompany.co.kr
 ```
 
 > 프로젝트 폴더 전체가 아니라 `backend/` 와 `deploy/` 만 담기며,
@@ -184,11 +184,10 @@ systemd 유닛에 이미 단일 워커로 고정해 두었고, 그 이유도 주
 
 **HTTP는 평문입니다.** 사내망이라도 로그인 비밀번호와 토큰이 그대로 흐릅니다.
 외부에서 접속하게 만들 계획이라면 nginx + HTTPS를 반드시 앞에 두세요
-([../docs/POSTGRES.md](../docs/POSTGRES.md) 6절에 설정 예시가 있습니다).
+([운영 문서](../docs/OPERATIONS.md)의 설치 시 입력 절차를 따릅니다).
 
-**PostgreSQL 실환경은 아직 검증되지 않았습니다.** 코드는 SQLite와 PostgreSQL 양쪽을
-지원하도록 작성했고 마이그레이션도 두 방언을 모두 렌더링하지만, 개발 환경에
-PostgreSQL이 없어 **SQLite로만 테스트했습니다.** 설치 후 한 번 확인해 주세요:
+PostgreSQL 18.6 임시 서버에서 스키마·주요 API·실제 백업/복원을 검증했습니다.
+CI에는 PostgreSQL 16 잡이 있습니다. 설치한 운영 환경에서도 연결과 테이블을 확인하세요:
 
 ```bash
 cd /opt/ddeck/backend
@@ -197,10 +196,14 @@ from app.core.database import engine
 from sqlalchemy import inspect, text
 with engine.connect() as c:
     print('연결:', c.execute(text('SELECT version()')).scalar()[:40])
-print('테이블:', len(inspect(engine).get_table_names()), '개 (24개여야 정상)')
+print('테이블:', len(inspect(engine).get_table_names()), '개 (애플리케이션 30개 + alembic_version 1개)')
 "
 ```
 
-**이 스크립트들은 실행 검증을 하지 못했습니다.** 개발 환경(Windows)에 우분투가 없어
-문법 검사와 로직 검토만 거쳤습니다. 처음 실행할 때는 화면을 지켜봐 주시고,
-중간에 멈추면 그 메시지를 알려주시면 바로 고치겠습니다.
+셸 구문과 격리된 갱신·백업·복원 테스트를 통과했습니다. 실제 systemd/nginx 구성,
+Windows 작업 스케줄러, Android/Windows 릴리스 빌드는 해당 환경에서 확인해야 합니다.
+운영 서버에 설치·갱신을 실행한 것은 아닙니다.
+
+## 현재 운영 절차
+
+원격 백업·HTTPS/CIDR·계정 복구·갱신 되돌림·Firebase 설정은 [운영 문서](../docs/OPERATIONS.md)를 따릅니다. Ubuntu는 서버, Windows·Android는 앱 배포 대상입니다. 신규 SQLite 설치의 DB는 `/opt/ddeck/data/ddeck.db`에 저장합니다.

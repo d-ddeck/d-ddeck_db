@@ -17,6 +17,7 @@
 'AS 반출' -> 'AS 출고') 동작이 유지돼야 한다. 이름 기반 표는 extra 가 비어 있는
 옛 행을 채우는 데만 쓴다(bootstrap 이 서버를 켤 때 한 번 채운다).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -32,6 +33,7 @@ from app.models.admin import CodeGroup, CodeItem
 from app.models.enums import AssetStatus
 from app.models.inventory import Asset, Location
 from app.models.store import Store
+from app.services import code_master
 
 STATUS_GROUP = "ASSET_STATUS"
 CATEGORY_GROUP = "ASSET_CATEGORY"
@@ -45,7 +47,7 @@ RuleKind = Literal["store", "as", "clear", "free"]
 class StatusRule:
     kind: RuleKind
     enum: AssetStatus
-    place: str | None = None   # clear 규칙일 때 보낼 위치 이름 (창고 · 사무실)
+    place: str | None = None  # clear 규칙일 때 보낼 위치 이름 (창고 · 사무실)
 
     def as_extra(self) -> dict:
         d: dict = {"rule": self.kind, "enum": self.enum.value}
@@ -69,8 +71,19 @@ RULES_BY_NAME: dict[str, StatusRule] = {
 
 # 구 서버 기본 상태 목록과 순서. 새 저장소를 처음 만들 때 이 순서로 심는다.
 DEFAULT_STATUSES: list[str] = [
-    "창고", "사무실", "설치", "렌탈 중", "AS 대기", "AS 반출",
-    "바른 회수", "자담 회수", "삼성 회수", "해외 회수", "기타 회수", "폐기", "미상",
+    "창고",
+    "사무실",
+    "설치",
+    "렌탈 중",
+    "AS 대기",
+    "AS 반출",
+    "바른 회수",
+    "자담 회수",
+    "삼성 회수",
+    "해외 회수",
+    "기타 회수",
+    "폐기",
+    "미상",
 ]
 
 # 매장 폐점 때 장비를 보낼 상태. 브랜드 이름과 회수 상태 이름이 다른 것만 적는다.
@@ -105,15 +118,7 @@ def status_group(db: Session) -> CodeGroup | None:
 
 
 def status_items(db: Session, active_only: bool = True) -> list[CodeItem]:
-    group = status_group(db)
-    if group is None:
-        return []
-    stmt = select(CodeItem).where(
-        CodeItem.group_id == group.id, CodeItem.deleted_at.is_(None)
-    )
-    if active_only:
-        stmt = stmt.where(CodeItem.is_active.is_(True))
-    return list(db.scalars(stmt.order_by(CodeItem.sort_order, CodeItem.name)))
+    return code_master.items(db, STATUS_GROUP, active_only=active_only)
 
 
 def find_status_item(db: Session, name: str) -> CodeItem | None:
@@ -129,7 +134,9 @@ def find_status_item(db: Session, name: str) -> CodeItem | None:
     )
 
 
-def find_status_item_by_rule(db: Session, kind: RuleKind, enum: AssetStatus | None = None) -> CodeItem | None:
+def find_status_item_by_rule(
+    db: Session, kind: RuleKind, enum: AssetStatus | None = None
+) -> CodeItem | None:
     """규칙 종류(와 enum)로 첫 항목을 찾는다. 이름이 바뀌어도 동작하게."""
     for item in status_items(db):
         r = rule_of(item)
@@ -141,25 +148,39 @@ def find_status_item_by_rule(db: Session, kind: RuleKind, enum: AssetStatus | No
 def load_status_item(db: Session, item_id: uuid.UUID) -> CodeItem:
     item = db.get(CodeItem, item_id)
     if item is None or item.deleted_at is not None:
-        raise AppError("STATUS_NOT_FOUND", "상태 코드를 찾을 수 없습니다.", http.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "STATUS_NOT_FOUND", "상태 코드를 찾을 수 없습니다.", http.HTTP_404_NOT_FOUND
+        )
     group = status_group(db)
     if group is None or item.group_id != group.id:
-        raise AppError("STATUS_NOT_FOUND", "자산 상태 코드가 아닙니다.", http.HTTP_400_BAD_REQUEST)
+        raise AppError(
+            "STATUS_NOT_FOUND", "자산 상태 코드가 아닙니다.", http.HTTP_400_BAD_REQUEST
+        )
     return item
 
 
 def location_by_name(db: Session, name: str) -> Location | None:
     return db.scalar(
-        select(Location).where(
-            Location.name == name, Location.deleted_at.is_(None), Location.is_active.is_(True)
-        ).order_by(Location.sort_order)
+        select(Location)
+        .where(
+            Location.name == name,
+            Location.deleted_at.is_(None),
+            Location.is_active.is_(True),
+        )
+        .order_by(Location.sort_order)
     )
 
 
 def load_store(db: Session, store_id: uuid.UUID) -> Store:
-    store = db.scalar(select(Store).where(Store.id == store_id, Store.deleted_at.is_(None)))
+    store = db.scalar(
+        select(Store).where(Store.id == store_id, Store.deleted_at.is_(None))
+    )
     if store is None:
-        raise AppError("STORE_NOT_FOUND", "매장을 찾을 수 없습니다. [매장]에서 먼저 추가하세요.", http.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "STORE_NOT_FOUND",
+            "매장을 찾을 수 없습니다. [매장]에서 먼저 추가하세요.",
+            http.HTTP_404_NOT_FOUND,
+        )
     return store
 
 
@@ -234,7 +255,9 @@ def default_item_for_destination(
     않는다(None). 구 서버는 이동 때 상태를 반드시 고르게 했는데, 여기서는 빠졌을 때 채워 준다.
     """
     if store_id is not None:
-        return find_status_item(db, "설치") or find_status_item_by_rule(db, "store", AssetStatus.IN_USE)
+        return find_status_item(db, "설치") or find_status_item_by_rule(
+            db, "store", AssetStatus.IN_USE
+        )
     if location_id is not None:
         loc = db.get(Location, location_id)
         if loc is not None:
@@ -243,7 +266,9 @@ def default_item_for_destination(
                 if r.kind == "clear" and r.place == loc.name:
                     return item
     if leaving_store:
-        return find_status_item(db, "창고") or find_status_item_by_rule(db, "clear", AssetStatus.IN_STOCK)
+        return find_status_item(db, "창고") or find_status_item_by_rule(
+            db, "clear", AssetStatus.IN_STOCK
+        )
     return None
 
 
@@ -281,7 +306,10 @@ def normalise_serial(serial: str | None) -> str | None:
 
 
 def serial_taken(
-    db: Session, category_id: uuid.UUID | None, serial: str, exclude_id: uuid.UUID | None = None
+    db: Session,
+    category_id: uuid.UUID | None,
+    serial: str,
+    exclude_id: uuid.UUID | None = None,
 ) -> Asset | None:
     """같은 종류 안에서 S/N 은 하나다 (구 서버 UNIQUE(kind, serial)). 대소문자는 무시."""
     stmt = select(Asset).where(
@@ -297,16 +325,21 @@ def serial_taken(
     return db.scalar(stmt.limit(1))
 
 
-def find_asset_by_serial(db: Session, serial: str, category_id: uuid.UUID | None = None) -> Asset | None:
+def find_asset_by_serial(
+    db: Session, serial: str, category_id: uuid.UUID | None = None
+) -> Asset | None:
     stmt = select(Asset).where(
-        Asset.deleted_at.is_(None), func.lower(Asset.serial_no) == serial.strip().lower()
+        Asset.deleted_at.is_(None),
+        func.lower(Asset.serial_no) == serial.strip().lower(),
     )
     if category_id is not None:
         stmt = stmt.where(Asset.category_id == category_id)
     return db.scalar(stmt.order_by(Asset.created_at).limit(1))
 
 
-def next_managed_serial(db: Session, category_id: uuid.UUID, prefix: str = "NG-") -> str:
+def next_managed_serial(
+    db: Session, category_id: uuid.UUID, prefix: str = "NG-"
+) -> str:
     """비전동 그리퍼 관리 번호: NG-0001, NG-0002 … (S/N 이 없는 장비를 세기 위한 번호)."""
     rows = db.scalars(
         select(Asset.serial_no).where(
@@ -317,7 +350,7 @@ def next_managed_serial(db: Session, category_id: uuid.UUID, prefix: str = "NG-"
     n = 0
     for s in rows:
         try:
-            n = max(n, int((s or "")[len(prefix):]))
+            n = max(n, int((s or "")[len(prefix) :]))
         except ValueError:
             continue
     return f"{prefix}{n + 1:04d}"

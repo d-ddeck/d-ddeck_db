@@ -1,14 +1,16 @@
 """Signup / approval / login / token payloads."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import ClassVar
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.security import validate_password_strength
 from app.models.enums import DevicePlatform, Role, UserStatus
-from app.schemas.common import Email, LoginId, ORMModel
+from app.schemas.common import Email, LoginId, ORMModel, PatchModel
 
 
 class SignupRequest(BaseModel):
@@ -48,14 +50,16 @@ class TokenPair(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_at: datetime
-    user: "UserProfile"
+    user: UserProfile
 
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+    push_token: str | None = None
 
 
 class AccessToken(BaseModel):
+    refresh_token: str
     access_token: str
     token_type: str = "bearer"
     expires_at: datetime
@@ -110,13 +114,17 @@ class UserAdminView(UserProfile):
     updated_at: datetime
 
 
-class UserUpdateSelf(BaseModel):
+class UserUpdateSelf(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"full_name"}
+
     full_name: str | None = Field(None, max_length=100)
     phone: str | None = Field(None, max_length=50)
     position: str | None = Field(None, max_length=50)
 
 
-class UserUpdateAdmin(BaseModel):
+class UserUpdateAdmin(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"full_name", "status", "role"}
+
     full_name: str | None = Field(None, max_length=100)
     employee_no: str | None = Field(None, max_length=50)
     phone: str | None = Field(None, max_length=50)

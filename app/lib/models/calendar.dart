@@ -1,3 +1,5 @@
+import '../core/colors.dart';
+export '../core/colors.dart';
 import 'package:flutter/material.dart';
 
 import 'common.dart';
@@ -12,8 +14,10 @@ enum CalendarType {
   final String label;
   final IconData icon;
 
-  static CalendarType parse(String? v) => CalendarType.values
-      .firstWhere((t) => t.value == v, orElse: () => CalendarType.personal);
+  static CalendarType parse(String? v) => CalendarType.values.firstWhere(
+    (t) => t.value == v,
+    orElse: () => CalendarType.personal,
+  );
 }
 
 enum EventStatus {
@@ -25,8 +29,10 @@ enum EventStatus {
   final String value;
   final String label;
 
-  static EventStatus parse(String? v) => EventStatus.values
-      .firstWhere((s) => s.value == v, orElse: () => EventStatus.scheduled);
+  static EventStatus parse(String? v) => EventStatus.values.firstWhere(
+    (s) => s.value == v,
+    orElse: () => EventStatus.scheduled,
+  );
 }
 
 enum ParticipantResponse {
@@ -41,8 +47,11 @@ enum ParticipantResponse {
   final IconData icon;
   final Color color;
 
-  static ParticipantResponse parse(String? v) => ParticipantResponse.values
-      .firstWhere((r) => r.value == v, orElse: () => ParticipantResponse.pending);
+  static ParticipantResponse parse(String? v) =>
+      ParticipantResponse.values.firstWhere(
+        (r) => r.value == v,
+        orElse: () => ParticipantResponse.pending,
+      );
 }
 
 class AppCalendar {
@@ -71,18 +80,18 @@ class AppCalendar {
   Color get displayColor => parseHexColor(color);
 
   factory AppCalendar.fromJson(Map<String, dynamic> j) => AppCalendar(
-        id: asString(j['id']),
-        name: asString(j['name']),
-        type: CalendarType.parse(j['type'] as String?),
-        color: asString(j['color'], '#3B82F6'),
-        ownerId: j['owner_id'] as String?,
-        departmentId: j['department_id'] as String?,
-        isShared: asBool(j['is_shared']),
-        isActive: asBool(j['is_active'], true),
-        defaultReminderMinutes: j['default_reminder_minutes'] == null
-            ? null
-            : asInt(j['default_reminder_minutes']),
-      );
+    id: asString(j['id']),
+    name: asString(j['name']),
+    type: CalendarType.parse(j['type'] as String?),
+    color: asString(j['color'], '#3B82F6'),
+    ownerId: j['owner_id'] as String?,
+    departmentId: j['department_id'] as String?,
+    isShared: asBool(j['is_shared']),
+    isActive: asBool(j['is_active'], true),
+    defaultReminderMinutes: j['default_reminder_minutes'] == null
+        ? null
+        : asInt(j['default_reminder_minutes']),
+  );
 }
 
 class EventParticipant {
@@ -101,12 +110,12 @@ class EventParticipant {
   final bool isOrganizer;
 
   factory EventParticipant.fromJson(Map<String, dynamic> j) => EventParticipant(
-        id: asString(j['id']),
-        userId: asString(j['user_id']),
-        response: ParticipantResponse.parse(j['response'] as String?),
-        user: j['user'] is Map ? UserBrief.fromJson(asMap(j['user'])) : null,
-        isOrganizer: asBool(j['is_organizer']),
-      );
+    id: asString(j['id']),
+    userId: asString(j['user_id']),
+    response: ParticipantResponse.parse(j['response'] as String?),
+    user: j['user'] is Map ? UserBrief.fromJson(asMap(j['user'])) : null,
+    isOrganizer: asBool(j['is_organizer']),
+  );
 }
 
 class EventReminder {
@@ -125,11 +134,11 @@ class EventReminder {
   String get label => offsetMinutes == 0 ? '시작 시각' : '$offsetMinutes분 전';
 
   factory EventReminder.fromJson(Map<String, dynamic> j) => EventReminder(
-        id: asString(j['id']),
-        offsetMinutes: asInt(j['offset_minutes']),
-        method: asString(j['method'], 'PUSH'),
-        sentAt: asDate(j['sent_at']),
-      );
+    id: asString(j['id']),
+    offsetMinutes: asInt(j['offset_minutes']),
+    method: asString(j['method'], 'PUSH'),
+    sentAt: asDate(j['sent_at']),
+  );
 }
 
 class CalendarEvent {
@@ -150,6 +159,9 @@ class CalendarEvent {
     this.participants = const [],
     this.reminders = const [],
     this.calendar,
+    this.rrule,
+    this.recurrenceEnd,
+    this.recurrenceParentId,
   });
 
   final String id;
@@ -168,6 +180,8 @@ class CalendarEvent {
   final List<EventParticipant> participants;
   final List<EventReminder> reminders;
   final AppCalendar? calendar;
+  final String? rrule, recurrenceParentId;
+  final DateTime? recurrenceEnd;
 
   /// Event colour wins over the calendar's; falls back to a neutral blue.
   Color displayColor([Color? calendarColor]) {
@@ -187,6 +201,9 @@ class CalendarEvent {
     return CalendarEvent(
       id: asString(j['id']),
       calendarId: asString(j['calendar_id']),
+      rrule: j['rrule'] as String?,
+      recurrenceParentId: j['recurrence_parent_id'] as String?,
+      recurrenceEnd: asDate(j['recurrence_end']),
       title: asString(j['title']),
       startsAt: start,
       endsAt: asDate(j['ends_at']) ?? start,
@@ -253,25 +270,31 @@ class UpcomingReminder {
     final when = allDay
         ? '오늘'
         : '${startsAt.hour.toString().padLeft(2, '0')}:'
-            '${startsAt.minute.toString().padLeft(2, '0')}';
+              '${startsAt.minute.toString().padLeft(2, '0')}';
     final lead = offsetMinutes == 0
         ? '지금 시작'
         : offsetMinutes >= 1440
-            ? '${offsetMinutes ~/ 1440}일 뒤'
-            : offsetMinutes >= 60
-                ? '${offsetMinutes ~/ 60}시간 뒤'
-                : '$offsetMinutes분 뒤';
+        ? '${offsetMinutes ~/ 1440}일 뒤'
+        : offsetMinutes >= 60
+        ? '${offsetMinutes ~/ 60}시간 뒤'
+        : '$offsetMinutes분 뒤';
     final place = location?.isNotEmpty == true ? ' · $location' : '';
     return '$when 시작 ($lead)$place';
   }
 
   Map<String, dynamic> toJson() => {
-    'reminder_id': reminderId, 'event_id': eventId, 'alarm_id': alarmId,
-    'title': title, 'starts_at': startsAt.toUtc().toIso8601String(),
+    'reminder_id': reminderId,
+    'event_id': eventId,
+    'alarm_id': alarmId,
+    'title': title,
+    'starts_at': startsAt.toUtc().toIso8601String(),
     'ends_at': endsAt.toUtc().toIso8601String(),
     'scheduled_at': scheduledAt.toUtc().toIso8601String(),
-    'offset_minutes': offsetMinutes, 'location': location,
-    'all_day': allDay, 'color': color, 'calendar_name': calendarName,
+    'offset_minutes': offsetMinutes,
+    'location': location,
+    'all_day': allDay,
+    'color': color,
+    'calendar_name': calendarName,
   };
 
   factory UpcomingReminder.fromJson(Map<String, dynamic> j) {
@@ -291,16 +314,6 @@ class UpcomingReminder {
       calendarName: j['calendar_name'] as String?,
     );
   }
-}
-
-/// Parses "#RRGGBB" / "#AARRGGBB"; falls back to blue on anything unexpected
-/// so a bad value in the code master cannot crash a screen.
-Color parseHexColor(String hex, [Color fallback = const Color(0xFF3B82F6)]) {
-  var value = hex.trim().replaceFirst('#', '');
-  if (value.length == 6) value = 'FF$value';
-  if (value.length != 8) return fallback;
-  final parsed = int.tryParse(value, radix: 16);
-  return parsed == null ? fallback : Color(parsed);
 }
 
 /// A calendar date; do not shift a holiday through UTC/local time conversion.

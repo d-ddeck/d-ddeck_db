@@ -1,240 +1,37 @@
-# PostgreSQL 전환 및 배포
+# PostgreSQL 운영
 
-스켈레톤은 SQLite로 즉시 실행되지만, 운영 대상은 PostgreSQL입니다.
-코드는 양쪽을 모두 지원하도록 작성되어 있어 **전환은 설정 한 줄**입니다.
+개발 기본 DB는 SQLite이며 Ubuntu 설치기는 기본으로 PostgreSQL을 구성합니다. `--sqlite`로 SQLite 설치를 선택할 수 있습니다. `DATABASE_URL` 변경만으로 기존 SQLite 데이터가 옮겨지지는 않습니다.
 
-> **우분투 서버라면 이 문서를 직접 따라 할 필요가 없습니다.**
-> `sudo ./deploy/install.sh` 가 아래 1~4단계를 전부 자동으로 처리합니다.
-> → [deploy/README.md](../deploy/README.md)
->
-> 이 문서는 수동 설치나 다른 OS에 올릴 때, 그리고 스크립트가 무엇을 하는지
-> 확인할 때 참고하세요.
+## 신규 PostgreSQL 서버
 
-> ⚠️ 이 문서의 절차는 작성 환경에 PostgreSQL이 없어 **실제 실행 검증을 하지
-> 못했습니다.** 코드는 이식 가능하게 작성했고 마이그레이션도 양쪽 방언을
-> 렌더링하지만, 아래 4번(검증)을 반드시 수행하세요.
+1. PostgreSQL에 전용 데이터베이스와 최소 권한 애플리케이션 계정을 준비합니다. DB 포트는 앱 서버에서만 접근하도록 제한합니다.
+2. `backend/.env`에 `DATABASE_URL=postgresql+psycopg://사용자:비밀번호@호스트:5432/데이터베이스`를 설정합니다. 비밀번호의 URL 특수문자는 인코딩하며 `.env` 권한을 제한합니다.
+3. 서버 가상환경에 `requirements.txt`를 설치하고 `python -m alembic upgrade head`, `python -m alembic check`를 실행합니다. 애플리케이션 테이블 30개와 `alembic_version`이 생깁니다.
+4. 운영 설정으로 기동하여 초기 관리자 비밀번호를 변경합니다. 운영에서는 `create_all()`을 사용하지 않습니다.
+5. 서비스 정의는 [설치 스크립트](../deploy/install.sh)가 기준입니다. 문서용 별도 systemd 유닛을 복사하지 않습니다.
 
----
+## 검증
 
-## 1. PostgreSQL 설치
-
-### Windows
-[postgresql.org/download/windows](https://www.postgresql.org/download/windows/)
-설치 관리자 실행 (PostgreSQL 16 이상 권장).
-
-### Ubuntu
-```bash
-sudo apt update && sudo apt install -y postgresql postgresql-contrib
-sudo systemctl enable --now postgresql
-```
-
-### Docker (가장 간단)
-```bash
-docker run -d --name ddeck-db \
-  -e POSTGRES_USER=ddeck \
-  -e POSTGRES_PASSWORD=<강한-비밀번호> \
-  -e POSTGRES_DB=ddeck \
-  -e TZ=UTC \
-  -p 5432:5432 \
-  -v ddeck-pgdata:/var/lib/postgresql/data \
-  postgres:16
-```
-
----
-
-## 2. 데이터베이스와 계정 생성
-
-```sql
-CREATE USER ddeck WITH PASSWORD '<강한-비밀번호>';
-CREATE DATABASE ddeck OWNER ddeck ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;
-GRANT ALL PRIVILEGES ON DATABASE ddeck TO ddeck;
-```
-
-> 애플리케이션은 모든 시각을 UTC로 저장합니다. 서버 타임존은 UTC로 두고
-> 표시만 클라이언트에서 `Asia/Seoul`로 변환하세요.
-
----
-
-## 3. 애플리케이션 설정
-
-`backend/.env` 에서 한 줄만 바꿉니다.
-
-```dotenv
-# DATABASE_URL=sqlite+pysqlite:///./ddeck.db
-DATABASE_URL=postgresql+psycopg://ddeck:<비밀번호>@127.0.0.1:5432/ddeck
-```
-
-`postgresql://` 로만 적어도 `app/core/config.py`가 psycopg3 드라이버로
-자동 교정합니다. 드라이버는 `requirements.txt`에 이미 포함되어 있습니다
-(`psycopg[binary]`).
-
-운영 전 함께 바꿔야 하는 값:
-
-```dotenv
-ENVIRONMENT=production
-DEBUG=false
-SECRET_KEY=<아래 명령으로 생성>
-CORS_ORIGINS=https://your-app-domain      # 운영에서 "*" 금지
-FIRST_SUPERADMIN_PASSWORD=<강한-비밀번호>
-```
+릴리스 CI의 `postgres-test`는 PostgreSQL 16 임시 서비스에서 빈 DB 마이그레이션, 스키마 비교, 운영 기동 시 DDL 금지, 로그인, 다운그레이드·재업그레이드를 검사합니다.
 
 ```bash
-python -c "import secrets;print(secrets.token_urlsafe(64))"
+# 반드시 폐기 가능한 ddeck_test DB에서만 실행합니다.
+TEST_POSTGRES_URL='postgresql+psycopg://테스트계정:비밀번호@localhost:5432/ddeck_test' \
+  python scripts/test_postgres.py
 ```
 
----
+일반 `smoke_test*.py`는 자체 임시 SQLite DB를 사용합니다. 그 결과를 PostgreSQL 통과로 해석하지 않습니다. 2026-09-26에는 공식 Ubuntu 패키지를 임시 경로에 풀어 PostgreSQL 18.6을 실행했습니다. 설치·스키마 비교·운영 기동·로그인·대응/재고/매장/통계/반복 일정 API·다운그레이드/재업그레이드, 실제 pg_dump 백업과 트랜잭션 복원이 통과했습니다. 시험 서버는 검증 후 종료했으며 운영 서버는 변경하지 않았습니다. GitHub Actions의 PostgreSQL 16 잡은 별도 CI 실행 시 검증됩니다.
 
-## 4. 스키마 생성 및 검증
+## 백업·복원
 
-### 스키마
+`pg_dump`, `pg_restore`, `psql`을 서버와 호환되는 버전으로 설치합니다. 공통 백업 도구는 custom format dump의 목록을 검사하고 Alembic 리비전·첨부·설정을 같은 ZIP에 담습니다. 비밀번호는 프로세스 인자 대신 `PGPASSWORD` 환경으로 전달합니다.
 
-```bash
-cd backend
-python -m alembic upgrade head
-```
+[운영 런북](OPERATIONS.md)과 [복원 드릴](../deploy/RESTORE_DRILL.md)을 따릅니다. PostgreSQL 갱신 실패 시 자동 SQLite 롤백을 사용하지 않습니다. 서비스를 중지하고 현재 상태를 보존한 뒤 이전 dump와 동일 버전 코드를 함께 복구합니다.
 
-현재 `app/main.py`의 lifespan에도 `Base.metadata.create_all()`이 남아 있습니다.
-Alembic으로 전환할 때 그 줄을 제거하세요 (`main.py`에 주석으로 표시해 뒀습니다).
+## 서버 이전
 
-### 검증 (필수)
+- PostgreSQL → PostgreSQL: 기존 서버의 검증 백업을 새 서버에 옮기고 빈 대상 DB에 dump를 복원합니다. 첨부 저장소도 복원하고 `.env`의 호스트·경로를 변경합니다.
+- Windows ↔ Ubuntu: 공통 ZIP은 양쪽에서 읽을 수 있습니다. OS의 경로와 DB URL을 새 환경에 맞게 정하며 `.env`를 무조건 덮어쓰지 않습니다.
+- SQLite ↔ PostgreSQL: 파일 복사나 URL 변경으로 변환할 수 없습니다. 원본을 백업하고 별도 대상에 UUID·UTC 일시·JSON·외래 키를 보존하는 데이터 이관을 먼저 수행해야 합니다. 이 저장소의 `migrate_from_legacy.py`는 구 CS_Record 전용이며 현재 서버 DB 변환 도구가 아닙니다. 변환본에서 테이블별 건수, 첨부 해시, 계정 로그인, 재고 합계, 대응 통계가 일치하는지 확인한 뒤 접속을 전환합니다. 이종 DB 데이터 변환은 운영자가 사용하는 이관 도구로 별도 검증해야 하며 현재 설치기가 자동 수행하지 않습니다.
 
-```bash
-python scripts/smoke_test.py
-```
-
-> 주의: 이 스크립트는 **자체적으로 임시 SQLite 파일을 사용**하도록 되어 있습니다
-> (파일 상단에서 `DATABASE_URL`을 덮어씀). PostgreSQL에 대해 돌리려면 그
-> `os.environ["DATABASE_URL"] = …` 줄을 **테스트 전용 PostgreSQL DB**로 바꾸고
-> 실행하세요. 운영 DB를 가리키면 안 됩니다 — 데이터를 생성합니다.
-
-139개 검사가 모두 통과하면 방언 차이(타임스탬프, JSON, 날짜 집계)가
-정상 동작하는 것입니다.
-
-### 초기 데이터
-
-```bash
-python scripts/seed_demo.py      # 데모 데이터 (운영에서는 실행하지 말 것)
-```
-
-운영에서는 서버 최초 기동 시 `app/services/bootstrap.py`가
-최고관리자 · 기본 설정 · 분류 코드 · 게시판 · 전사 캘린더를 자동 생성합니다.
-
----
-
-## 5. 방언 차이가 실제로 나타나는 지점
-
-전환 후 문제가 생긴다면 아래 4곳을 먼저 보세요.
-
-| 파일 | 내용 |
-|---|---|
-| `app/models/base.py` `UTCDateTime` | 타임존 정규화 (SQLite는 tz 미저장) |
-| `app/models/base.py` `JSONType` | PostgreSQL에서 JSONB로 렌더링 |
-| `app/services/stats.py` `resolution_minutes_expr()` | 처리시간 계산 문법 |
-| `app/services/stats.py` `period_expr()` | 일/주/월 버킷팅 문법 |
-
-**주 단위 추이만 완전히 동일하지 않습니다.** PostgreSQL은 ISO 주(`IYYY-"W"IW`),
-SQLite는 월요일 기준 `%W`를 사용합니다. 차트 형태에는 영향이 없지만 주차 번호를
-문서에 인용한다면 확인이 필요합니다.
-
----
-
-## 6. 운영 실행
-
-### systemd (Ubuntu)
-
-`/etc/systemd/system/ddeck.service`:
-
-```ini
-[Unit]
-Description=d-ddeck DB Server
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=ddeck
-WorkingDirectory=/opt/ddeck/backend
-Environment="PATH=/opt/ddeck/backend/.venv/bin"
-ExecStart=/opt/ddeck/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload && sudo systemctl enable --now ddeck
-```
-
-### 워커 수에 대한 경고
-
-`--workers 2` 이상으로 올리기 전에 반드시 읽으세요.
-
-캘린더 리마인더 스케줄러(`app/services/scheduler.py`)는 **APScheduler 인프로세스**
-실행입니다. 워커를 여러 개 띄우면 **같은 알림이 워커 수만큼 중복 발송**됩니다.
-
-선택지:
-- 단일 워커로 운영 (사내 규모라면 대개 충분)
-- 워커에서는 `SCHEDULER_ENABLED=false`로 끄고, 스케줄러 전용 프로세스를 하나만
-  띄우거나 cron에서 `POST /calendar/reminders/run`을 주기 호출
-- 외부 큐(Celery / RQ)로 이전
-
-### 리버스 프록시 (nginx)
-
-```nginx
-server {
-    listen 80;
-    server_name ddeck.company.local;
-    client_max_body_size 30M;          # 첨부파일 한도(25MB)보다 크게
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-`X-Forwarded-For`를 넘겨야 감사로그에 프록시 IP 대신 실제 접속 IP가 남습니다
-(`app/core/deps.py`의 `client_info`가 이 헤더를 먼저 봅니다).
-
-HTTPS는 사내망이라도 적용을 권장합니다 — 로그인 비밀번호와 토큰이 평문으로
-흐르지 않게 됩니다. 사설 CA 또는 Let's Encrypt(DNS 챌린지)를 사용하세요.
-
----
-
-## 7. 백업
-
-데이터는 두 곳에 있습니다. **둘 다 받아야 복구됩니다.**
-
-```bash
-# 1) 데이터베이스
-pg_dump -U ddeck -Fc ddeck > /backup/ddeck_$(date +%F).dump
-
-# 2) 첨부파일 (DB에는 경로만 저장됨)
-tar czf /backup/storage_$(date +%F).tar.gz /opt/ddeck/backend/storage
-```
-
-복원:
-
-```bash
-pg_restore -U ddeck -d ddeck --clean /backup/ddeck_2026-09-20.dump
-tar xzf /backup/storage_2026-09-20.tar.gz -C /
-```
-
----
-
-## 8. 전환 체크리스트
-
-- [ ] PostgreSQL 설치 및 `ddeck` DB / 계정 생성
-- [ ] `.env`의 `DATABASE_URL` 변경
-- [ ] `SECRET_KEY` 재생성, `DEBUG=false`, `CORS_ORIGINS` 화이트리스트 지정
-- [ ] `alembic upgrade head` 실행
-- [ ] `main.py`의 `create_all()` 제거
-- [ ] 테스트 DB에 대해 `smoke_test.py` 통과 확인 (139/139)
-- [ ] 최고관리자 최초 로그인 후 비밀번호 변경
-- [ ] 워커 수 = 1, 또는 스케줄러 분리
-- [ ] nginx + HTTPS + `X-Forwarded-For`
-- [ ] DB / storage 백업 cron 등록
+전환 동안 쓰기를 중지하고 기존 서버와 백업을 보존합니다. 문제가 생기면 새 서버를 중지하고 원본 서버로 연결을 돌립니다. 두 서버에 동시에 쓰지 않습니다.

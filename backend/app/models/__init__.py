@@ -1,4 +1,5 @@
 """Import every model so Base.metadata is complete before create_all / Alembic."""
+
 from app.models.admin import (
     Attachment,
     AuditLog,
@@ -29,43 +30,35 @@ from app.models.user import Department, Device, RefreshToken, User
 from app.models.worklog import WorkLog, WorkLogDraft
 
 __all__ = [
-    "Base",
-    # worklog
-    "WorkLog",
-    "WorkLogDraft",
-    # auth
-    "User",
-    "Department",
-    "RefreshToken",
-    "Device",
-    # admin
-    "ModuleSetting",
-    "CodeGroup",
-    "CodeItem",
-    "AuditLog",
-    "Attachment",
-    # service
-    "Customer",
-    "ServiceTicket",
-    "ServicePart",
-    "ServiceLog",
-    "ServiceTicketCause",
-    "ServiceTicketResponder",
-    # store
-    "Store",
-    "StoreSet",
-    # inventory
-    "Location",
     "Asset",
     "AssetMovement",
-    # board
+    "Attachment",
+    "AuditLog",
+    "Base",
     "Board",
-    "Post",
-    "PostComment",
-    # calendar
     "Calendar",
+    "CodeGroup",
+    "CodeItem",
+    "Customer",
+    "Department",
+    "Device",
     "Event",
     "EventParticipant",
     "EventReminder",
+    "Location",
+    "ModuleSetting",
     "Notification",
+    "Post",
+    "PostComment",
+    "RefreshToken",
+    "ServiceLog",
+    "ServicePart",
+    "ServiceTicket",
+    "ServiceTicketCause",
+    "ServiceTicketResponder",
+    "Store",
+    "StoreSet",
+    "User",
+    "WorkLog",
+    "WorkLogDraft",
 ]

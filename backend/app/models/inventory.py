@@ -1,27 +1,32 @@
 """재고관리 module: what the company owns and where each unit physically is."""
+
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
     Date,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     Uuid,
+    and_,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import (
-    UTCDateTime,
     AuthorMixin,
     Base,
+    SerialTrim,
     SoftDeleteMixin,
     TimestampMixin,
+    UTCDateTime,
     UUIDMixin,
     enum_type,
 )
@@ -37,7 +42,9 @@ class Location(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     __tablename__ = "locations"
 
-    code: Mapped[str] = mapped_column(String(60), unique=True, index=True, nullable=False)
+    code: Mapped[str] = mapped_column(
+        String(60), unique=True, index=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     type: Mapped[LocationType] = mapped_column(
         enum_type(LocationType), default=LocationType.ETC, nullable=False
@@ -54,17 +61,19 @@ class Location(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
 
-    parent: Mapped["Location | None"] = relationship(
+    parent: Mapped[Location | None] = relationship(
         remote_side="Location.id", back_populates="children"
     )
-    children: Mapped[list["Location"]] = relationship(back_populates="parent")
-    assets: Mapped[list["Asset"]] = relationship(back_populates="location")
+    children: Mapped[list[Location]] = relationship(back_populates="parent")
+    assets: Mapped[list[Asset]] = relationship(back_populates="location")
 
 
 class Asset(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     __tablename__ = "assets"
 
-    asset_no: Mapped[str] = mapped_column(String(60), unique=True, index=True, nullable=False)
+    asset_no: Mapped[str] = mapped_column(
+        String(60), unique=True, index=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("code_items.id", ondelete="SET NULL"), index=True
@@ -107,7 +116,9 @@ class Asset(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     # --- quantity: 1 for a serialised unit, N for consumables ---
     quantity: Mapped[float] = mapped_column(Numeric(14, 3), default=1, nullable=False)
     unit: Mapped[str] = mapped_column(String(20), default="EA", nullable=False)
-    min_quantity: Mapped[float | None] = mapped_column(Numeric(14, 3))  # 안전재고 경고선
+    min_quantity: Mapped[float | None] = mapped_column(
+        Numeric(14, 3)
+    )  # 안전재고 경고선
 
     # --- money / lifecycle ---
     purchase_date: Mapped[date | None] = mapped_column(Date)
@@ -117,8 +128,8 @@ class Asset(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     disposed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     note: Mapped[str | None] = mapped_column(Text)
 
-    location: Mapped["Location | None"] = relationship(back_populates="assets")
-    movements: Mapped[list["AssetMovement"]] = relationship(
+    location: Mapped[Location | None] = relationship(back_populates="assets")
+    movements: Mapped[list[AssetMovement]] = relationship(
         back_populates="asset",
         cascade="all, delete-orphan",
         order_by="AssetMovement.moved_at.desc()",
@@ -139,6 +150,17 @@ class AssetMovement(UUIDMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "asset_movements"
+
+    hidden_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+    # Preserve insertion order even for backdated moves within the same second.
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
 
     asset_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True
@@ -177,9 +199,7 @@ class AssetMovement(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("code_items.id", ondelete="SET NULL")
     )
     quantity: Mapped[float | None] = mapped_column(Numeric(14, 3))
-    moved_at: Mapped[datetime] = mapped_column(
-        UTCDateTime, nullable=False, index=True
-    )
+    moved_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
     moved_by_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -187,4 +207,26 @@ class AssetMovement(UUIDMixin, TimestampMixin, Base):
     reference_type: Mapped[str | None] = mapped_column(String(60))
     reference_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
-    asset: Mapped["Asset"] = relationship(back_populates="movements")
+    asset: Mapped[Asset] = relationship(back_populates="movements")
+
+
+_serial_live = and_(
+    Asset.deleted_at.is_(None),
+    Asset.serial_no.isnot(None),
+    SerialTrim(Asset.serial_no) != "",
+)
+Index(
+    "uq_assets_category_serial_live",
+    Asset.category_id,
+    func.lower(SerialTrim(Asset.serial_no)),
+    unique=True,
+    sqlite_where=and_(_serial_live, Asset.category_id.isnot(None)),
+    postgresql_where=and_(_serial_live, Asset.category_id.isnot(None)),
+)
+Index(
+    "uq_assets_serial_no_category_live",
+    func.lower(SerialTrim(Asset.serial_no)),
+    unique=True,
+    sqlite_where=and_(_serial_live, Asset.category_id.is_(None)),
+    postgresql_where=and_(_serial_live, Asset.category_id.is_(None)),
+)

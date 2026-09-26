@@ -10,6 +10,9 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import Text
+
+import app.models.base
 ${imports if imports else ""}
 revision: str = ${repr(up_revision)}
 down_revision: str | None = ${repr(down_revision)}

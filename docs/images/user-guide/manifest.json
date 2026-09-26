@@ -1,0 +1,114 @@
+{
+  "01-login.png": {
+    "sha256": "aa4f0d34079c8b211353ce8cc727f12d18477eb5d80ca8a8161595ee113eb095",
+    "bytes": 58673
+  },
+  "02-signup.png": {
+    "sha256": "db876f505ebbf7a014bcbfec19280beed9195aa9e20525982681822c2165e217",
+    "bytes": 77659
+  },
+  "03-dashboard.png": {
+    "sha256": "0a68d268c6d779326da8a7836c5ac4f1d01498fe9d65dd14b35e187b0bb6f052",
+    "bytes": 199952
+  },
+  "04-service-list.png": {
+    "sha256": "9511c8ddd129b42f3c0e8b9b32579013543823b2f68e1b1b34d6029b85d18248",
+    "bytes": 274483
+  },
+  "05-service-form.png": {
+    "sha256": "a846e8688751f0703691435d59570dcf366fdeada8fd0587a8f8a022ae28284f",
+    "bytes": 57080
+  },
+  "06-service-stats.png": {
+    "sha256": "8cf9ff47655ad55ba35ee5444dc9875a1944332eb36cb73ea272fcfd5b49bcf8",
+    "bytes": 134887
+  },
+  "07-equipment.png": {
+    "sha256": "6ea000368138d7eea2c27b4c76e59082355c1fe647f4343cc9bb0d2b4c8b7a07",
+    "bytes": 146625
+  },
+  "08-stores.png": {
+    "sha256": "d0daf6b87333cef8f02a8a37d3e47b3e7ba596f40ce4d6e7cff2af99591c8af2",
+    "bytes": 92933
+  },
+  "09-assets.png": {
+    "sha256": "060b1379ee94893565074a26becefc972ce3235f7a20d401f90258ab7e327c64",
+    "bytes": 208918
+  },
+  "10-asset-form.png": {
+    "sha256": "38e097f6a8f043d56160db8e68c50d3ca031d53659e258c7ba1bfebfcd2a58d7",
+    "bytes": 61815
+  },
+  "11-locations.png": {
+    "sha256": "d13d0ce058fe0f5b92b7d02a13e7341a762d6a5759b9a67aab188fb5d5543c73",
+    "bytes": 134515
+  },
+  "12-boards.png": {
+    "sha256": "1c8455d1114ac42346abca644a74ecbd65649c825cfe0e1a30a8ec52177e3592",
+    "bytes": 89462
+  },
+  "13-calendar.png": {
+    "sha256": "405ce4336baa38b763a4b76ab70d896b4b9209cffca4f8f192f53389cf210376",
+    "bytes": 114349
+  },
+  "14-event-form.png": {
+    "sha256": "b2f82ee7138563b2eec62e9b277c6a4037f59ce16b49601dd6cd3ad2e6fd95c6",
+    "bytes": 112649
+  },
+  "15-worklogs.png": {
+    "sha256": "9fef1bf3baef5f943074cd877c5440ce3999acaff4936636130329febcb59441",
+    "bytes": 113802
+  },
+  "16-worklog-form.png": {
+    "sha256": "d75899c021bcababf6b8c1e7f874fd2a98737a5b68a8212d3cf016190af08d8c",
+    "bytes": 82244
+  },
+  "17-notifications.png": {
+    "sha256": "85ad739c715792ab2c76e373ff89adb712fb195872e923c3e9d617e77081f0ac",
+    "bytes": 34868
+  },
+  "18-profile.png": {
+    "sha256": "0c100b2661ba8e60bdcc6aec8f4de34481af74bc4d8519e52a4c7efe3bf09e68",
+    "bytes": 34098
+  },
+  "19-sessions.png": {
+    "sha256": "247bd856d720a22722248d6450f226d75a7fca3f1f1af4e95f96fa84c073cb48",
+    "bytes": 53909
+  },
+  "20-approvals.png": {
+    "sha256": "55f0512cdaeefb43d7c51f14274d37b7cea939aa4ca77ec35dbfd052537d2f11",
+    "bytes": 80431
+  },
+  "21-accounts.png": {
+    "sha256": "b5f542d58ec615156313759f65bf562d84824e61634f2d695b806b1f05bbebff",
+    "bytes": 171021
+  },
+  "22-settings.png": {
+    "sha256": "81652133bfc2bccdfc33d7cb23bce4e6d7b34793398a651cd00c6f204e304b62",
+    "bytes": 125753
+  },
+  "23-audit.png": {
+    "sha256": "34766324bbfbb787a753fdc5e36806affb1a4c821ac79de9c6afffe3b13c056f",
+    "bytes": 94719
+  },
+  "24-health.png": {
+    "sha256": "5af3f7a99ab4d1e02ca2ddf2189e70fdddcec96db38b3c6668c5aaca4ef1b640",
+    "bytes": 145276
+  },
+  "25-service-detail.png": {
+    "sha256": "de31ba91ac8259183b8743d5e4a46adfd5205ffe22bad13933f8581303e86468",
+    "bytes": 113758
+  },
+  "26-store-detail.png": {
+    "sha256": "3fe18079633137315e27508ae03265919b08a1dc0507b0101d2e8963625ed204",
+    "bytes": 113507
+  },
+  "27-asset-detail.png": {
+    "sha256": "10571afc22a5246f048cc18cf2c8645f6166922961e6c484c1d7c3bb30fc860b",
+    "bytes": 105037
+  },
+  "28-delivery-compare.png": {
+    "sha256": "f4772a1480412bf07239ca6af36763c757db9d43361090dc780e864c33334a8a",
+    "bytes": 39308
+  }
+}

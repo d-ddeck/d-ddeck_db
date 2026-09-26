@@ -8,11 +8,12 @@
 - 임시 저장: 계정마다 한 장. 등록하면 지워진다.
 - 첨부: 공용 /files (entity_type=worklog).
 """
+
 from __future__ import annotations
 
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, status
@@ -36,7 +37,7 @@ from app.schemas.worklog import (
     WorkLogOut,
     WorkLogUpdate,
 )
-from app.services import audit, excel, settings_store, stats
+from app.services import audit, excel, settings_store
 
 router = APIRouter(prefix="/worklogs", tags=["worklogs"])
 
@@ -66,9 +67,13 @@ def _can_view(log: WorkLog, user: User) -> bool:
 
 
 def _load(db: Session, log_id: uuid.UUID) -> WorkLog:
-    log = db.scalar(select(WorkLog).where(WorkLog.id == log_id, WorkLog.deleted_at.is_(None)))
+    log = db.scalar(
+        select(WorkLog).where(WorkLog.id == log_id, WorkLog.deleted_at.is_(None))
+    )
     if log is None:
-        raise AppError("NOT_FOUND", "근무일지를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "근무일지를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return log
 
 
@@ -83,14 +88,25 @@ def _scope_where(stmt, scope: Scope, user: User):
 
 
 def _query(
-    db: Session, user: User, *, scope: Scope, year: int | None, month: int | None,
-    author_id: uuid.UUID | None, overtime: bool | None, q: str | None,
+    db: Session,
+    user: User,
+    *,
+    scope: Scope,
+    year: int | None,
+    month: int | None,
+    author_id: uuid.UUID | None,
+    overtime: bool | None,
+    q: str | None,
 ):
     stmt = select(WorkLog).where(WorkLog.deleted_at.is_(None))
     stmt = _scope_where(stmt, scope, user)
     if year:
         lo = date(year, month or 1, 1)
-        hi = date(year + (1 if not month or month == 12 else 0), 1 if not month or month == 12 else month + 1, 1)
+        hi = date(
+            year + (1 if not month or month == 12 else 0),
+            1 if not month or month == 12 else month + 1,
+            1,
+        )
         stmt = stmt.where(WorkLog.work_date >= lo, WorkLog.work_date < hi)
     if author_id:
         stmt = stmt.where(WorkLog.author_id == author_id)
@@ -98,10 +114,15 @@ def _query(
         stmt = stmt.where(WorkLog.overtime.is_(overtime))
     if q:
         like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(
-            WorkLog.summary.ilike(like), WorkLog.detail.ilike(like),
-            WorkLog.plan.ilike(like), WorkLog.needs.ilike(like), WorkLog.author_name.ilike(like),
-        ))
+        stmt = stmt.where(
+            or_(
+                WorkLog.summary.ilike(like),
+                WorkLog.detail.ilike(like),
+                WorkLog.plan.ilike(like),
+                WorkLog.needs.ilike(like),
+                WorkLog.author_name.ilike(like),
+            )
+        )
     return stmt
 
 
@@ -110,7 +131,11 @@ def _attachment_counts(db: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, int
         return {}
     rows = db.execute(
         select(Attachment.entity_id, func.count(Attachment.id))
-        .where(Attachment.entity_type == "worklog", Attachment.entity_id.in_(ids), Attachment.deleted_at.is_(None))
+        .where(
+            Attachment.entity_type == "worklog",
+            Attachment.entity_id.in_(ids),
+            Attachment.deleted_at.is_(None),
+        )
         .group_by(Attachment.entity_id)
     ).all()
     return {i: n for i, n in rows}
@@ -124,11 +149,21 @@ def _out(log: WorkLog, user: User, n_files: int, cls=WorkLogOut):
 
 
 def _detail(db: Session, log: WorkLog, user: User) -> WorkLogDetail:
-    out = _out(log, user, _attachment_counts(db, [log.id]).get(log.id, 0), WorkLogDetail)
+    out = _out(
+        log, user, _attachment_counts(db, [log.id]).get(log.id, 0), WorkLogDetail
+    )
     ids = {i for i in (log.author_id, log.created_by_id, log.updated_by_id) if i}
-    users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(ids))).all()} if ids else {}
+    users = (
+        {u.id: u for u in db.scalars(select(User).where(User.id.in_(ids))).all()}
+        if ids
+        else {}
+    )
     brief = lambda i: UserBrief.model_validate(users[i]) if i in users else None
-    out.author, out.created_by, out.updated_by = brief(log.author_id), brief(log.created_by_id), brief(log.updated_by_id)
+    out.author, out.created_by, out.updated_by = (
+        brief(log.author_id),
+        brief(log.created_by_id),
+        brief(log.updated_by_id),
+    )
     return out
 
 
@@ -137,10 +172,18 @@ def _positions(db: Session) -> list[str]:
     group = db.scalar(select(CodeGroup).where(CodeGroup.code == POSITION_GROUP))
     if group is None:
         return []
-    return [i.name for i in db.scalars(
-        select(CodeItem).where(CodeItem.group_id == group.id, CodeItem.deleted_at.is_(None), CodeItem.is_active.is_(True))
-        .order_by(CodeItem.sort_order, CodeItem.name)
-    )]
+    return [
+        i.name
+        for i in db.scalars(
+            select(CodeItem)
+            .where(
+                CodeItem.group_id == group.id,
+                CodeItem.deleted_at.is_(None),
+                CodeItem.is_active.is_(True),
+            )
+            .order_by(CodeItem.sort_order, CodeItem.name)
+        )
+    ]
 
 
 def _draft(db: Session, user: User) -> WorkLogDraftOut | None:
@@ -151,23 +194,60 @@ def _draft(db: Session, user: User) -> WorkLogDraftOut | None:
 
 
 @router.get("/lookups", response_model=WorkLogLookups)
-def lookups(db: DbSession, user: CurrentUser, scope: Annotated[Scope, Query()] = "mine") -> WorkLogLookups:
+def lookups(
+    db: DbSession, user: CurrentUser, scope: Annotated[Scope, Query()] = "mine"
+) -> WorkLogLookups:
     """새 일지를 열 때 필요한 것: 직급 목록·계정 직급·내 이름·지난 일지의 근무시간·임시 저장·작성자·연도."""
     last = db.scalar(
-        select(WorkLog).where(WorkLog.author_id == user.id, WorkLog.deleted_at.is_(None))
-        .order_by(WorkLog.work_date.desc()).limit(1)
+        select(WorkLog)
+        .where(WorkLog.author_id == user.id, WorkLog.deleted_at.is_(None))
+        .order_by(WorkLog.work_date.desc())
+        .limit(1)
     )
-    start = last.work_start if last else str(settings_store.get(db, ModuleKey.WORKLOG, "default_work_start", "09:00"))
-    end = last.work_end if last else str(settings_store.get(db, ModuleKey.WORKLOG, "default_work_end", "18:00"))
+    start = (
+        last.work_start
+        if last
+        else str(
+            settings_store.get(db, ModuleKey.WORKLOG, "default_work_start", "09:00")
+        )
+    )
+    end = (
+        last.work_end
+        if last
+        else str(settings_store.get(db, ModuleKey.WORKLOG, "default_work_end", "18:00"))
+    )
 
-    visible = _scope_where(select(WorkLog.author_id).where(WorkLog.deleted_at.is_(None), WorkLog.author_id.isnot(None)), scope, user).distinct()
+    visible = _scope_where(
+        select(WorkLog.author_id).where(
+            WorkLog.deleted_at.is_(None), WorkLog.author_id.isnot(None)
+        ),
+        scope,
+        user,
+    ).distinct()
     author_ids = [i for (i,) in db.execute(visible).all()]
-    authors = [UserBrief.model_validate(u) for u in db.scalars(select(User).where(User.id.in_(author_ids)).order_by(User.full_name)).all()] if author_ids else []
-    years_stmt = _scope_where(select(WorkLog.work_date).where(WorkLog.deleted_at.is_(None)), scope, user)
+    authors = (
+        [
+            UserBrief.model_validate(u)
+            for u in db.scalars(
+                select(User).where(User.id.in_(author_ids)).order_by(User.full_name)
+            ).all()
+        ]
+        if author_ids
+        else []
+    )
+    years_stmt = _scope_where(
+        select(WorkLog.work_date).where(WorkLog.deleted_at.is_(None)), scope, user
+    )
     years = sorted({d.year for (d,) in db.execute(years_stmt).all()}, reverse=True)
     return WorkLogLookups(
-        positions=_positions(db), fixed_position=user.position or None, author_name=user.full_name,
-        default_work_start=start, default_work_end=end, authors=authors, years=years, draft=_draft(db, user),
+        positions=_positions(db),
+        fixed_position=user.position or None,
+        author_name=user.full_name,
+        default_work_start=start,
+        default_work_end=end,
+        authors=authors,
+        years=years,
+        draft=_draft(db, user),
     )
 
 
@@ -177,7 +257,9 @@ def get_draft(db: DbSession, user: CurrentUser):
 
 
 @router.put("/draft", response_model=WorkLogDraftOut)
-def save_draft(payload: WorkLogDraftIn, db: DbSession, user: CurrentUser) -> WorkLogDraftOut:
+def save_draft(
+    payload: WorkLogDraftIn, db: DbSession, user: CurrentUser
+) -> WorkLogDraftOut:
     """[임시 저장] 버튼과 입력 중 자동 저장이 같이 쓴다. 검사하지 않고 그대로 보관한다."""
     row = db.scalar(select(WorkLogDraft).where(WorkLogDraft.user_id == user.id))
     if row is None:
@@ -201,36 +283,110 @@ def discard_draft(db: DbSession, user: CurrentUser) -> Message:
 # ------------------------------------------------------------------ 목록 · 엑셀
 @router.get("", response_model=Page[WorkLogOut])
 def list_worklogs(
-    db: DbSession, user: CurrentUser, page: PageParams,
-    scope: Annotated[Scope, Query(description="mine: 내 일지 / team: 내 일지+팀 공개 / all: 관리자 전체")] = "mine",
-    year: int | None = None, month: Annotated[int | None, Query(ge=1, le=12)] = None,
-    author_id: uuid.UUID | None = None, overtime: bool | None = None,
+    db: DbSession,
+    user: CurrentUser,
+    page: PageParams,
+    scope: Annotated[
+        Scope,
+        Query(description="mine: 내 일지 / team: 내 일지+팀 공개 / all: 관리자 전체"),
+    ] = "mine",
+    year: Annotated[int | None, Query(ge=2000, le=2100)] = None,
+    month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    author_id: uuid.UUID | None = None,
+    overtime: bool | None = None,
     q: Annotated[str | None, Query(description="요약·상세·예정·요청·작성자")] = None,
 ) -> Page[WorkLogOut]:
-    stmt = _query(db, user, scope=scope, year=year, month=month, author_id=author_id, overtime=overtime, q=q)
+    stmt = _query(
+        db,
+        user,
+        scope=scope,
+        year=year,
+        month=month,
+        author_id=author_id,
+        overtime=overtime,
+        q=q,
+    )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = list(db.scalars(stmt.order_by(WorkLog.work_date.desc(), WorkLog.author_name).offset(page.offset).limit(page.size)).all())
+    rows = list(
+        db.scalars(
+            stmt.order_by(WorkLog.work_date.desc(), WorkLog.author_name)
+            .offset(page.offset)
+            .limit(page.size)
+        ).all()
+    )
     counts = _attachment_counts(db, [r.id for r in rows])
-    return Page.build([_out(r, user, counts.get(r.id, 0)) for r in rows], total, page.page, page.size)
+    return Page.build(
+        [_out(r, user, counts.get(r.id, 0)) for r in rows], total, page.page, page.size
+    )
 
 
 @router.get("/export.xlsx")
 def export_worklogs(
-    db: DbSession, user: CurrentUser, scope: Annotated[Scope, Query()] = "mine",
-    year: int | None = None, month: Annotated[int | None, Query(ge=1, le=12)] = None,
-    author_id: uuid.UUID | None = None, overtime: bool | None = None, q: str | None = None,
+    db: DbSession,
+    user: CurrentUser,
+    scope: Annotated[Scope, Query()] = "mine",
+    year: Annotated[int | None, Query(ge=2000, le=2100)] = None,
+    month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    author_id: uuid.UUID | None = None,
+    overtime: bool | None = None,
+    q: str | None = None,
 ):
-    stmt = _query(db, user, scope=scope, year=year, month=month, author_id=author_id, overtime=overtime, q=q)
+    stmt = _query(
+        db,
+        user,
+        scope=scope,
+        year=year,
+        month=month,
+        author_id=author_id,
+        overtime=overtime,
+        q=q,
+    )
     rows = list(db.scalars(stmt.order_by(WorkLog.work_date, WorkLog.author_name)).all())
     counts = _attachment_counts(db, [r.id for r in rows])
-    head = ["일자", "작성자", "직급", "근무 시작", "근무 종료", "금일 업무 내용 요약", "금일 근무 내용 상세", "연장 근무",
-            "연장 근무 내용", "예정 업무", "필요/요청사항", "공개 범위", "첨부 수"]
-    lines = [[w.work_date, w.author_name, w.position or "", w.work_start, w.work_end, w.summary, w.detail,
-              "O" if w.overtime else "X", w.overtime_note or "", w.plan or "", w.needs or "",
-              "팀 공개" if w.visibility == WorkLogVisibility.TEAM else "비공개", counts.get(w.id, 0)] for w in rows]
+    head = [
+        "일자",
+        "작성자",
+        "직급",
+        "근무 시작",
+        "근무 종료",
+        "금일 업무 내용 요약",
+        "금일 근무 내용 상세",
+        "연장 근무",
+        "연장 근무 내용",
+        "예정 업무",
+        "필요/요청사항",
+        "공개 범위",
+        "첨부 수",
+    ]
+    lines = [
+        [
+            w.work_date,
+            w.author_name,
+            w.position or "",
+            w.work_start,
+            w.work_end,
+            w.summary,
+            w.detail,
+            "O" if w.overtime else "X",
+            w.overtime_note or "",
+            w.plan or "",
+            w.needs or "",
+            "팀 공개" if w.visibility == WorkLogVisibility.TEAM else "비공개",
+            counts.get(w.id, 0),
+        ]
+        for w in rows
+    ]
     wb = excel.workbook()
-    excel.fill_sheet(wb.create_sheet("근무일지"), head, lines, [11, 10, 8, 9, 9, 36, 50, 8, 24, 36, 30, 10, 7], wrap_cols=(5, 6, 8, 9, 10))
-    tag = (rows[0].author_name if author_id and rows else "전체") + (f"_{year}" + (f"-{month:02d}" if month else "") if year else "")
+    excel.fill_sheet(
+        wb.create_sheet("근무일지"),
+        head,
+        lines,
+        [11, 10, 8, 9, 9, 36, 50, 8, 24, 36, 30, 10, 7],
+        wrap_cols=(5, 6, 8, 9, 10),
+    )
+    tag = (rows[0].author_name if author_id and rows else "전체") + (
+        f"_{year}" + (f"-{month:02d}" if month else "") if year else ""
+    )
     return excel.to_response(wb, f"근무일지_{tag}.xlsx")
 
 
@@ -246,28 +402,45 @@ def _validate(db: Session, user: User, data: dict, *, existing: WorkLog | None) 
             raise AppError("SUMMARY_REQUIRED", "금일 업무 내용 요약을 입력하세요.")
     if "detail" in data and not (data["detail"] or "").strip():
         raise AppError("DETAIL_REQUIRED", "금일 근무 내용 상세를 입력하세요.")
-    overtime = data.get("overtime") if "overtime" in data else (existing.overtime if existing else False)
+    overtime = (
+        data.get("overtime")
+        if "overtime" in data
+        else (existing.overtime if existing else False)
+    )
     if not overtime:
         data["overtime_note"] = None
     # 직급: 계정에 있으면 그대로, 없으면 목록에서 골라야 한다
     if user.position and (existing is None or existing.author_id == user.id):
         data["position"] = user.position
     elif existing is None or "position" in data:
-        pos = (data.get("position") or (existing.position if existing else "") or "").strip()
+        pos = (
+            data.get("position") or (existing.position if existing else "") or ""
+        ).strip()
         if not pos:
-            raise AppError("POSITION_REQUIRED", "직급을 고르세요. (관리 › 계정에 직급을 지정하면 자동으로 채워집니다)")
+            raise AppError(
+                "POSITION_REQUIRED",
+                "직급을 고르세요. (관리 › 계정에 직급을 지정하면 자동으로 채워집니다)",
+            )
         data["position"] = pos
 
 
-def _duplicate(db: Session, author_id: uuid.UUID, work_date: date, exclude: uuid.UUID | None = None) -> WorkLog | None:
-    stmt = select(WorkLog).where(WorkLog.author_id == author_id, WorkLog.work_date == work_date, WorkLog.deleted_at.is_(None))
+def _duplicate(
+    db: Session, author_id: uuid.UUID, work_date: date, exclude: uuid.UUID | None = None
+) -> WorkLog | None:
+    stmt = select(WorkLog).where(
+        WorkLog.author_id == author_id,
+        WorkLog.work_date == work_date,
+        WorkLog.deleted_at.is_(None),
+    )
     if exclude is not None:
         stmt = stmt.where(WorkLog.id != exclude)
     return db.scalar(stmt.limit(1))
 
 
 @router.post("", response_model=WorkLogDetail, status_code=status.HTTP_201_CREATED)
-def create_worklog(payload: WorkLogCreate, db: DbSession, user: CurrentUser, client: Client) -> WorkLogDetail:
+def create_worklog(
+    payload: WorkLogCreate, db: DbSession, user: CurrentUser, client: Client
+) -> WorkLogDetail:
     data = payload.model_dump()
     _validate(db, user, data, existing=None)
     dup = _duplicate(db, user.id, data["work_date"])
@@ -278,14 +451,28 @@ def create_worklog(payload: WorkLogCreate, db: DbSession, user: CurrentUser, cli
             status.HTTP_409_CONFLICT,
             {"id": str(dup.id)},
         )
-    log = WorkLog(**data, author_id=user.id, author_name=user.full_name, created_by_id=user.id, updated_by_id=user.id)
+    log = WorkLog(
+        **data,
+        author_id=user.id,
+        author_name=user.full_name,
+        created_by_id=user.id,
+        updated_by_id=user.id,
+    )
     db.add(log)
     db.flush()
     draft = db.scalar(select(WorkLogDraft).where(WorkLogDraft.user_id == user.id))
     if draft is not None:
-        db.delete(draft)                       # 등록됐으니 임시 저장은 지운다
-    audit.record(db, action=AuditAction.CREATE, actor=user, module=ModuleKey.WORKLOG, entity_type="worklog",
-                 entity_id=log.id, summary=f"근무일지 등록 {log.work_date} {log.author_name}", client=client)
+        db.delete(draft)  # 등록됐으니 임시 저장은 지운다
+    audit.record(
+        db,
+        action=AuditAction.CREATE,
+        actor=user,
+        module=ModuleKey.WORKLOG,
+        entity_type="worklog",
+        entity_id=log.id,
+        summary=f"근무일지 등록 {log.work_date} {log.author_name}",
+        client=client,
+    )
     db.commit()
     return _detail(db, log, user)
 
@@ -294,39 +481,90 @@ def create_worklog(payload: WorkLogCreate, db: DbSession, user: CurrentUser, cli
 def get_worklog(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> WorkLogDetail:
     log = _load(db, log_id)
     if not _can_view(log, user):
-        raise AppError("FORBIDDEN", "비공개 근무일지는 본인과 관리자만 볼 수 있습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN",
+            "비공개 근무일지는 본인과 관리자만 볼 수 있습니다.",
+            status.HTTP_403_FORBIDDEN,
+        )
     return _detail(db, log, user)
 
 
 @router.patch("/{log_id}", response_model=WorkLogDetail)
-def update_worklog(log_id: uuid.UUID, payload: WorkLogUpdate, db: DbSession, user: CurrentUser, client: Client) -> WorkLogDetail:
+def update_worklog(
+    log_id: uuid.UUID,
+    payload: WorkLogUpdate,
+    db: DbSession,
+    user: CurrentUser,
+    client: Client,
+) -> WorkLogDetail:
     log = _load(db, log_id)
     if not _can_edit(log, user):
-        raise AppError("FORBIDDEN", "근무일지는 본인과 관리자만 고칠 수 있습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN",
+            "근무일지는 본인과 관리자만 고칠 수 있습니다.",
+            status.HTTP_403_FORBIDDEN,
+        )
     data = payload.model_dump(exclude_unset=True)
     _validate(db, user, data, existing=log)
     new_date = data.get("work_date", log.work_date)
-    if log.author_id is not None and new_date != log.work_date and _duplicate(db, log.author_id, new_date, exclude=log.id) is not None:
-        raise AppError("WORKLOG_EXISTS", f"{new_date.isoformat()} 근무일지가 따로 있습니다. 일자를 확인하세요.", status.HTTP_409_CONFLICT)
+    if (
+        log.author_id is not None
+        and new_date != log.work_date
+        and _duplicate(db, log.author_id, new_date, exclude=log.id) is not None
+    ):
+        raise AppError(
+            "WORKLOG_EXISTS",
+            f"{new_date.isoformat()} 근무일지가 따로 있습니다. 일자를 확인하세요.",
+            status.HTTP_409_CONFLICT,
+        )
     before = {k: getattr(log, k) for k in data}
     for k, v in data.items():
         setattr(log, k, v)
     log.updated_by_id = user.id
-    audit.record(db, action=AuditAction.UPDATE, actor=user, module=ModuleKey.WORKLOG, entity_type="worklog",
-                 entity_id=log.id, summary=f"근무일지 수정 {log.work_date} {log.author_name}", changes=audit.diff(before, data), client=client)
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=user,
+        module=ModuleKey.WORKLOG,
+        entity_type="worklog",
+        entity_id=log.id,
+        summary=f"근무일지 수정 {log.work_date} {log.author_name}",
+        changes=audit.diff(before, data),
+        client=client,
+    )
     db.commit()
     return _detail(db, log, user)
 
 
 @router.delete("/{log_id}", response_model=Message)
-def delete_worklog(log_id: uuid.UUID, db: DbSession, user: CurrentUser, client: Client) -> Message:
+def delete_worklog(
+    log_id: uuid.UUID, db: DbSession, user: CurrentUser, client: Client
+) -> Message:
     log = _load(db, log_id)
     if not _can_edit(log, user):
-        raise AppError("FORBIDDEN", "근무일지는 본인과 관리자만 지울 수 있습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN",
+            "근무일지는 본인과 관리자만 지울 수 있습니다.",
+            status.HTTP_403_FORBIDDEN,
+        )
     log.deleted_at = now_utc()
-    for a in db.scalars(select(Attachment).where(Attachment.entity_type == "worklog", Attachment.entity_id == log.id, Attachment.deleted_at.is_(None))).all():
+    for a in db.scalars(
+        select(Attachment).where(
+            Attachment.entity_type == "worklog",
+            Attachment.entity_id == log.id,
+            Attachment.deleted_at.is_(None),
+        )
+    ).all():
         a.deleted_at = now_utc()
-    audit.record(db, action=AuditAction.DELETE, actor=user, module=ModuleKey.WORKLOG, entity_type="worklog",
-                 entity_id=log.id, summary=f"근무일지 삭제 {log.work_date} {log.author_name}", client=client)
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=user,
+        module=ModuleKey.WORKLOG,
+        entity_type="worklog",
+        entity_id=log.id,
+        summary=f"근무일지 삭제 {log.work_date} {log.author_name}",
+        client=client,
+    )
     db.commit()
     return Message(message="근무일지를 삭제했습니다.")

@@ -1,3 +1,12 @@
+import 'package:flutter/services.dart';
+import '../state/theme_state.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'common/theme_mode_button.dart';
+import 'auth/profile_page.dart';
+import 'auth/sessions_page.dart';
+import '../core/api_client.dart';
+import '../core/config.dart';
+import '../services/vpn_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -34,7 +43,51 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   late int _index = widget.equipmentTab == null ? 0 : 2;
   final _equipmentKey = GlobalKey<EquipmentPageState>();
-  bool _railExpanded = false;
+  final _visited = <int>{};
+  bool _railExpanded = true;
+  bool _railTouched = false;
+  Future<void> _railSave = Future.value();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRail();
+  }
+
+  Future<void> _loadRail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted && !_railTouched) {
+        setState(
+          () =>
+              _railExpanded = prefs.getBool('appearance.rail_expanded') ?? true,
+        );
+      }
+    } catch (_) {
+      /* Keep the readable default if storage is unavailable. */
+    }
+  }
+
+  void _toggleRail() {
+    _railTouched = true;
+    setState(() => _railExpanded = !_railExpanded);
+    final expanded = _railExpanded;
+    _railSave = _railSave
+        .then((_) async {
+          final prefs = await SharedPreferences.getInstance();
+          if (!await prefs.setBool('appearance.rail_expanded', expanded)) {
+            throw StateError('메뉴 설정 저장 실패');
+          }
+        })
+        .catchError((Object _) {
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('메뉴 설정을 저장하지 못했습니다.')));
+          }
+        });
+  }
+
   final _pagesKey = GlobalKey();
 
   @override
@@ -44,162 +97,315 @@ class _HomeShellState extends State<HomeShell> {
 
     // The admin tab disappears for non-admins, so clamp a stale index.
     final index = _index.clamp(0, destinations.length - 1);
+    _visited.add(index);
     final wide = AppTheme.isWide(context);
 
-    final body = EquipmentNavigation(open: (tab, filters) {
-      setState(() => _index = 2);
-      _equipmentKey.currentState?.show(tab, filters);
-    }, child: IndexedStack(
-      key: _pagesKey,
-      index: index,
-      children: [for (final d in destinations) d.label == '장비·매장'
-        ? EquipmentPage(key: _equipmentKey, tab: widget.equipmentTab ?? EquipmentTab.overview) : d.page],
-    ));
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(destinations[index].label),
-        actions: [
-          if (AlarmService.isSupported)
-            IconButton(tooltip: '이 폰에 저장된 알람 보기', icon: const Icon(Icons.alarm),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const SyncedAlarmsPage()))),
-          _NotificationButton(unread: auth.unreadCount),
-          _AccountMenu(user: auth.user),
-          const SizedBox(width: 8),
+    final body = EquipmentNavigation(
+      open: (tab, filters) {
+        setState(() => _index = 2);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _equipmentKey.currentState?.show(tab, filters);
+        });
+      },
+      child: IndexedStack(
+        key: _pagesKey,
+        index: index,
+        children: [
+          for (var i = 0; i < destinations.length; i++)
+            !_visited.contains(i)
+                ? const SizedBox.shrink()
+                : destinations[i].label == '장비·매장'
+                ? EquipmentPage(
+                    key: _equipmentKey,
+                    tab: widget.equipmentTab ?? EquipmentTab.overview,
+                  )
+                : destinations[i].page,
         ],
       ),
-      body: wide
-          ? Row(
-              children: [
-                SizedBox(
-                  width: _railExpanded ? 220 : 88,
-                  child: Column(children: [
-                    Align(alignment: Alignment.centerRight, child: IconButton(
-                      tooltip: _railExpanded ? '메뉴 접기' : '메뉴 펼치기',
-                      onPressed: () => setState(() => _railExpanded = !_railExpanded),
-                      icon: _railExpanded ? const Icon(Icons.menu_open) : const Icon(Icons.menu),
-                    )),
-                    Expanded(child: NavigationRail(
-                      extended: _railExpanded,
-                      scrollable: true,
-                      minExtendedWidth: 220,
-                      selectedIndex: index,
-                      onDestinationSelected: (i) => setState(() => _index = i),
-                      labelType: NavigationRailLabelType.none,
-                      destinations: [for (final d in destinations) NavigationRailDestination(
-                        icon: Tooltip(message: d.label, child: Icon(d.icon)),
-                        selectedIcon: Tooltip(message: d.label, child: Icon(d.selectedIcon)),
-                        label: Text(d.label),
-                      )],
-                    )),
-                    const Divider(),
-                    Padding(padding: const EdgeInsets.all(AppSpace.sm), child: Column(children: [
-                      Text(auth.user?.fullName ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Text(auth.role.label, style: Theme.of(context).textTheme.labelSmall),
-                      IconButton(tooltip: '로그아웃', onPressed: () => _logout(context),
-                        icon: const Icon(Icons.logout)),
-                    ])),
-                  ]),
+    );
+
+    return CallbackShortcuts(
+      bindings: {
+        for (var i = 0; i < destinations.length && i < 7; i++)
+          SingleActivator(
+            [
+              LogicalKeyboardKey.digit1,
+              LogicalKeyboardKey.digit2,
+              LogicalKeyboardKey.digit3,
+              LogicalKeyboardKey.digit4,
+              LogicalKeyboardKey.digit5,
+              LogicalKeyboardKey.digit6,
+              LogicalKeyboardKey.digit7,
+            ][i],
+            alt: true,
+          ): () =>
+              setState(() => _index = i),
+      },
+      child: FocusTraversalGroup(
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(destinations[index].label),
+            actions: [
+              if (auth.isLoggingOut)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(child: body),
-              ],
-            )
-          : body,
-      bottomNavigationBar: wide
-          ? null
-          : NavigationBar(
-              selectedIndex: index < 4 ? index : 4,
-              onDestinationSelected: (i) {
-                if (i == 4) {
-                  _showMore(destinations);
-                } else {
-                  setState(() => _index = i);
-                }
-              },
-              destinations: [
-                for (final d in destinations.take(4))
-                  NavigationDestination(
-                    icon: Icon(d.icon),
-                    selectedIcon: Icon(d.selectedIcon),
-                    label: d.label,
+              ValueListenableBuilder<bool>(
+                valueListenable: context.read<ApiClient>().connected,
+                builder: (context, connected, _) => connected
+                    ? const SizedBox.shrink()
+                    : const Tooltip(
+                        message: '서버 연결 끊김 · 다시 시도해 주세요',
+                        child: Icon(Icons.cloud_off),
+                      ),
+              ),
+              if (AlarmService.isSupported)
+                IconButton(
+                  tooltip: '이 폰에 저장된 알람 보기',
+                  icon: const Icon(Icons.alarm),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SyncedAlarmsPage(),
+                    ),
                   ),
-                const NavigationDestination(icon: Icon(Icons.more_horiz), label: '더보기'),
-              ],
-            ),
+                ),
+              if (wide)
+                PopupMenuButton<bool>(
+                  tooltip: '목록 밀도',
+                  icon: const Icon(Icons.density_medium),
+                  itemBuilder: (_) => [
+                    CheckedPopupMenuItem(
+                      value: false,
+                      checked: !context.read<ThemeState>().compact,
+                      child: const Text('기본 간격'),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: true,
+                      checked: context.read<ThemeState>().compact,
+                      child: const Text('촘촘히 보기'),
+                    ),
+                  ],
+                  onSelected: (value) async {
+                    try {
+                      await context.read<ThemeState>().setCompact(value);
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('목록 밀도를 저장하지 못했습니다.')),
+                        );
+                      }
+                    }
+                  },
+                ),
+              const ThemeModeButton(),
+              _NotificationButton(unread: auth.unreadCount),
+              _AccountMenu(user: auth.user),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: wide
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: _railExpanded ? 220 : 88,
+                      child: Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: IconButton(
+                              tooltip: _railExpanded ? '메뉴 접기' : '메뉴 펼치기',
+                              onPressed: _toggleRail,
+                              icon: _railExpanded
+                                  ? const Icon(Icons.menu_open)
+                                  : const Icon(Icons.menu),
+                            ),
+                          ),
+                          Expanded(
+                            child: NavigationRail(
+                              extended: _railExpanded,
+                              scrollable: true,
+                              minExtendedWidth: 220,
+                              selectedIndex: index,
+                              onDestinationSelected: (i) =>
+                                  setState(() => _index = i),
+                              labelType: NavigationRailLabelType.none,
+                              destinations: [
+                                for (final d in destinations)
+                                  NavigationRailDestination(
+                                    icon: Tooltip(
+                                      message: d.label,
+                                      child: Icon(d.icon),
+                                    ),
+                                    selectedIcon: Tooltip(
+                                      message: d.label,
+                                      child: Icon(d.selectedIcon),
+                                    ),
+                                    label: Text(d.label),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const Divider(),
+                          Padding(
+                            padding: const EdgeInsets.all(AppSpace.sm),
+                            child: Column(
+                              children: [
+                                Text(
+                                  auth.user?.fullName ?? '-',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  auth.role.label,
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                                IconButton(
+                                  tooltip: '로그아웃',
+                                  onPressed: () => _logout(context),
+                                  icon: const Icon(Icons.logout),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(child: body),
+                  ],
+                )
+              : body,
+          bottomNavigationBar: wide
+              ? null
+              : NavigationBar(
+                  selectedIndex: index < 4 ? index : 4,
+                  onDestinationSelected: (i) {
+                    if (i == 4) {
+                      _showMore(destinations);
+                    } else {
+                      setState(() => _index = i);
+                    }
+                  },
+                  destinations: [
+                    for (final d in destinations.take(4))
+                      NavigationDestination(
+                        icon: Icon(d.icon),
+                        selectedIcon: Icon(d.selectedIcon),
+                        label: d.label,
+                      ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.more_horiz),
+                      label: '더보기',
+                    ),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
   Future<void> _showMore(List<_Destination> destinations) async {
-    final selected = await showModalBottomSheet<int>(context: context,
-      showDragHandle: true, builder: (context) => SafeArea(child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (var i = 4; i < destinations.length; i++) ListTile(
-            leading: Icon(destinations[i].icon), title: Text(destinations[i].label),
-            selected: _index == i, onTap: () => Navigator.pop(context, i),
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 4; i < destinations.length; i++)
+                ListTile(
+                  leading: Icon(destinations[i].icon),
+                  title: Text(destinations[i].label),
+                  selected: _index == i,
+                  onTap: () => Navigator.pop(context, i),
+                ),
+              ListTile(
+                leading: const Icon(Icons.alarm),
+                title: const Text('알람'),
+                onTap: () => Navigator.pop(context, -1),
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: const Text('내 정보'),
+                onTap: () => Navigator.pop(context, -2),
+              ),
+            ],
           ),
-          ListTile(leading: const Icon(Icons.alarm), title: const Text('알람'),
-            onTap: () => Navigator.pop(context, -1)),
-          ListTile(leading: const Icon(Icons.person_outline), title: const Text('내 정보'),
-            onTap: () => Navigator.pop(context, -2)),
-        ]),
-      )));
+        ),
+      ),
+    );
     if (selected == null || !mounted) return;
     if (selected < 0) {
-      await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => selected == -1
-        ? const SyncedAlarmsPage() : Scaffold(appBar: AppBar(title: const Text('내 정보')),
-          body: ListTile(title: Text(context.read<AuthState>().user?.display ?? '-'),
-            subtitle: Text(context.read<AuthState>().user?.email ?? ''),
-            trailing: _AccountMenu(user: context.read<AuthState>().user)))));
-    } else { setState(() => _index = selected); }
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => selected == -1
+              ? const SyncedAlarmsPage()
+              : Scaffold(
+                  appBar: AppBar(title: const Text('내 정보')),
+                  body: ListTile(
+                    title: Text(context.read<AuthState>().user?.display ?? '-'),
+                    subtitle: Text(context.read<AuthState>().user?.email ?? ''),
+                    trailing: _AccountMenu(
+                      user: context.read<AuthState>().user,
+                    ),
+                  ),
+                ),
+        ),
+      );
+    } else {
+      setState(() => _index = selected);
+    }
   }
 
   List<_Destination> _destinationsFor(Role role) => [
-        const _Destination(
-          label: '홈',
-          icon: Icons.dashboard_outlined,
-          selectedIcon: Icons.dashboard,
-          page: DashboardPage(),
-        ),
-        const _Destination(
-          label: '대응',
-          icon: Icons.build_outlined,
-          selectedIcon: Icons.build,
-          page: ServicePage(),
-        ),
-        const _Destination(
-          label: '장비·매장',
-          icon: Icons.inventory_2_outlined,
-          selectedIcon: Icons.inventory_2,
-          page: EquipmentPage(),
-        ),
-        const _Destination(
-          label: '근무일지',
-          icon: Icons.assignment_outlined,
-          selectedIcon: Icons.assignment,
-          page: WorkLogPage(),
-        ),
-        const _Destination(
-          label: '캘린더',
-          icon: Icons.calendar_month_outlined,
-          selectedIcon: Icons.calendar_month,
-          page: CalendarPage(),
-        ),
-        const _Destination(
-          label: '게시판',
-          icon: Icons.forum_outlined,
-          selectedIcon: Icons.forum,
-          page: BoardPage(),
-        ),
-        if (role.atLeast(Role.admin))
-          const _Destination(
-            label: '관리',
-            icon: Icons.admin_panel_settings_outlined,
-            selectedIcon: Icons.admin_panel_settings,
-            page: AdminPage(),
-          ),
-      ];
+    const _Destination(
+      label: '홈',
+      icon: Icons.dashboard_outlined,
+      selectedIcon: Icons.dashboard,
+      page: DashboardPage(),
+    ),
+    const _Destination(
+      label: '대응',
+      icon: Icons.build_outlined,
+      selectedIcon: Icons.build,
+      page: ServicePage(),
+    ),
+    const _Destination(
+      label: '장비·매장',
+      icon: Icons.inventory_2_outlined,
+      selectedIcon: Icons.inventory_2,
+      page: EquipmentPage(),
+    ),
+    const _Destination(
+      label: '근무일지',
+      icon: Icons.assignment_outlined,
+      selectedIcon: Icons.assignment,
+      page: WorkLogPage(),
+    ),
+    const _Destination(
+      label: '캘린더',
+      icon: Icons.calendar_month_outlined,
+      selectedIcon: Icons.calendar_month,
+      page: CalendarPage(),
+    ),
+    const _Destination(
+      label: '게시판',
+      icon: Icons.forum_outlined,
+      selectedIcon: Icons.forum,
+      page: BoardPage(),
+    ),
+    if (role.atLeast(Role.admin))
+      const _Destination(
+        label: '관리',
+        icon: Icons.admin_panel_settings_outlined,
+        selectedIcon: Icons.admin_panel_settings,
+        page: AdminPage(),
+      ),
+  ];
 }
 
 class _Destination {
@@ -224,9 +430,9 @@ class _NotificationButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       tooltip: '알림',
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const NotificationsPage()),
-      ),
+      onPressed: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const NotificationsPage())),
       icon: Badge(
         isLabelVisible: unread > 0,
         label: Text(unread > 99 ? '99+' : '$unread'),
@@ -276,18 +482,31 @@ class _AccountMenu extends StatelessWidget {
         const PopupMenuDivider(),
         if (AlarmService.isSupported)
           const PopupMenuItem(value: 'alarms', child: Text('일정 알림')),
+        const PopupMenuItem(value: 'profile', child: Text('내 정보 수정')),
+        const PopupMenuItem(value: 'sessions', child: Text('로그인 기기·세션')),
         const PopupMenuItem(value: 'password', child: Text('비밀번호 변경')),
         const PopupMenuItem(value: 'server', child: Text('서버 정보')),
-        const PopupMenuItem(value: 'vpn', child: Text('사외 접속(VPN) 설정')),
+        if (VpnService.isSupported)
+          const PopupMenuItem(value: 'vpn', child: Text('사외 접속(VPN) 설정')),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('로그아웃')),
       ],
       onSelected: (value) async {
         switch (value) {
-          case 'vpn':
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const VpnSetupPage()),
+          case 'profile':
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const ProfilePage()),
             );
+          case 'sessions':
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const SessionsPage()),
+            );
+          case 'vpn':
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const VpnSetupPage()));
           case 'alarms':
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AlarmSettingsPage()),
@@ -297,19 +516,49 @@ class _AccountMenu extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const ChangePasswordPage()),
             );
           case 'server':
-            showDialog<void>(
+            final controller = TextEditingController(text: auth.serverUrl);
+            final next = await showDialog<String>(
               context: context,
-              builder: (_) => ConfirmDialog.form(
-                title: const Text('서버 정보'),
-                content: SelectableText(auth.serverUrl),
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('서버 주소 변경'),
+                content: TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: '서버 주소',
+                    helperText: '변경 후 새 서버에 다시 로그인합니다.',
+                  ),
+                ),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('닫기'),
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('취소'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      final normalized = AppConfig.normalizeServerUrl(
+                        controller.text.trim(),
+                      );
+                      final uri = Uri.tryParse(normalized);
+                      if (uri == null ||
+                          !['http', 'https'].contains(uri.scheme) ||
+                          uri.host.isEmpty) {
+                        return;
+                      }
+                      Navigator.pop(dialogContext, normalized);
+                    },
+                    child: const Text('변경'),
                   ),
                 ],
               ),
             );
+            Future<void>.delayed(
+              const Duration(milliseconds: 350),
+              controller.dispose,
+            );
+            if (next != null && next != auth.serverUrl) {
+              await auth.logout();
+              await auth.setServerUrl(next);
+            }
           case 'logout':
             await _logout(context);
         }
@@ -320,8 +569,12 @@ class _AccountMenu extends StatelessWidget {
 
 Future<void> _logout(BuildContext context) async {
   final auth = context.read<AuthState>();
-  if (await ConfirmDialog.show(context, title: '로그아웃',
-      message: '로그아웃하시겠습니까?', confirmLabel: '로그아웃')) {
+  if (await ConfirmDialog.show(
+    context,
+    title: '로그아웃',
+    message: '로그아웃하시겠습니까?',
+    confirmLabel: '로그아웃',
+  )) {
     await auth.logout();
   }
 }

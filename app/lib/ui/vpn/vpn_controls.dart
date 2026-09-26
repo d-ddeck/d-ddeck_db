@@ -102,8 +102,13 @@ class _VpnControlsState extends State<VpnControls> {
   }
 
   Future<void> _unregister() async {
-    final confirmed = await ConfirmDialog.show(context, title: 'VPN 등록 해제',
-        message: 'VPN 연결을 끄고 저장된 설정을 삭제할까요?', confirmLabel: '등록 해제', destructive: true);
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'VPN 등록 해제',
+      message: 'VPN 연결을 끄고 저장된 설정을 삭제할까요?',
+      confirmLabel: '등록 해제',
+      destructive: true,
+    );
     if (confirmed != true || !mounted) return;
     await _run(
       () => context.read<VpnService>().unregister(),
@@ -128,47 +133,56 @@ class _VpnControlsState extends State<VpnControls> {
             label: const Text('VPN 등록'),
           ),
         ] else
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [StatusChip(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              StatusChip(
                 label: '사외 접속(VPN)',
                 icon: vpn.state.isOn ? Icons.check : Icons.vpn_key_outlined,
                 color: vpn.state.isOn ? scheme.primary : scheme.outline,
                 dense: true,
               ),
-          Row(
-            children: [
-
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${vpn.state.label}${vpn.endpoint == null ? '' : ' · ${vpn.endpoint}'}',
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              if (vpn.state.isMoving)
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Switch(
-                  value: vpn.state.isOn,
-                  onChanged: locked
-                      ? null
-                      : (_) => _run(vpn.toggle,
-                          'VPN 연결을 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.'),
-                ),
-              PopupMenuButton<String>(
-                tooltip: 'VPN 관리',
-                enabled: !locked,
-                onSelected: (_) => _unregister(),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'unregister', child: Text('VPN 등록 해제')),
+              Row(
+                children: [
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${vpn.state.label}${vpn.endpoint == null ? '' : ' · ${vpn.endpoint}'}',
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  if (vpn.state.isMoving)
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    Switch(
+                      value: vpn.state.isOn,
+                      onChanged: locked
+                          ? null
+                          : (_) => _run(
+                              vpn.toggle,
+                              'VPN 연결을 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+                            ),
+                    ),
+                  PopupMenuButton<String>(
+                    tooltip: 'VPN 관리',
+                    enabled: !locked,
+                    onSelected: (_) => _unregister(),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'unregister',
+                        child: Text('VPN 등록 해제'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ],
-          )]),
+          ),
         if (_busy) const LinearProgressIndicator(),
         if (vpn.error != null) ...[
           const SizedBox(height: 4),

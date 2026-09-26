@@ -14,8 +14,10 @@ enum BoardType {
   final String label;
   final IconData icon;
 
-  static BoardType parse(String? v) =>
-      BoardType.values.firstWhere((t) => t.value == v, orElse: () => BoardType.free);
+  static BoardType parse(String? v) => BoardType.values.firstWhere(
+    (t) => t.value == v,
+    orElse: () => BoardType.free,
+  );
 }
 
 /// A board row IS that board's settings record, so the UI reads its own rules
@@ -57,21 +59,21 @@ class Board {
   bool canWrite(Role role) => role.atLeast(writeRole);
 
   factory Board.fromJson(Map<String, dynamic> j) => Board(
-        id: asString(j['id']),
-        code: asString(j['code']),
-        name: asString(j['name']),
-        type: BoardType.parse(j['type'] as String?),
-        readRole: Role.parse(j['read_role'] as String?),
-        writeRole: Role.parse(j['write_role'] as String?),
-        description: j['description'] as String?,
-        allowComment: asBool(j['allow_comment'], true),
-        allowAttachment: asBool(j['allow_attachment'], true),
-        allowSecret: asBool(j['allow_secret']),
-        notifyOnPost: asBool(j['notify_on_post']),
-        pageSize: asInt(j['page_size'], 20),
-        sortOrder: asInt(j['sort_order']),
-        isActive: asBool(j['is_active'], true),
-      );
+    id: asString(j['id']),
+    code: asString(j['code']),
+    name: asString(j['name']),
+    type: BoardType.parse(j['type'] as String?),
+    readRole: Role.parse(j['read_role'] as String?),
+    writeRole: Role.parse(j['write_role'] as String?),
+    description: j['description'] as String?,
+    allowComment: asBool(j['allow_comment'], true),
+    allowAttachment: asBool(j['allow_attachment'], true),
+    allowSecret: asBool(j['allow_secret']),
+    notifyOnPost: asBool(j['notify_on_post']),
+    pageSize: asInt(j['page_size'], 20),
+    sortOrder: asInt(j['sort_order']),
+    isActive: asBool(j['is_active'], true),
+  );
 }
 
 class PostComment {
@@ -90,13 +92,12 @@ class PostComment {
   final DateTime? createdAt;
 
   factory PostComment.fromJson(Map<String, dynamic> j) => PostComment(
-        id: asString(j['id']),
-        content: asString(j['content']),
-        author:
-            j['author'] is Map ? UserBrief.fromJson(asMap(j['author'])) : null,
-        isSecret: asBool(j['is_secret']),
-        createdAt: asDate(j['created_at']),
-      );
+    id: asString(j['id']),
+    content: asString(j['content']),
+    author: j['author'] is Map ? UserBrief.fromJson(asMap(j['author'])) : null,
+    isSecret: asBool(j['is_secret']),
+    createdAt: asDate(j['created_at']),
+  );
 }
 
 class Post {
@@ -110,6 +111,7 @@ class Post {
     this.isPinned = false,
     this.isSecret = false,
     this.viewCount = 0,
+    this.attachmentCount = 0,
     this.commentCount = 0,
     this.createdAt,
     this.comments = const [],
@@ -124,23 +126,24 @@ class Post {
   final bool isPinned;
   final bool isSecret;
   final int viewCount;
+  final int attachmentCount;
   final int commentCount;
   final DateTime? createdAt;
   final List<PostComment> comments;
 
   factory Post.fromJson(Map<String, dynamic> j) => Post(
-        id: asString(j['id']),
-        boardId: asString(j['board_id']),
-        title: asString(j['title']),
-        content: asString(j['content']),
-        authorId: j['author_id'] as String?,
-        author:
-            j['author'] is Map ? UserBrief.fromJson(asMap(j['author'])) : null,
-        isPinned: asBool(j['is_pinned']),
-        isSecret: asBool(j['is_secret']),
-        viewCount: asInt(j['view_count']),
-        commentCount: asInt(j['comment_count']),
-        createdAt: asDate(j['created_at']),
-        comments: asList(j['comments'], PostComment.fromJson),
-      );
+    id: asString(j['id']),
+    boardId: asString(j['board_id']),
+    title: asString(j['title']),
+    content: asString(j['content']),
+    authorId: j['author_id'] as String?,
+    author: j['author'] is Map ? UserBrief.fromJson(asMap(j['author'])) : null,
+    isPinned: asBool(j['is_pinned']),
+    isSecret: asBool(j['is_secret']),
+    viewCount: asInt(j['view_count']),
+    attachmentCount: asInt(j['attachment_count']),
+    commentCount: asInt(j['comment_count']),
+    createdAt: asDate(j['created_at']),
+    comments: asList(j['comments'], PostComment.fromJson),
+  );
 }

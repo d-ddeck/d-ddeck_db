@@ -1,21 +1,24 @@
 """근무일지 payloads."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import WorkLogVisibility
-from app.schemas.common import ORMModel, UserBrief
+from app.schemas.common import ORMModel, PatchModel, UserBrief
 
 
 class WorkLogCreate(BaseModel):
     work_date: date
     work_start: str = Field(pattern=r"^\d{2}:\d{2}$", description="HH:MM")
     work_end: str = Field(pattern=r"^\d{2}:\d{2}$")
-    summary: str = Field(min_length=1, description="한 줄에 하나씩. 서버가 1. 2. 번호를 다시 매긴다")
+    summary: str = Field(
+        min_length=1, description="한 줄에 하나씩. 서버가 1. 2. 번호를 다시 매긴다"
+    )
     detail: str = Field(min_length=1)
     overtime: bool = False
     overtime_note: str | None = Field(None, max_length=200)
@@ -26,7 +29,17 @@ class WorkLogCreate(BaseModel):
     position: str | None = Field(None, max_length=50)
 
 
-class WorkLogUpdate(BaseModel):
+class WorkLogUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {
+        "work_date",
+        "work_start",
+        "work_end",
+        "detail",
+        "visibility",
+        "overtime",
+        "summary",
+    }
+
     work_date: date | None = None
     work_start: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
     work_end: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
@@ -80,7 +93,9 @@ class WorkLogDraftOut(BaseModel):
 
 class WorkLogLookups(BaseModel):
     positions: list[str] = Field(description="직급 목록 (WORKLOG_POSITION)")
-    fixed_position: str | None = Field(None, description="계정에 지정된 직급. 있으면 폼에서 못 바꾼다")
+    fixed_position: str | None = Field(
+        None, description="계정에 지정된 직급. 있으면 폼에서 못 바꾼다"
+    )
     author_name: str
     default_work_start: str
     default_work_end: str

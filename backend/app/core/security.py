@@ -1,4 +1,5 @@
 """Password hashing and JWT issue/verify."""
+
 from __future__ import annotations
 
 import hashlib
@@ -81,7 +82,9 @@ def validate_password_strength(password: str) -> list[str]:
     """Returns a list of human-readable problems; empty list means OK."""
     problems: list[str] = []
     if len(password) < settings.PASSWORD_MIN_LENGTH:
-        problems.append(f"비밀번호는 {settings.PASSWORD_MIN_LENGTH}자 이상이어야 합니다.")
+        problems.append(
+            f"비밀번호는 {settings.PASSWORD_MIN_LENGTH}자 이상이어야 합니다."
+        )
     if not any(c.isalpha() for c in password):
         problems.append("영문자를 1자 이상 포함해야 합니다.")
     if not any(c.isdigit() for c in password):

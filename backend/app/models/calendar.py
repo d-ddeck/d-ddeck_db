@@ -1,4 +1,5 @@
 """캘린더 module: shared schedules, participants, reminders, notifications."""
+
 from __future__ import annotations
 
 import uuid
@@ -17,12 +18,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import (
-    UTCDateTime,
     AuthorMixin,
     Base,
     JSONType,
     SoftDeleteMixin,
     TimestampMixin,
+    UTCDateTime,
     UUIDMixin,
     enum_type,
 )
@@ -43,7 +44,10 @@ class Calendar(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     type: Mapped[CalendarType] = mapped_column(
-        enum_type(CalendarType), default=CalendarType.PERSONAL, nullable=False, index=True
+        enum_type(CalendarType),
+        default=CalendarType.PERSONAL,
+        nullable=False,
+        index=True,
     )
     color: Mapped[str] = mapped_column(String(20), default="#3B82F6", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -58,12 +62,15 @@ class Calendar(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     # Defaults the 캘린더 설정창 applies to new events on this calendar.
     default_reminder_minutes: Mapped[int | None] = mapped_column(Integer, default=30)
 
-    events: Mapped[list["Event"]] = relationship(back_populates="calendar")
+    events: Mapped[list[Event]] = relationship(back_populates="calendar")
 
 
 class Event(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     __tablename__ = "events"
 
+    recurrence_parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
     calendar_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("calendars.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -75,14 +82,12 @@ class Event(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     )
 
     # Stored in UTC; the client renders in the device timezone.
-    starts_at: Mapped[datetime] = mapped_column(
-        UTCDateTime, nullable=False, index=True
-    )
-    ends_at: Mapped[datetime] = mapped_column(
-        UTCDateTime, nullable=False, index=True
-    )
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
+    ends_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
     all_day: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul", nullable=False)
+    timezone: Mapped[str] = mapped_column(
+        String(64), default="Asia/Seoul", nullable=False
+    )
 
     # RFC 5545 RRULE string, e.g. "FREQ=WEEKLY;BYDAY=MO,WE".
     # Skeleton stores it; expansion into occurrences is a later step.
@@ -90,7 +95,10 @@ class Event(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     recurrence_end: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     status: Mapped[EventStatus] = mapped_column(
-        enum_type(EventStatus), default=EventStatus.SCHEDULED, nullable=False, index=True
+        enum_type(EventStatus),
+        default=EventStatus.SCHEDULED,
+        nullable=False,
+        index=True,
     )
     color: Mapped[str | None] = mapped_column(String(20))
     is_private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -100,18 +108,20 @@ class Event(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
         Uuid, ForeignKey("service_tickets.id", ondelete="SET NULL")
     )
 
-    calendar: Mapped["Calendar"] = relationship(back_populates="events")
-    participants: Mapped[list["EventParticipant"]] = relationship(
+    calendar: Mapped[Calendar] = relationship(back_populates="events")
+    participants: Mapped[list[EventParticipant]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
     )
-    reminders: Mapped[list["EventReminder"]] = relationship(
+    reminders: Mapped[list[EventReminder]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
     )
 
 
 class EventParticipant(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "event_participants"
-    __table_args__ = (UniqueConstraint("event_id", "user_id", name="uq_event_participant"),)
+    __table_args__ = (
+        UniqueConstraint("event_id", "user_id", name="uq_event_participant"),
+    )
 
     event_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
@@ -122,11 +132,13 @@ class EventParticipant(UUIDMixin, TimestampMixin, Base):
     is_organizer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     response: Mapped[ParticipantResponse] = mapped_column(
-        enum_type(ParticipantResponse), default=ParticipantResponse.PENDING, nullable=False
+        enum_type(ParticipantResponse),
+        default=ParticipantResponse.PENDING,
+        nullable=False,
     )
     responded_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
-    event: Mapped["Event"] = relationship(back_populates="participants")
+    event: Mapped[Event] = relationship(back_populates="participants")
 
 
 class EventReminder(UUIDMixin, TimestampMixin, Base):
@@ -150,7 +162,7 @@ class EventReminder(UUIDMixin, TimestampMixin, Base):
     )
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
 
-    event: Mapped["Event"] = relationship(back_populates="reminders")
+    event: Mapped[Event] = relationship(back_populates="reminders")
 
 
 class Notification(UUIDMixin, TimestampMixin, Base):
@@ -171,6 +183,15 @@ class Notification(UUIDMixin, TimestampMixin, Base):
     entity_type: Mapped[str | None] = mapped_column(String(60))
     entity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
-    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    is_read: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
     read_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    push_pending: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
+    push_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    push_after: Mapped[datetime | None] = mapped_column(UTCDateTime)
     pushed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)

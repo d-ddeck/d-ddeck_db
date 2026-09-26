@@ -25,15 +25,24 @@ class StoreRepository {
     String? query,
     String? brandId,
     bool includeClosed = false,
+    bool includeInactive = false,
+    String sort = "name",
+    bool descending = false,
   }) async {
-    final res = await _api.get('/stores', query: {
-      'page': page,
-      'size': size,
-      'q': query,
-      'brand_id': brandId,
-      // 기본이 false 라 켤 때만 보낸다.
-      'include_closed': includeClosed ? true : null,
-    });
+    final res = await _api.get(
+      '/stores',
+      query: {
+        'page': page,
+        'size': size,
+        'q': query,
+        'brand_id': brandId,
+        // 기본이 false 라 켤 때만 보낸다.
+        'include_closed': includeClosed ? true : null,
+        'include_inactive': includeInactive,
+        'sort': sort,
+        'descending': descending,
+      },
+    );
     return PagedList.fromJson(res, Store.fromJson);
   }
 
@@ -48,13 +57,16 @@ class StoreRepository {
     String? gripperType,
     String? note,
   }) async {
-    final res = await _api.post('/stores', body: {
-      'name': name,
-      if (openDate != null) 'open_date': ServiceRepository.dateOnly(openDate),
-      if (brandId != null) 'brand_id': brandId,
-      if (gripperType != null) 'gripper_type': gripperType,
-      if (note?.isNotEmpty == true) 'note': note,
-    });
+    final res = await _api.post(
+      '/stores',
+      body: {
+        'name': name,
+        if (openDate != null) 'open_date': ServiceRepository.dateOnly(openDate),
+        if (brandId != null) 'brand_id': brandId,
+        if (gripperType != null) 'gripper_type': gripperType,
+        if (note?.isNotEmpty == true) 'note': note,
+      },
+    );
     return Store.fromJson(asMap(res));
   }
 
@@ -63,34 +75,65 @@ class StoreRepository {
 
   Future<void> delete(String id) => _api.delete('/stores/$id');
 
-  Future<StoreCloseResult> close(String id, {DateTime? closedDate,
-    String? recoverToStatusItemId, String? note}) async =>
-      StoreCloseResult.fromJson(asMap(await _api.post('/stores/$id/close', body: {
-        'closed_date': ServiceRepository.dateOnly(closedDate),
-        'recover_to_status_item_id': recoverToStatusItemId, 'note': note,
-      })));
+  Future<StoreCloseResult> close(
+    String id, {
+    DateTime? closedDate,
+    String? recoverToStatusItemId,
+    String? note,
+  }) async => StoreCloseResult.fromJson(
+    asMap(
+      await _api.post(
+        '/stores/$id/close',
+        body: {
+          'closed_date': ServiceRepository.dateOnly(closedDate),
+          'recover_to_status_item_id': recoverToStatusItemId,
+          'note': note,
+        },
+      ),
+    ),
+  );
 
-  Future<Store> addSet(String id, {String? name}) async =>
-      Store.fromJson(asMap(await _api.post('/stores/$id/sets', body: {'name': name})));
+  Future<Store> addSet(String id, {String? name}) async => Store.fromJson(
+    asMap(await _api.post('/stores/$id/sets', body: {'name': name})),
+  );
 
   Future<Store> renameSet(String id, int setNo, String name) async =>
-      Store.fromJson(asMap(await _api.patch('/stores/$id/sets/$setNo', body: {'name': name})));
+      Store.fromJson(
+        asMap(
+          await _api.patch('/stores/$id/sets/$setNo', body: {'name': name}),
+        ),
+      );
 
   Future<Store> deleteSet(String id, int setNo) async =>
       Store.fromJson(asMap(await _api.delete('/stores/$id/sets/$setNo')));
 
-  Future<EquipmentSetupResult> setupEquipment(String id, {DateTime? installDate,
-    required List<Map<String, dynamic>> sets}) async =>
-      EquipmentSetupResult.fromJson(asMap(await _api.post('/stores/$id/equipment', body: {
-        'install_date': ServiceRepository.dateOnly(installDate), 'sets': sets,
-      })));
+  Future<EquipmentSetupResult> setupEquipment(
+    String id, {
+    DateTime? installDate,
+    required List<Map<String, dynamic>> sets,
+  }) async => EquipmentSetupResult.fromJson(
+    asMap(
+      await _api.post(
+        '/stores/$id/equipment',
+        body: {
+          'install_date': ServiceRepository.dateOnly(installDate),
+          'sets': sets,
+        },
+      ),
+    ),
+  );
 
   /// 선택 목록도 서버의 페이지 제한을 따라 끝까지 읽는다.
-  Future<List<Store>> all({bool includeClosed = false}) async {
+  Future<List<Store>> all({bool includeClosed = false, String? brandId}) async {
     final result = <Store>[];
     var page = 1;
     while (true) {
-      final data = await list(page: page++, size: 200, includeClosed: includeClosed);
+      final data = await list(
+        page: page++,
+        size: 200,
+        includeClosed: includeClosed,
+        brandId: brandId,
+      );
       result.addAll(data.items);
       if (!data.hasMore) return result;
     }

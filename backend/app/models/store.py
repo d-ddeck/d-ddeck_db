@@ -14,6 +14,7 @@ the previous server to make that obvious:
 So stores get their own table, and `Asset` gains a `store_id` that lives
 alongside `location_id` rather than replacing it.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -43,7 +44,9 @@ from app.models.base import (
 class Store(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     __tablename__ = "stores"
 
-    name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(
+        String(150), unique=True, index=True, nullable=False
+    )
 
     # 브랜드는 코드 마스터(CodeGroup "STORE_BRAND"). A FK rather than the old
     # system's free text: renaming 바른치킨 there had to UPDATE three tables by
@@ -54,7 +57,12 @@ class Store(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
 
     # --- lifecycle: these three answer "운영 매장 수" per year ---
     open_date: Mapped[date | None] = mapped_column(Date)
-    is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1", nullable=False
+    )
+    is_closed: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
     closed_date: Mapped[date | None] = mapped_column(Date)
 
     # 전동 / 비전동 - decides which equipment slots a 납품 세트 has.
@@ -68,7 +76,7 @@ class Store(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
         Uuid, ForeignKey("customers.id", ondelete="SET NULL"), index=True
     )
 
-    sets: Mapped[list["StoreSet"]] = relationship(
+    sets: Mapped[list[StoreSet]] = relationship(
         back_populates="store",
         cascade="all, delete-orphan",
         order_by="StoreSet.set_no",
@@ -93,4 +101,4 @@ class StoreSet(UUIDMixin, TimestampMixin, Base):
     set_no: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str | None] = mapped_column(String(80))
 
-    store: Mapped["Store"] = relationship(back_populates="sets")
+    store: Mapped[Store] = relationship(back_populates="sets")

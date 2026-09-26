@@ -7,14 +7,15 @@ where each unit actually is.
   * 같은 종류 안에서 S/N 은 하나. 로봇팔·제어박스·전동 그리퍼는 제조사 필수.
   * 여러 대 한 번에 등록 / 한 번에 이동. 현황(상태×종류 · 브랜드×종류 · 장소×종류) · 엑셀.
 """
+
 from __future__ import annotations
 
-import re
 import uuid
-from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta
+from collections import Counter
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, or_, select
@@ -30,7 +31,7 @@ from app.core.deps import (
 )
 from app.core.errors import AppError
 from app.core.security import now_utc
-from app.models.admin import CodeGroup, CodeItem
+from app.models.admin import CodeItem
 from app.models.enums import (
     AssetStatus,
     AuditAction,
@@ -47,11 +48,10 @@ from app.schemas.inventory import (
     AssetBulkMoveRequest,
     AssetCreate,
     AssetDetail,
-    AssetMoveRequest,
     AssetMovementOut,
+    AssetMoveRequest,
     AssetOut,
     AssetUpdate,
-    AttentionAsset,
     BulkCreateResult,
     BulkMoveResult,
     CountBucket,
@@ -61,11 +61,18 @@ from app.schemas.inventory import (
     LocationNode,
     LocationOut,
     LocationUpdate,
-    OverviewRow,
-    RentalAsset,
     StoreBrief,
 )
-from app.services import asset_rules, audit, excel, settings_store, stats
+from app.services import (
+    asset_movement,
+    asset_rules,
+    audit,
+    excel,
+    inventory_view,
+    settings_store,
+    stats,
+)
+from app.services.inventory_view import _OverviewContext
 from app.services.ticket_rules import split_serials
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -102,7 +109,10 @@ def location_tree(db: DbSession, _: CurrentUser) -> list[LocationNode]:
     )
 
     nodes = {
-        r.id: LocationNode(**LocationOut.model_validate(r).model_dump(), asset_count=counts.get(r.id, 0))
+        r.id: LocationNode(
+            **LocationOut.model_validate(r).model_dump(),
+            asset_count=counts.get(r.id, 0),
+        )
         for r in rows
     }
     roots: list[LocationNode] = []
@@ -113,12 +123,16 @@ def location_tree(db: DbSession, _: CurrentUser) -> list[LocationNode]:
     return roots
 
 
-@router.post("/locations", response_model=LocationOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/locations", response_model=LocationOut, status_code=status.HTTP_201_CREATED
+)
 def create_location(
     payload: LocationCreate, db: DbSession, manager: ManagerUser, client: Client
 ) -> LocationOut:
     if db.scalar(select(Location.id).where(Location.code == payload.code)):
-        raise AppError("CODE_TAKEN", "이미 사용 중인 위치 코드입니다.", status.HTTP_409_CONFLICT)
+        raise AppError(
+            "CODE_TAKEN", "이미 사용 중인 위치 코드입니다.", status.HTTP_409_CONFLICT
+        )
     location = Location(**payload.model_dump())
     location.path = _build_path(db, location.parent_id, location.name)
     db.add(location)
@@ -141,12 +155,26 @@ def update_location(
     location_id: uuid.UUID, payload: LocationUpdate, db: DbSession, _: ManagerUser
 ) -> LocationOut:
     location = db.scalar(
-        select(Location).where(Location.id == location_id, Location.deleted_at.is_(None))
+        select(Location).where(
+            Location.id == location_id, Location.deleted_at.is_(None)
+        )
     )
     if location is None:
-        raise AppError("NOT_FOUND", "위치를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "위치를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
 
     data = payload.model_dump(exclude_unset=True)
+    ancestor_id = data.get("parent_id")
+    seen = {location.id}
+    while ancestor_id is not None:
+        if ancestor_id in seen:
+            raise AppError("INVALID_PARENT", "위치의 상하위 관계가 순환할 수 없습니다.")
+        seen.add(ancestor_id)
+        ancestor = db.get(Location, ancestor_id)
+        if ancestor is None or ancestor.deleted_at is not None:
+            raise AppError("INVALID_PARENT", "상위 위치를 찾을 수 없습니다.")
+        ancestor_id = ancestor.parent_id
     if data.get("parent_id") == location.id:
         raise AppError("INVALID_PARENT", "자기 자신을 상위 위치로 지정할 수 없습니다.")
     for field, value in data.items():
@@ -164,7 +192,9 @@ def update_location(
 def delete_location(location_id: uuid.UUID, db: DbSession, _: ManagerUser) -> Message:
     location = db.scalar(select(Location).where(Location.id == location_id))
     if location is None:
-        raise AppError("NOT_FOUND", "위치를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "위치를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     in_use = db.scalar(
         select(func.count(Asset.id)).where(
             Asset.location_id == location_id, Asset.deleted_at.is_(None)
@@ -173,6 +203,14 @@ def delete_location(location_id: uuid.UUID, db: DbSession, _: ManagerUser) -> Me
     if in_use:
         raise AppError(
             "LOCATION_IN_USE", f"해당 위치에 자산 {in_use}건이 있어 삭제할 수 없습니다."
+        )
+    if db.scalar(
+        select(Location.id)
+        .where(Location.parent_id == location_id, Location.deleted_at.is_(None))
+        .limit(1)
+    ):
+        raise AppError(
+            "LOCATION_HAS_CHILDREN", "하위 위치를 먼저 이동하거나 삭제하세요."
         )
     location.deleted_at = now_utc()
     db.commit()
@@ -213,7 +251,9 @@ def _asset_query(
                 Asset.model_name.ilike(like),
                 Asset.note.ilike(like),
                 Asset.store_id.in_(select(Store.id).where(Store.name.ilike(like))),
-                Asset.location_id.in_(select(Location.id).where(Location.name.ilike(like))),
+                Asset.location_id.in_(
+                    select(Location.id).where(Location.name.ilike(like))
+                ),
             )
         )
     if asset_status:
@@ -235,7 +275,9 @@ def _asset_query(
         # 브랜드는 매장에 달려 있다. 자산 -> 매장 -> 브랜드로 한 단계 더 탄다.
         stmt = stmt.where(
             Asset.store_id.in_(
-                select(Store.id).where(Store.brand_id == brand_id, Store.deleted_at.is_(None))
+                select(Store.id).where(
+                    Store.brand_id == brand_id, Store.deleted_at.is_(None)
+                )
             )
         )
     if at_store is True:
@@ -243,7 +285,9 @@ def _asset_query(
     elif at_store is False:
         stmt = stmt.where(Asset.store_id.is_(None))
     if below_min_only:
-        stmt = stmt.where(Asset.min_quantity.isnot(None), Asset.quantity < Asset.min_quantity)
+        stmt = stmt.where(
+            Asset.min_quantity.isnot(None), Asset.quantity < Asset.min_quantity
+        )
     return stmt
 
 
@@ -252,23 +296,38 @@ def list_assets(
     db: DbSession,
     _: CurrentUser,
     page: PageParams,
-    q: str | None = Query(None, description="name / asset no / serial / model / note / 매장 / 위치"),
-    asset_status: AssetStatus | None = Query(None, alias="status"),
-    status_item_id: uuid.UUID | None = Query(None, description="세부 상태 코드"),
+    q: str | None = Query(
+        None, description="name / asset no / serial / model / note / 매장 / 위치"
+    ),
+    asset_status: AssetStatus | None = Query(None, alias="status"),  # noqa: B008 - FastAPI parameter declaration
+    status_item_id: uuid.UUID | None = Query(None, description="세부 상태 코드"),  # noqa: B008 - FastAPI parameter declaration
     category_id: uuid.UUID | None = None,
     location_id: uuid.UUID | None = None,
     holder_id: uuid.UUID | None = None,
-    store_id: uuid.UUID | None = Query(None, description="이 매장에 나가 있는 자산만"),
-    brand_id: uuid.UUID | None = Query(None, description="이 브랜드의 매장에 있는 자산만"),
-    at_store: bool | None = Query(None, description="true: 매장에 있는 것만 / false: 미설치(창고 등)만"),
+    store_id: uuid.UUID | None = Query(None, description="이 매장에 나가 있는 자산만"),  # noqa: B008 - FastAPI parameter declaration
+    brand_id: uuid.UUID | None = Query(  # noqa: B008 - FastAPI parameter declaration
+        None, description="이 브랜드의 매장에 있는 자산만"
+    ),
+    at_store: bool | None = Query(
+        None, description="true: 매장에 있는 것만 / false: 미설치(창고 등)만"
+    ),
     include_sublocations: bool = True,
     below_min_only: bool = False,
     sort: Annotated[AssetSort, Query()] = "created_desc",
 ) -> Page[AssetOut]:
     stmt = _asset_query(
-        db, q=q, asset_status=asset_status, status_item_id=status_item_id, category_id=category_id,
-        location_id=location_id, include_sublocations=include_sublocations, holder_id=holder_id,
-        store_id=store_id, brand_id=brand_id, at_store=at_store, below_min_only=below_min_only,
+        db,
+        q=q,
+        asset_status=asset_status,
+        status_item_id=status_item_id,
+        category_id=category_id,
+        location_id=location_id,
+        include_sublocations=include_sublocations,
+        holder_id=holder_id,
+        store_id=store_id,
+        brand_id=brand_id,
+        at_store=at_store,
+        below_min_only=below_min_only,
     )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     order = {
@@ -278,7 +337,11 @@ def list_assets(
         "kind_serial": (Asset.category_id, Asset.status_item_id, Asset.serial_no),
     }[sort]
     rows = db.scalars(stmt.order_by(*order).offset(page.offset).limit(page.size)).all()
-    return Page.build([AssetOut.model_validate(r) for r in rows], total, page.page, page.size)
+    items = [AssetOut.model_validate(r) for r in rows]
+    if not settings_store.get(db, ModuleKey.INVENTORY, "low_stock_alert", True):
+        for item in items:
+            item.is_below_min = False
+    return Page.build(items, total, page.page, page.size)
 
 
 @router.get("/assets/export.xlsx")
@@ -295,8 +358,14 @@ def export_assets(
 ):
     """재고 엑셀 (구 서버 '재고_날짜.xlsx'): 조건 없이 전체면 요약 시트 + 종류마다 시트 하나."""
     stmt = _asset_query(
-        db, q=q, status_item_id=status_item_id, category_id=category_id,
-        location_id=location_id, store_id=store_id, brand_id=brand_id, at_store=at_store,
+        db,
+        q=q,
+        status_item_id=status_item_id,
+        category_id=category_id,
+        location_id=location_id,
+        store_id=store_id,
+        brand_id=brand_id,
+        at_store=at_store,
     )
     assets = list(db.scalars(stmt).all())
     ctx = _OverviewContext(db, assets)
@@ -309,20 +378,46 @@ def export_assets(
             return ctx.brand_name_of(a) or "(브랜드 없음)"
         return (ctx.location_name(a.location_id) or "(장소 없음)") + " (미설치)"
 
-    assets.sort(key=lambda a: (
-        order_k.get(a.category_id, 99), 0 if a.store_id else 1,
-        order_b.get(ctx.brand_id_of(a), 99), ctx.store_name(a.store_id) or ctx.location_name(a.location_id) or "",
-        ctx.status_name(a) or "", a.serial_no or "",
-    ))
-    head = ["종류", "품명", "제조사", "S/N", "상태", "브랜드", "매장", "보관 장소", "설치일", "비고", "마지막 변경", "자산번호"]
+    assets.sort(
+        key=lambda a: (
+            order_k.get(a.category_id, 99),
+            0 if a.store_id else 1,
+            order_b.get(ctx.brand_id_of(a), 99),
+            ctx.store_name(a.store_id) or ctx.location_name(a.location_id) or "",
+            ctx.status_name(a) or "",
+            a.serial_no or "",
+        )
+    )
+    head = [
+        "종류",
+        "품명",
+        "제조사",
+        "S/N",
+        "상태",
+        "브랜드",
+        "매장",
+        "보관 장소",
+        "설치일",
+        "비고",
+        "마지막 변경",
+        "자산번호",
+    ]
     widths = [10, 12, 14, 20, 10, 10, 22, 14, 11, 40, 18, 14]
 
     def line(a: Asset):
         return [
-            ctx.kind_name(a.category_id) or "", a.model_name or "", a.manufacturer or "", a.serial_no or "",
-            ctx.status_name(a) or a.status.value, ctx.brand_name_of(a) or "", ctx.store_name(a.store_id) or "",
-            ctx.location_name(a.location_id) or "", a.purchase_date, a.note or "",
-            stats.to_local(a.updated_at), a.asset_no,
+            ctx.kind_name(a.category_id) or "",
+            a.model_name or "",
+            a.manufacturer or "",
+            a.serial_no or "",
+            ctx.status_name(a) or a.status.value,
+            ctx.brand_name_of(a) or "",
+            ctx.store_name(a.store_id) or "",
+            ctx.location_name(a.location_id) or "",
+            a.purchase_date,
+            a.note or "",
+            stats.to_local(a.updated_at),
+            a.asset_no,
         ]
 
     wb = excel.workbook()
@@ -333,18 +428,44 @@ def export_assets(
         for g in groups:
             cnt = Counter(a.category_id for a in assets if group_label(a) == g)
             rows.append([g] + [cnt.get(k.id, 0) for k in kinds] + [sum(cnt.values())])
-        rows.append(["전체"] + [sum(1 for a in assets if a.category_id == k.id) for k in kinds] + [len(assets)])
-        excel.fill_sheet(ws, ["구분"] + [k.name for k in kinds] + ["합계"], rows, [22] + [10] * (len(kinds) + 1))
+        rows.append(
+            ["전체"]
+            + [sum(1 for a in assets if a.category_id == k.id) for k in kinds]
+            + [len(assets)]
+        )
+        excel.fill_sheet(
+            ws,
+            ["구분"] + [k.name for k in kinds] + ["합계"],
+            rows,
+            [22] + [10] * (len(kinds) + 1),
+        )
         for k in kinds:
-            excel.fill_sheet(wb.create_sheet(excel.sheet_title(k.name)), head, (line(a) for a in assets if a.category_id == k.id), widths)
+            excel.fill_sheet(
+                wb.create_sheet(excel.sheet_title(k.name)),
+                head,
+                (line(a) for a in assets if a.category_id == k.id),
+                widths,
+            )
     else:
         ws = wb.create_sheet(excel.sheet_title(kinds[0].name) if kinds else "재고")
         excel.fill_sheet(ws, head, (line(a) for a in assets), widths)
-    return excel.to_response(wb, f"재고_{datetime.now(stats.LOCAL_TZ).date().isoformat()}.xlsx")
+    return excel.to_response(
+        wb, f"재고_{datetime.now(stats.LOCAL_TZ).date().isoformat()}.xlsx"
+    )
 
 
-def _maker_required(db: Session, category_id: uuid.UUID | None, manufacturer: str | None) -> None:
-    need = settings_store.get(db, ModuleKey.INVENTORY, "maker_required_categories", DEFAULT_MAKER_CATEGORIES) or []
+def _maker_required(
+    db: Session, category_id: uuid.UUID | None, manufacturer: str | None
+) -> None:
+    need = (
+        settings_store.get(
+            db,
+            ModuleKey.INVENTORY,
+            "maker_required_categories",
+            DEFAULT_MAKER_CATEGORIES,
+        )
+        or []
+    )
     name = asset_rules.category_name(db, category_id)
     if name in {str(x) for x in need} and not (manufacturer or "").strip():
         raise AppError(
@@ -353,7 +474,12 @@ def _maker_required(db: Session, category_id: uuid.UUID | None, manufacturer: st
         )
 
 
-def _check_serial(db: Session, category_id: uuid.UUID | None, serial: str | None, exclude_id: uuid.UUID | None = None) -> None:
+def _check_serial(
+    db: Session,
+    category_id: uuid.UUID | None,
+    serial: str | None,
+    exclude_id: uuid.UUID | None = None,
+) -> None:
     if not serial:
         return
     dup = asset_rules.serial_taken(db, category_id, serial, exclude_id)
@@ -367,19 +493,32 @@ def _check_serial(db: Session, category_id: uuid.UUID | None, serial: str | None
         )
 
 
-def _place_new_asset(db: Session, asset: Asset, *, status_item_id: uuid.UUID | None, requested_location_id: uuid.UUID | None) -> None:
+def _place_new_asset(
+    db: Session,
+    asset: Asset,
+    *,
+    status_item_id: uuid.UUID | None,
+    requested_location_id: uuid.UUID | None,
+) -> None:
     """등록 때 세부 상태 규칙 적용. 상태가 없으면 자리(매장/위치)에서 어울리는 상태를 고른다."""
     if asset.store_id is not None:
         asset_rules.load_store(db, asset.store_id)
     item = asset_rules.load_status_item(db, status_item_id) if status_item_id else None
     if item is None:
-        item = asset_rules.default_item_for_destination(db, store_id=asset.store_id, location_id=requested_location_id)
+        item = asset_rules.default_item_for_destination(
+            db, store_id=asset.store_id, location_id=requested_location_id
+        )
     if item is not None:
-        asset_rules.apply_status(db, asset, item, requested_location_id=requested_location_id)
+        asset_rules.apply_status(
+            db, asset, item, requested_location_id=requested_location_id
+        )
     if settings_store.get(db, ModuleKey.INVENTORY, "require_location", True) and not (
         asset.location_id or asset.store_id
     ):
-        raise AppError("LOCATION_REQUIRED", "자산 등록 시 위치 또는 매장 중 하나는 지정해야 합니다.")
+        raise AppError(
+            "LOCATION_REQUIRED",
+            "자산 등록 시 위치 또는 매장 중 하나는 지정해야 합니다.",
+        )
 
 
 @router.post("/assets", response_model=AssetDetail, status_code=status.HTTP_201_CREATED)
@@ -395,7 +534,12 @@ def create_asset(
     _check_serial(db, data.get("category_id"), data.get("serial_no"))
 
     asset = Asset(**data, created_by_id=user.id)
-    _place_new_asset(db, asset, status_item_id=status_item_id, requested_location_id=data.get("location_id"))
+    _place_new_asset(
+        db,
+        asset,
+        status_item_id=status_item_id,
+        requested_location_id=data.get("location_id"),
+    )
     _insert_asset(db, asset, asset_no)
     _record_inbound(db, asset, user)
     audit.record(
@@ -412,7 +556,9 @@ def create_asset(
     return _detail(db, asset.id)
 
 
-@router.post("/assets/bulk", response_model=BulkCreateResult, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/assets/bulk", response_model=BulkCreateResult, status_code=status.HTTP_201_CREATED
+)
 def create_assets_bulk(
     payload: AssetBulkCreate, db: DbSession, user: CurrentUser, client: Client
 ) -> BulkCreateResult:
@@ -426,7 +572,9 @@ def create_assets_bulk(
         raise AppError("SERIAL_REQUIRED", "S/N 을 입력하세요.")
     _maker_required(db, payload.category_id, payload.manufacturer)
     kind = asset_rules.category_name(db, payload.category_id) or ""
-    name = (payload.name or f"{kind} {payload.model_name or ''}").strip() or kind or "장비"
+    name = (
+        (payload.name or f"{kind} {payload.model_name or ''}").strip() or kind or "장비"
+    )
 
     created: list[Asset] = []
     dup: list[str] = []
@@ -435,12 +583,24 @@ def create_assets_bulk(
             dup.append(s)
             continue
         asset = Asset(
-            name=name, category_id=payload.category_id, model_name=payload.model_name,
-            manufacturer=payload.manufacturer, serial_no=s, location_id=payload.location_id,
-            store_id=payload.store_id, set_no=payload.set_no if payload.store_id else 0,
-            purchase_date=payload.purchase_date, note=payload.note, created_by_id=user.id,
+            name=name,
+            category_id=payload.category_id,
+            model_name=payload.model_name,
+            manufacturer=payload.manufacturer,
+            serial_no=s,
+            location_id=payload.location_id,
+            store_id=payload.store_id,
+            set_no=payload.set_no if payload.store_id else 0,
+            purchase_date=payload.purchase_date,
+            note=payload.note,
+            created_by_id=user.id,
         )
-        _place_new_asset(db, asset, status_item_id=payload.status_item_id, requested_location_id=payload.location_id)
+        _place_new_asset(
+            db,
+            asset,
+            status_item_id=payload.status_item_id,
+            requested_location_id=payload.location_id,
+        )
         _insert_asset(db, asset, None)
         _record_inbound(db, asset, user)
         created.append(asset)
@@ -452,11 +612,14 @@ def create_assets_bulk(
             module=ModuleKey.INVENTORY,
             entity_type="asset",
             entity_id=created[0].id,
-            summary=f"자산 {len(created)}대 등록: {kind} " + ", ".join(a.serial_no or "" for a in created[:10]),
+            summary=f"자산 {len(created)}대 등록: {kind} "
+            + ", ".join(a.serial_no or "" for a in created[:10]),
             client=client,
         )
     db.commit()
-    return BulkCreateResult(created=[AssetOut.model_validate(a) for a in created], duplicates=dup)
+    return BulkCreateResult(
+        created=[AssetOut.model_validate(a) for a in created], duplicates=dup
+    )
 
 
 @router.get("/assets/{asset_id}", response_model=AssetDetail)
@@ -480,14 +643,21 @@ def update_asset(
     before = {k: getattr(asset, k) for k in data}
     category_id = data.get("category_id", asset.category_id)
     if "serial_no" in data or "category_id" in data:
-        _check_serial(db, category_id, data.get("serial_no", asset.serial_no), exclude_id=asset.id)
+        _check_serial(
+            db, category_id, data.get("serial_no", asset.serial_no), exclude_id=asset.id
+        )
     if "manufacturer" in data or "category_id" in data:
         _maker_required(db, category_id, data.get("manufacturer", asset.manufacturer))
     for field, value in data.items():
         setattr(asset, field, value)
     if status_item_id is not None and status_item_id != asset.status_item_id:
         # 상태는 이력이 남아야 한다. PATCH 로 와도 이동과 같은 길을 탄다.
-        _apply_move(db, asset, AssetMoveRequest(to_status_item_id=status_item_id, reason="상태 수정"), user)
+        _apply_move(
+            db,
+            asset,
+            AssetMoveRequest(to_status_item_id=status_item_id, reason="상태 수정"),
+            user,
+        )
     asset.updated_by_id = user.id
     audit.record(
         db,
@@ -547,14 +717,22 @@ def move_assets_bulk(
     errors: list[str] = []
     single = AssetMoveRequest(**payload.model_dump(exclude={"asset_ids"}))
     for aid in payload.asset_ids:
-        asset = db.scalar(select(Asset).where(Asset.id == aid, Asset.deleted_at.is_(None)))
+        asset = db.scalar(
+            select(Asset).where(Asset.id == aid, Asset.deleted_at.is_(None))
+        )
         if asset is None:
             errors.append(f"{aid}: 자산을 찾을 수 없습니다.")
             continue
         label = f"{asset_rules.category_name(db, asset.category_id) or asset.name} {asset.serial_no or asset.asset_no}"
         try:
             with db.begin_nested():
-                movement = _apply_move(db, asset, single, user, bulk_note=f"여러 대 한 번에({len(payload.asset_ids)}대)")
+                movement = _apply_move(
+                    db,
+                    asset,
+                    single,
+                    user,
+                    bulk_note=f"여러 대 한 번에({len(payload.asset_ids)}대)",
+                )
         except AppError as e:
             errors.append(f"{label}: {e.message}")
             continue
@@ -584,20 +762,25 @@ _IMPLIED_STATUS = {
 
 
 def _apply_move(
-    db: Session, asset: Asset, payload: AssetMoveRequest, user: User, *, bulk_note: str | None = None
+    db: Session,
+    asset: Asset,
+    payload: AssetMoveRequest,
+    user: User,
+    *,
+    bulk_note: str | None = None,
 ) -> AssetMovement | None:
     """이동 한 건을 자산에 적용하고 이력 행을 만든다. 바뀐 것이 없으면 None."""
-    before = (asset.status_item_id, asset.status, asset.store_id, asset.location_id, asset.holder_id, asset.set_no)
-    movement = AssetMovement(
-        asset_id=asset.id,
+    before = (
+        asset.status_item_id,
+        asset.status,
+        asset.store_id,
+        asset.location_id,
+        asset.holder_id,
+        asset.set_no,
+    )
+    movement = asset_movement.begin(
+        asset,
         movement_type=payload.movement_type,
-        from_location_id=asset.location_id,
-        from_holder_id=asset.holder_id,
-        from_status=asset.status,
-        from_store_id=asset.store_id,
-        from_status_item_id=asset.status_item_id,
-        # to_* 는 아래에서 자산을 고친 뒤 그 결과로 채운다. 요청에 실려 온
-        # 값만 적으면, 상태만 바꾼 이동이 "매장에서 나감"으로 읽힌다.
         quantity=payload.quantity if payload.quantity is not None else asset.quantity,
         moved_at=payload.moved_at or now_utc(),
         moved_by_id=user.id,
@@ -613,7 +796,7 @@ def _apply_move(
     if payload.to_store_id is not None:
         asset_rules.load_store(db, payload.to_store_id)
         if asset.store_id != payload.to_store_id:
-            asset.set_no = 0                       # 다른 매장으로 가면 세트 미지정
+            asset.set_no = 0  # 다른 매장으로 가면 세트 미지정
         asset.store_id = payload.to_store_id
         asset.location_id = None
     elif payload.to_location_id is not None:
@@ -627,22 +810,60 @@ def _apply_move(
     if payload.to_holder_id is not None:
         asset.holder_id = payload.to_holder_id
 
-    item = asset_rules.load_status_item(db, payload.to_status_item_id) if payload.to_status_item_id else None
-    if item is None and (payload.to_store_id is not None or payload.to_location_id is not None or payload.clear_store):
+    item = (
+        asset_rules.load_status_item(db, payload.to_status_item_id)
+        if payload.to_status_item_id
+        else None
+    )
+    target_status = payload.to_status or _IMPLIED_STATUS.get(payload.movement_type)
+    if item is None and target_status is not None:
+        kind = {
+            AssetStatus.IN_STOCK: "clear",
+            AssetStatus.IN_USE: "store",
+            AssetStatus.LOANED: "store",
+            AssetStatus.REPAIR: "as",
+            AssetStatus.DISPOSED: "free",
+            AssetStatus.LOST: "clear",
+        }[target_status]
+        item = asset_rules.find_status_item_by_rule(db, kind, target_status)
+        if item is None:
+            raise AppError(
+                "STATUS_MAPPING_MISSING",
+                "요청한 상태에 맞는 장비 세부 상태를 설정하세요.",
+            )
+    if (
+        payload.movement_type == MovementType.DISPOSE
+        and item is not None
+        and asset_rules.rule_of(item).enum != AssetStatus.DISPOSED
+    ):
+        raise AppError("STATUS_MISMATCH", "폐기 이동은 폐기 상태여야 합니다.")
+    if (
+        item is not None
+        and payload.to_status is not None
+        and asset_rules.rule_of(item).enum != payload.to_status
+    ):
+        raise AppError("STATUS_MISMATCH", "장비 상태와 세부 상태가 일치하지 않습니다.")
+    if item is None and (
+        payload.to_store_id is not None
+        or payload.to_location_id is not None
+        or payload.clear_store
+    ):
         # 자리만 옮겼다: 지금 상태가 새 자리와 어긋나면 자리에 맞는 상태로.
-        current = db.get(CodeItem, asset.status_item_id) if asset.status_item_id else None
+        current = (
+            db.get(CodeItem, asset.status_item_id) if asset.status_item_id else None
+        )
         at_store_now = asset.store_id is not None
         if current is None or asset_rules.is_at_store_rule(current) != at_store_now:
             item = asset_rules.default_item_for_destination(
-                db, store_id=asset.store_id, location_id=asset.location_id,
+                db,
+                store_id=asset.store_id,
+                location_id=asset.location_id,
                 leaving_store=(before[2] is not None and asset.store_id is None),
             )
     if item is not None:
-        asset_rules.apply_status(db, asset, item, requested_location_id=requested_location)
-    elif payload.to_status is not None:
-        asset.status = payload.to_status
-    elif payload.movement_type in _IMPLIED_STATUS:
-        asset.status = _IMPLIED_STATUS[payload.movement_type]
+        asset_rules.apply_status(
+            db, asset, item, requested_location_id=requested_location
+        )
 
     # 세트는 그 매장 안에서만 뜻이 있다. 매장을 떠나면 미지정으로 되돌린다.
     if payload.to_set_no is not None and asset.store_id is not None:
@@ -657,18 +878,24 @@ def _apply_move(
     if payload.movement_type == MovementType.STOCKTAKE and payload.quantity is not None:
         asset.quantity = payload.quantity
 
-    after = (asset.status_item_id, asset.status, asset.store_id, asset.location_id, asset.holder_id, asset.set_no)
-    if after == before and payload.movement_type not in (MovementType.STOCKTAKE, MovementType.DISPOSE):
+    after = (
+        asset.status_item_id,
+        asset.status,
+        asset.store_id,
+        asset.location_id,
+        asset.holder_id,
+        asset.set_no,
+    )
+    if after == before and payload.movement_type not in (
+        MovementType.STOCKTAKE,
+        MovementType.DISPOSE,
+    ):
         return None
 
     asset.updated_by_id = user.id
     # 결과 상태를 이력에 박는다. from_* 가 "직전 상태"이므로 to_* 도
     # "직후 상태"여야 한 줄만 읽고도 무엇이 바뀌었는지 알 수 있다.
-    movement.to_location_id = asset.location_id
-    movement.to_holder_id = asset.holder_id
-    movement.to_status = asset.status
-    movement.to_store_id = asset.store_id
-    movement.to_status_item_id = asset.status_item_id
+    asset_movement.finish(movement, asset)
     if bulk_note:
         movement.reason = " · ".join(x for x in (movement.reason, bulk_note) if x)
     db.add(movement)
@@ -679,10 +906,14 @@ def _apply_move(
 def asset_movements(
     asset_id: uuid.UUID, db: DbSession, _: CurrentUser, page: PageParams
 ) -> Page[AssetMovementOut]:
-    stmt = select(AssetMovement).where(AssetMovement.asset_id == asset_id)
+    stmt = select(AssetMovement).where(
+        AssetMovement.asset_id == asset_id, AssetMovement.hidden_at.is_(None)
+    )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
-        stmt.order_by(AssetMovement.moved_at.desc()).offset(page.offset).limit(page.size)
+        stmt.order_by(AssetMovement.moved_at.desc())
+        .offset(page.offset)
+        .limit(page.size)
     ).all()
     return Page.build(
         [AssetMovementOut.model_validate(r) for r in rows], total, page.page, page.size
@@ -695,6 +926,9 @@ def delete_asset(
 ) -> Message:
     asset = _load(db, asset_id)
     asset.deleted_at = now_utc()
+    from app.services.attachment_lifecycle import soft_delete
+
+    soft_delete(db, "asset", asset.id)
     audit.record(
         db,
         action=AuditAction.DELETE,
@@ -710,147 +944,11 @@ def delete_asset(
 
 
 # ================================================================== overview (구 서버 재고 › 현황)
-class _OverviewContext:
-    """현황 · 엑셀이 같이 쓰는 이름표. 쿼리 몇 번으로 종류 · 상태 · 매장 · 브랜드 · 위치 이름을 끌어온다."""
-
-    def __init__(self, db: Session, assets: list[Asset]):
-        self.db = db
-        self.kinds = _group_items(db, asset_rules.CATEGORY_GROUP, active_only=False)
-        self.statuses = asset_rules.status_items(db, active_only=False)
-        self.brands = _group_items(db, "STORE_BRAND", active_only=False)
-        self._kind = {k.id: k for k in self.kinds}
-        self._status = {s.id: s for s in self.statuses}
-        self._brand = {b.id: b for b in self.brands}
-        store_ids = {a.store_id for a in assets if a.store_id}
-        self._store = {s.id: s for s in db.scalars(select(Store).where(Store.id.in_(store_ids))).all()} if store_ids else {}
-        loc_ids = {a.location_id for a in assets if a.location_id}
-        self._loc = {l.id: l for l in db.scalars(select(Location).where(Location.id.in_(loc_ids))).all()} if loc_ids else {}
-
-    def kind_name(self, cid):
-        k = self._kind.get(cid) if cid else None
-        return k.name if k else None
-
-    def status_item(self, a: Asset) -> CodeItem | None:
-        return self._status.get(a.status_item_id) if a.status_item_id else None
-
-    def status_name(self, a: Asset):
-        s = self.status_item(a)
-        return s.name if s else None
-
-    def store_name(self, sid):
-        s = self._store.get(sid) if sid else None
-        return s.name if s else None
-
-    def brand_id_of(self, a: Asset):
-        s = self._store.get(a.store_id) if a.store_id else None
-        return s.brand_id if s else None
-
-    def brand_name_of(self, a: Asset):
-        b = self._brand.get(self.brand_id_of(a)) if self.brand_id_of(a) else None
-        return b.name if b else None
-
-    def location_name(self, lid):
-        l = self._loc.get(lid) if lid else None
-        return l.name if l else None
-
-
-def _group_items(db: Session, group_code: str, active_only: bool = True) -> list[CodeItem]:
-    group = db.scalar(select(CodeGroup).where(CodeGroup.code == group_code))
-    if group is None:
-        return []
-    stmt = select(CodeItem).where(CodeItem.group_id == group.id, CodeItem.deleted_at.is_(None))
-    if active_only:
-        stmt = stmt.where(CodeItem.is_active.is_(True))
-    return list(db.scalars(stmt.order_by(CodeItem.sort_order, CodeItem.name)))
 
 
 @router.get("/overview", response_model=InventoryOverview)
 def overview(db: DbSession, _: CurrentUser) -> InventoryOverview:
-    """구 서버 재고 › 현황. 상태×종류, 브랜드×종류(매장 설치), 장소×종류(미설치), 확인 목록(AS·미상), 렌탈 중."""
-    assets = list(db.scalars(select(Asset).where(Asset.deleted_at.is_(None))).all())
-    ctx = _OverviewContext(db, assets)
-    used_kinds = {a.category_id for a in assets}
-    kinds = [k for k in ctx.kinds if k.is_active or k.id in used_kinds]
-    kind_key = lambda a: str(a.category_id) if a.category_id else "-"
-
-    def rows(groups: dict, order: list[tuple[str, str, str | None]]) -> list[OverviewRow]:
-        out = []
-        for key, label, color in order:
-            cnt = groups.get(key)
-            if cnt is None:
-                continue
-            out.append(OverviewRow(key=key, label=label, color=color, counts=dict(cnt), total=sum(cnt.values())))
-        return out
-
-    by_status: dict[str, Counter] = defaultdict(Counter)
-    by_brand: dict[str, Counter] = defaultdict(Counter)
-    by_place: dict[str, Counter] = defaultdict(Counter)
-    for a in assets:
-        s = ctx.status_item(a)
-        by_status[str(s.id) if s else a.status.value][kind_key(a)] += 1
-        if a.store_id:
-            bid = ctx.brand_id_of(a)
-            by_brand[str(bid) if bid else "-"][kind_key(a)] += 1
-        else:
-            by_place[str(a.location_id) if a.location_id else "-"][kind_key(a)] += 1
-
-    status_order = [(str(s.id), s.name, s.color) for s in ctx.statuses] + [
-        (e.value, e.value, None) for e in AssetStatus
-    ]
-    brand_order = [(str(b.id), b.name, b.color) for b in ctx.brands] + [("-", "(브랜드 없음)", None)]
-    place_ids = {a.location_id for a in assets if not a.store_id and a.location_id}
-    places = sorted((ctx._loc[l] for l in place_ids if l in ctx._loc), key=lambda l: (l.sort_order, l.name))
-    place_order = [(str(l.id), l.name, None) for l in places] + [("-", "(장소 없음)", None)]
-
-    def brief(a: Asset) -> dict:
-        return dict(
-            id=a.id, asset_no=a.asset_no, name=a.name, category_id=a.category_id,
-            category_name=ctx.kind_name(a.category_id), serial_no=a.serial_no, status_name=ctx.status_name(a),
-            store_id=a.store_id, store_name=ctx.store_name(a.store_id),
-            location_name=ctx.location_name(a.location_id), note=a.note,
-        )
-
-    def needs_attention(a: Asset) -> bool:
-        s = ctx.status_item(a)
-        if s is not None:
-            r = asset_rules.rule_of(s)
-            return r.kind == "as" or r.enum == AssetStatus.LOST
-        return a.status in (AssetStatus.REPAIR, AssetStatus.LOST)
-
-    attention = sorted((a for a in assets if needs_attention(a)), key=lambda a: (ctx.status_name(a) or "", ctx.kind_name(a.category_id) or "", a.serial_no or ""))
-
-    # 렌탈 중: 그 S/N 이 적힌 미회수 렌탈 기록(최근 것)의 번호 · 회수 예정일 · D-day
-    today = datetime.now(stats.LOCAL_TZ).date()
-    loaned = [a for a in assets if (s := ctx.status_item(a)) is not None and asset_rules.rule_of(s).enum == AssetStatus.LOANED or (ctx.status_item(a) is None and a.status == AssetStatus.LOANED)]
-    open_rentals = list(db.scalars(
-        select(ServiceTicket).where(
-            ServiceTicket.deleted_at.is_(None), ServiceTicket.is_rental.is_(True), ServiceTicket.rental_returned.is_(False)
-        ).order_by(ServiceTicket.received_at.desc())
-    ).all())
-    by_serial: dict[str, ServiceTicket] = {}
-    for t in open_rentals:
-        for sn in split_serials(t.rental_serials):
-            by_serial.setdefault(sn.lower(), t)
-    rentals = []
-    for a in sorted(loaned, key=lambda a: (ctx.brand_name_of(a) or "", ctx.store_name(a.store_id) or "", ctx.kind_name(a.category_id) or "", a.serial_no or "")):
-        t = by_serial.get((a.serial_no or "").lower())
-        rentals.append(RentalAsset(
-            **brief(a),
-            ticket_id=t.id if t else None, ticket_no=t.ticket_no if t else None,
-            rented_at=t.received_at if t else None, due_date=t.rental_due_date if t else None,
-            dday=(t.rental_due_date - today).days if t and t.rental_due_date else None,
-        ))
-
-    return InventoryOverview(
-        total=len(assets),
-        kinds=[CodeItemBrief.model_validate(k) for k in kinds],
-        statuses=[CodeItemBrief.model_validate(s) for s in ctx.statuses if s.is_active],
-        by_status=rows(by_status, status_order),
-        by_brand=rows(by_brand, brand_order),
-        by_place=rows(by_place, place_order),
-        attention=[AttentionAsset(**brief(a)) for a in attention],
-        rentals=rentals,
-    )
+    return inventory_view.build(db)
 
 
 # ================================================================== summary
@@ -914,20 +1012,30 @@ def summary(db: DbSession, _: CurrentUser) -> InventorySummary:
         ).all()
     ]
 
-    below_min = db.scalar(
-        select(func.count(Asset.id)).where(
-            live, Asset.min_quantity.isnot(None), Asset.quantity < Asset.min_quantity
+    below_min = (
+        db.scalar(
+            select(func.count(Asset.id)).where(
+                live,
+                Asset.min_quantity.isnot(None),
+                Asset.quantity < Asset.min_quantity,
+            )
         )
-    ) or 0
+        or 0
+    )
     alert_days = settings_store.get(db, ModuleKey.INVENTORY, "warranty_alert_days", 30)
-    expiring = db.scalar(
-        select(func.count(Asset.id)).where(
-            live,
-            Asset.warranty_until.isnot(None),
-            Asset.warranty_until <= date.today() + timedelta(days=int(alert_days or 30)),
-            Asset.warranty_until >= date.today(),
+    expiring = (
+        db.scalar(
+            select(func.count(Asset.id)).where(
+                live,
+                Asset.warranty_until.isnot(None),
+                Asset.warranty_until
+                <= datetime.now(ZoneInfo("Asia/Seoul")).date()
+                + timedelta(days=int(alert_days or 30)),
+                Asset.warranty_until >= datetime.now(ZoneInfo("Asia/Seoul")).date(),
+            )
         )
-    ) or 0
+        or 0
+    )
 
     return InventorySummary(
         total_assets=total_assets,
@@ -936,7 +1044,9 @@ def summary(db: DbSession, _: CurrentUser) -> InventorySummary:
         by_status=by_status,
         by_category=by_category,
         by_location=by_location,
-        below_min_count=below_min,
+        below_min_count=below_min
+        if settings_store.get(db, ModuleKey.INVENTORY, "low_stock_alert", True)
+        else 0,
         warranty_expiring_count=expiring,
     )
 
@@ -947,16 +1057,18 @@ def _load(db: Session, asset_id: uuid.UUID) -> Asset:
         select(Asset).where(Asset.id == asset_id, Asset.deleted_at.is_(None))
     )
     if asset is None:
-        raise AppError("NOT_FOUND", "자산을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "자산을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return asset
-
-
 
 
 def _detail(db: Session, asset_id: uuid.UUID) -> AssetDetail:
     asset = _load(db, asset_id)
     out = AssetDetail.model_validate(asset)
-    out.is_below_min = asset.is_below_min
+    out.is_below_min = asset.is_below_min and settings_store.get(
+        db, ModuleKey.INVENTORY, "low_stock_alert", True
+    )
     if asset.location_id:
         loc = db.get(Location, asset.location_id)
         out.location = LocationOut.model_validate(loc) if loc else None
@@ -969,6 +1081,8 @@ def _detail(db: Session, asset_id: uuid.UUID) -> AssetDetail:
     if asset.store_id:
         store = db.get(Store, asset.store_id)
         out.store = StoreBrief.model_validate(store) if store else None
+        if store and store.is_closed:
+            out.notices = ["폐점 매장에 배치된 장비입니다."]
     if asset.status_item_id:
         item = db.get(CodeItem, asset.status_item_id)
         out.status_item = CodeItemBrief.model_validate(item) if item else None
@@ -1019,12 +1133,12 @@ def _descendant_ids(db: Session, root_id: uuid.UUID) -> list[uuid.UUID]:
 
 
 def _insert_with_asset_no(db: Session, asset: Asset, retries: int = 5) -> None:
-    prefix = settings_store.get(db, ModuleKey.INVENTORY, "asset_no_prefix", "AST") or "AST"
-    year = now_utc().strftime("%Y")
+    prefix = (
+        settings_store.get(db, ModuleKey.INVENTORY, "asset_no_prefix", "AST") or "AST"
+    )
+    year = now_utc().astimezone(stats.LOCAL_TZ).strftime("%Y")
     like = f"{prefix}-{year}-%"
-    base = db.scalar(
-        select(func.count(Asset.id)).where(Asset.asset_no.like(like))
-    ) or 0
+    base = db.scalar(select(func.count(Asset.id)).where(Asset.asset_no.like(like))) or 0
     for attempt in range(retries):
         asset.asset_no = f"{prefix}-{year}-{base + 1 + attempt:05d}"
         try:
@@ -1045,7 +1159,11 @@ def _insert_asset(db: Session, asset: Asset, asset_no: str | None) -> None:
     """자산번호를 직접 주면 그대로, 없으면 채번(AST-YYYY-00001)."""
     if asset_no:
         if db.scalar(select(Asset.id).where(Asset.asset_no == asset_no)):
-            raise AppError("ASSET_NO_TAKEN", "이미 사용 중인 자산번호입니다.", status.HTTP_409_CONFLICT)
+            raise AppError(
+                "ASSET_NO_TAKEN",
+                "이미 사용 중인 자산번호입니다.",
+                status.HTTP_409_CONFLICT,
+            )
         asset.asset_no = asset_no
         db.add(asset)
         db.flush()
@@ -1056,17 +1174,141 @@ def _insert_asset(db: Session, asset: Asset, asset_no: str | None) -> None:
 def _record_inbound(db: Session, asset: Asset, user: User) -> None:
     """Registering a unit is itself a movement, so the history starts complete."""
     db.add(
-        AssetMovement(
-            asset_id=asset.id,
+        asset_movement.inbound(
+            asset,
             movement_type=MovementType.INBOUND,
-            to_location_id=asset.location_id,
-            to_store_id=asset.store_id,
-            to_holder_id=asset.holder_id,
-            to_status=asset.status,
-            to_status_item_id=asset.status_item_id,
             quantity=asset.quantity,
             moved_at=now_utc(),
             moved_by_id=user.id,
             reason="신규 등록",
         )
     )
+
+
+@router.get("/assets/{asset_id}/tickets")
+def related_tickets(
+    asset_id: uuid.UUID, db: DbSession, _: CurrentUser, page: PageParams
+):
+    from app.services.ticket_rules import split_serials
+    from app.services.ticket_view import _enrich
+
+    asset = _load(db, asset_id)
+    serial = (asset.serial_no or "").strip().lower()
+    conditions = [ServiceTicket.asset_id == asset.id]
+    if serial:
+        conditions += [
+            func.lower(func.trim(ServiceTicket.serial_no)) == serial,
+            func.lower(ServiceTicket.rental_serials).contains(serial, autoescape=True),
+        ]
+    candidates = db.scalars(
+        select(ServiceTicket)
+        .where(ServiceTicket.deleted_at.is_(None), or_(*conditions))
+        .order_by(ServiceTicket.received_at.desc())
+    ).all()
+    rows = [
+        ticket
+        for ticket in candidates
+        if ticket.asset_id == asset.id
+        or serial
+        and (
+            serial == (ticket.serial_no or "").strip().lower()
+            or serial in {s.lower() for s in split_serials(ticket.rental_serials)}
+        )
+    ]
+    return Page.build(
+        _enrich(db, rows[page.offset : page.offset + page.size]),
+        len(rows),
+        page.page,
+        page.size,
+    )
+
+
+from fastapi import File, Form, UploadFile
+from pydantic import BaseModel, Field
+
+
+class DeliveryCompareIn(BaseModel):
+    serials: list[str] = Field(min_length=1, max_length=5000)
+    store_id: uuid.UUID | None = None
+
+
+@router.post("/delivery-compare")
+def delivery_compare(payload: DeliveryCompareIn, db: DbSession, _: CurrentUser):
+    from app.services.delivery import compare
+
+    return compare(db, payload.serials, payload.store_id)
+
+
+@router.post("/delivery-compare/xlsx")
+async def delivery_compare_excel(
+    db: DbSession,
+    _: CurrentUser,
+    file: Annotated[UploadFile, File()],
+    store_id: Annotated[uuid.UUID | None, Form()] = None,
+):
+    import io
+    import zipfile
+    from xml.etree.ElementTree import ParseError
+
+    import openpyxl
+    from openpyxl.utils.exceptions import InvalidFileException
+
+    from app.services.delivery import compare
+
+    data = await file.read(25 * 1024 * 1024 + 1)
+    if len(data) > 25 * 1024 * 1024:
+        raise AppError("FILE_TOO_LARGE", "25MB 이하의 엑셀을 선택하세요.", 413)
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            if sum(entry.file_size for entry in archive.infolist()) > 100 * 1024 * 1024:
+                raise ValueError("expanded size")
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(data), read_only=True, data_only=True
+        )
+        serials = []
+        try:
+            for sheet in workbook:
+                if sheet.max_row and sheet.max_row > 5020:
+                    raise ValueError("row limit")
+                column = None
+                for index, row in enumerate(
+                    sheet.iter_rows(max_row=5020, max_col=100, values_only=True)
+                ):
+                    if column is None:
+                        column = next(
+                            (
+                                i
+                                for i, value in enumerate(row)
+                                if str(value or "").strip().lower()
+                                in {
+                                    "시리얼",
+                                    "시리얼번호",
+                                    "시리얼 번호",
+                                    "s/n",
+                                    "serial",
+                                    "serial_no",
+                                }
+                            ),
+                            None,
+                        )
+                        if index >= 20 and column is None:
+                            break
+                    elif row[column] is not None:
+                        serials.append(str(row[column]).strip())
+                        if len(serials) > 5000:
+                            raise ValueError("row limit")
+        finally:
+            workbook.close()
+    except (
+        ValueError,
+        KeyError,
+        zipfile.BadZipFile,
+        OSError,
+        ParseError,
+        InvalidFileException,
+    ) as exc:
+        raise AppError(
+            "INVALID_WORKBOOK",
+            "시리얼 열이 있는 xlsx 파일을 확인하세요. 최대 5,000행입니다.",
+        ) from exc
+    return compare(db, serials, store_id)

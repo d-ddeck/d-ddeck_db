@@ -1,3 +1,4 @@
+import 'package:ddeck_app/state/theme_state.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -50,6 +51,8 @@ class _Picker extends FilePicker {
 }
 
 class _Vpn extends VpnService {
+  @override
+  bool get supportsTunnels => true;
   VpnConnection connection = VpnConnection.disconnected;
   bool busy = false;
   String? failure;
@@ -65,7 +68,8 @@ class _Vpn extends VpnService {
   Future<void> toggle() async {
     toggles++;
     connection = connection.isOn
-        ? VpnConnection.disconnected : VpnConnection.connected;
+        ? VpnConnection.disconnected
+        : VpnConnection.connected;
     notifyListeners();
   }
 
@@ -120,9 +124,12 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<AuthState>(
         create: (_) => _LoggedOutAuth(),
-        child: MaterialApp(
-          theme: ThemeData(splashFactory: NoSplash.splashFactory),
-          home: const LoginPage(),
+        child: ChangeNotifierProvider<ThemeState>(
+          create: (_) => ThemeState(),
+          child: MaterialApp(
+            theme: ThemeData(splashFactory: NoSplash.splashFactory),
+            home: const LoginPage(),
+          ),
         ),
       ),
     );
@@ -139,9 +146,17 @@ void main() {
     expect(find.textContaining('vpn.example.com:51820'), findsOneWidget);
     expect(find.textContaining('연결 안 됨'), findsOneWidget);
     for (final value in [
-      'private-test-secret', 'preshared-test-secret', 'public-test-key',
-      '10.109.203.7/24', '0.0.0.0/0', '192.168.0.0/24',
-      'PrivateKey', 'PresharedKey', 'PublicKey', 'Address', 'AllowedIPs',
+      'private-test-secret',
+      'preshared-test-secret',
+      'public-test-key',
+      '10.109.203.7/24',
+      '0.0.0.0/0',
+      '192.168.0.0/24',
+      'PrivateKey',
+      'PresharedKey',
+      'PublicKey',
+      'Address',
+      'AllowedIPs',
     ]) {
       expect(find.textContaining(value), findsNothing);
     }
@@ -166,6 +181,7 @@ void main() {
       await tester.tap(find.text('VPN 등록 해제'));
       await tester.pumpAndSettle();
     }
+
     await open();
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
@@ -184,7 +200,10 @@ void main() {
     vpn.refresh();
     await tester.pump();
     expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
-    for (final state in [VpnConnection.connecting, VpnConnection.disconnecting]) {
+    for (final state in [
+      VpnConnection.connecting,
+      VpnConnection.disconnecting,
+    ]) {
       vpn.connection = state;
       vpn.refresh();
       await tester.pump();

@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import '../services/upload_image.dart';
 
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,8 +26,15 @@ class FileRepository {
   static const store = 'store';
   static const worklog = 'worklog';
 
-  Future<List<Attachment>> listFor(String entityType, String entityId) async {
-    final res = await _api.get('/files/by-entity/$entityType/$entityId');
+  Future<List<Attachment>> listFor(
+    String entityType,
+    String entityId, {
+    String? photoCategory,
+  }) async {
+    final res = await _api.get(
+      '/files/by-entity/$entityType/$entityId',
+      query: {'photo_category': photoCategory},
+    );
     return (res as List? ?? [])
         .map((e) => Attachment.fromJson(asMap(e)))
         .toList();
@@ -41,14 +50,31 @@ class FileRepository {
     required String entityId,
     required String filePath,
     required String fileName,
+    String? photoCategory,
     void Function(int sent, int total)? onProgress,
   }) async {
+    final extension = fileName.toLowerCase().split('.').last;
+    final resized = ['jpg', 'jpeg', 'png', 'webp'].contains(extension)
+        ? await compute(resizeUploadImage, filePath)
+        : null;
+    final upload = resized == null
+        ? await MultipartFile.fromFile(filePath, filename: fileName)
+        : MultipartFile.fromBytes(
+            resized,
+            filename: '${fileName.replaceFirst(RegExp(r'\.[^.]+$'), '')}.jpg',
+          );
     final form = FormData.fromMap({
+      if (photoCategory != null && photoCategory != 'general')
+        'photo_category': photoCategory,
       'entity_type': entityType,
       'entity_id': entityId,
-      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      'file': upload,
     });
-    final res = await _api.postMultipart('/files', form, onProgress: onProgress);
+    final res = await _api.postMultipart(
+      '/files',
+      form,
+      onProgress: onProgress,
+    );
     return Attachment.fromJson(asMap(res));
   }
 
@@ -60,7 +86,7 @@ class FileRepository {
     final bytes = await _api.getBytes('/files/${attachment.id}');
     final dir = await getTemporaryDirectory();
     final safe = attachment.originalName.replaceAll(RegExp(r'[/\\]'), '_');
-    final file = File('${dir.path}/$safe');
+    final file = File('${dir.path}/${attachment.id}_$safe');
     await file.writeAsBytes(bytes);
     return file;
   }

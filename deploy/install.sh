@@ -43,6 +43,7 @@ usage() {
   --port <번호>      서비스 포트 (기본 8000)
   --admin <이메일>   최고 관리자 이메일 (기본 admin@ddeck.local)
   --sqlite           PostgreSQL 대신 SQLite 사용 (소규모/임시)
+  --https            설치 마지막에 도메인·허용 CIDR·인증서 경로 입력
   -h, --help         이 도움말
 
 예: sudo ./deploy/install.sh --port 8080 --admin it@mycompany.co.kr
@@ -51,11 +52,13 @@ USAGE
 }
 
 USE_SQLITE=0
+CONFIGURE_HTTPS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --port)  PORT="$2"; shift 2 ;;
     --admin) ADMIN_EMAIL="$2"; shift 2 ;;
     --sqlite) USE_SQLITE=1; shift ;;
+    --https) CONFIGURE_HTTPS=1; shift ;;
     -h|--help) usage ;;
     *) die "알 수 없는 옵션: $1 (--help 참고)" ;;
   esac
@@ -78,6 +81,20 @@ if [[ -r /etc/os-release ]]; then
   ok "OS: ${PRETTY_NAME:-unknown}"
   [[ "${ID:-}" == "ubuntu" || "${ID_LIKE:-}" == *debian* ]] \
     || warn "Ubuntu/Debian 계열이 아닙니다. 계속 진행하지만 패키지 설치가 실패할 수 있습니다."
+fi
+
+# An existing installation is upgraded through the stopped-service path.
+if [[ -f "$APP_DIR/backend/.env" && -f "/etc/systemd/system/${SERVICE}.service" ]]; then
+  step "기존 설치 갱신 (서비스 포트와 설정 유지)"
+  if [[ "$CONFIGURE_HTTPS" == 1 ]]; then
+    bash "$SCRIPT_DIR/update.sh"
+    apt-get install -y nginx
+    INSTALLED_PORT="$(grep -oP '(?<=--port )\d+' "/etc/systemd/system/${SERVICE}.service" | head -1)"
+    "$APP_DIR/backend/.venv/bin/python" "$APP_DIR/deploy/configure_https.py" --apply --port "${INSTALLED_PORT:-8000}" --root "$APP_DIR"
+    if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then ufw allow 443/tcp; fi
+    exit 0
+  fi
+  exec bash "$SCRIPT_DIR/update.sh"
 fi
 
 # 포트 충돌 확인 - 이 미니PC가 이미 다른 서버로 쓰이고 있을 수 있다.
@@ -142,13 +159,15 @@ else
   ok "시스템 계정 '${APP_USER}' 이미 존재"
 fi
 
-mkdir -p "$APP_DIR"/{backend,storage,backups}
+mkdir -p "$APP_DIR"/{backend,storage,backups,data}
 # 소스 복사. .env / storage / DB 파일은 덮어쓰지 않는다.
 rsync -a --delete \
-  --exclude '.venv' --exclude '__pycache__' --exclude '*.pyc' \
+  --exclude '.venv' --exclude '.venv-linux' --exclude '__pycache__' --exclude '*.pyc' \
   --exclude '.env' --exclude 'storage' --exclude '*.db' --exclude '*.db-*' \
   "$SRC"/ "$APP_DIR/backend"/
 ok "코드 배치: ${APP_DIR}/backend"
+mkdir -p "$APP_DIR/deploy"
+rsync -a "$SCRIPT_DIR/" "$APP_DIR/deploy/"
 
 # ------------------------------------------------------------------ 가상환경
 step "가상환경 구성 (몇 분 걸릴 수 있습니다)"
@@ -172,7 +191,7 @@ if [[ -f "$ENV_FILE" ]] && grep -q '^DATABASE_URL=' "$ENV_FILE"; then
 
 elif [[ $USE_SQLITE -eq 1 ]]; then
   step "데이터베이스: SQLite"
-  DATABASE_URL="sqlite+pysqlite:///${APP_DIR}/backend/ddeck.db"
+  DATABASE_URL="sqlite+pysqlite:///${APP_DIR}/data/ddeck.db"
   ok "경로: ${APP_DIR}/backend/ddeck.db"
 
 else
@@ -225,7 +244,7 @@ API_V1_PREFIX=/api/v1
 DATABASE_URL=${DATABASE_URL}
 
 SECRET_KEY=${SECRET_KEY}
-ACCESS_TOKEN_EXPIRE_MINUTES=60
+ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_DAYS=14
 PASSWORD_MIN_LENGTH=8
 
@@ -242,12 +261,17 @@ MAX_UPLOAD_MB=25
 
 SCHEDULER_ENABLED=true
 REMINDER_SCAN_SECONDS=60
-FCM_SERVER_KEY=
+FCM_PROJECT_ID=
+FCM_CREDENTIALS_FILE=
+RCLONE_REMOTE=
 ENVEOF
   ok ".env 생성 (SECRET_KEY / 관리자 비밀번호 난수 생성)"
 fi
 chmod 600 "$ENV_FILE"
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
+chown -R root:root "$APP_DIR/deploy"
+chmod -R u=rwX,go=rX "$APP_DIR/deploy"
+chmod 755 "$APP_DIR/deploy/"*.sh
 
 # ------------------------------------------------------------------ 마이그레이션
 step "데이터베이스 스키마 적용"
@@ -263,15 +287,19 @@ Description=d-ddeck DB Server
 Documentation=file://${APP_DIR}/backend
 After=network-online.target postgresql.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/backend
-ExecStart=${APP_DIR}/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
+ExecStart=${APP_DIR}/backend/.venv/bin/uvicorn app.main:app --no-access-log --no-proxy-headers --host 0.0.0.0 --port ${PORT}
 Restart=always
 RestartSec=5
+TimeoutStopSec=30
+Environment=PYTHONDONTWRITEBYTECODE=1
 
 # 일정 알림 스케줄러가 인프로세스로 돌기 때문에 워커는 1개여야 한다.
 # 여러 개로 늘리면 같은 알림이 중복 발송된다.
@@ -281,7 +309,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${APP_DIR}/storage ${APP_DIR}/backups ${APP_DIR}/backend
+ReadWritePaths=${APP_DIR}/storage ${APP_DIR}/backups ${APP_DIR}/data
 
 StandardOutput=journal
 StandardError=journal
@@ -291,6 +319,7 @@ SyslogIdentifier=${SERVICE}
 WantedBy=multi-user.target
 UNITEOF
 
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null
 systemctl daemon-reload
 systemctl enable "${SERVICE}" >/dev/null
 systemctl restart "${SERVICE}"
@@ -299,7 +328,11 @@ ok "서비스 등록 및 시작 (부팅 시 자동 실행)"
 # ------------------------------------------------------------------ 방화벽 / mDNS
 step "네트워크 설정"
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow "${PORT}/tcp" >/dev/null && ok "방화벽 ${PORT}/tcp 허용"
+  if [[ "$CONFIGURE_HTTPS" == 0 ]]; then
+    ufw allow "${PORT}/tcp" >/dev/null && ok "방화벽 ${PORT}/tcp 허용"
+  else
+    ufw allow 443/tcp >/dev/null
+  fi
 else
   ok "ufw 비활성 상태 - 방화벽 규칙 불필요"
 fi
@@ -325,6 +358,12 @@ ok "healthz 응답: ${HEALTH}"
 TABLES="$(curl -fsS -m 3 "http://127.0.0.1:${PORT}/" 2>/dev/null || true)"
 [[ -n "$TABLES" ]] && ok "API 루트 응답 정상"
 
+if [[ "$CONFIGURE_HTTPS" == 1 ]]; then
+  step "HTTPS 도메인·허용 접속 대역 설정"
+  apt-get install -y nginx
+  "$VENV_PY" "$APP_DIR/deploy/configure_https.py" --apply --port "$PORT" --root "$APP_DIR"
+fi
+
 # ------------------------------------------------------------------ 접속 정보
 LAN_IP="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -vE '^(127\.|172\.1[7-9]\.|172\.2[0-9]\.|172\.3[01]\.)' | head -1)"
 HOSTNAME_LOCAL="$(hostname).local"
@@ -336,8 +375,8 @@ ${GREEN}${BOLD}  설치 완료${OFF}
 ${GREEN}${BOLD}════════════════════════════════════════════════════════════${OFF}
 
 ${BOLD}클라이언트에서 입력할 서버 주소${OFF}
-    http://${LAN_IP}:${PORT}
-    http://${HOSTNAME_LOCAL}:${PORT}      ${YELLOW}← IP가 바뀌어도 동작 (권장)${OFF}
+    http://${LAN_IP}:${PORT} (HTTPS 설정 전)
+    http://${HOSTNAME_LOCAL}:${PORT}      ${YELLOW}← HTTPS 사용 시 입력한 도메인 주소로 접속${OFF}
 
 ${BOLD}최고 관리자 계정${OFF}
     이메일   ${ADMIN_EMAIL}
@@ -345,8 +384,10 @@ ${BOLD}최고 관리자 계정${OFF}
     ${YELLOW}첫 로그인 시 비밀번호 변경 화면이 강제로 뜹니다.${OFF}
     ${YELLOW}이 비밀번호는 다시 표시되지 않습니다. 지금 기록해 두세요.${OFF}
 
-${BOLD}API 문서${OFF}
-    http://${LAN_IP}:${PORT}/docs
+${BOLD}HTTPS / 접속 제한 설정${OFF}
+    sudo ${VENV_PY} ${APP_DIR}/deploy/configure_https.py --apply
+    인증서·도메인·허용 CIDR을 입력하면 Uvicorn도 로컬 접속으로 제한합니다.
+    운영 환경의 API 문서는 비활성화되어 있습니다.
 
 ${BOLD}서비스 관리${OFF}
     systemctl status ${SERVICE}
@@ -355,7 +396,7 @@ ${BOLD}서비스 관리${OFF}
 
 ${BOLD}다음에 할 일${OFF}
     1. 미니PC에 고정 IP 설정 (공유기 DHCP 예약 권장)
-    2. 백업 등록:  sudo ${SCRIPT_DIR}/backup.sh --install-cron
+    2. 백업 등록:  sudo ${APP_DIR}/deploy/backup.sh --install-cron
     3. 코드 갱신:  sudo ${SCRIPT_DIR}/update.sh
 
 SUMMARY

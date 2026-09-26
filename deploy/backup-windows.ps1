@@ -30,6 +30,9 @@ $StorageDir = Join-Path $AppRoot 'storage'
 $BackupDir  = Join-Path $AppRoot 'backups'
 $TaskName   = 'd-ddeck DB Server'
 $BackupTask = 'd-ddeck 백업'
+$VenvPy = Join-Path $BackendDir '.venv\Scripts\python.exe'
+$SqliteHelper = Join-Path $PSScriptRoot 'sqlite_backup.py'
+. (Join-Path $PSScriptRoot 'windows-service.ps1')
 
 function Step($m) { if (-not $Quiet) { Write-Host ""; Write-Host "==> $m" -ForegroundColor Cyan } }
 function Ok($m)   { if (-not $Quiet) { Write-Host "    [OK] $m" -ForegroundColor Green } }
@@ -46,9 +49,18 @@ if (-not (Test-Path $EnvFile)) { Die "$AppRoot 에 설치본이 없습니다." }
 $DatabaseUrl = (Select-String -Path $EnvFile -Pattern '^DATABASE_URL=(.+)$' |
   Select-Object -First 1).Matches[0].Groups[1].Value.Trim()
 
+# PostgreSQL installers may not add their tools to the SYSTEM task PATH.
+if ($DatabaseUrl -match '^postgres' -and -not (Get-Command pg_dump -ErrorAction SilentlyContinue)) {
+  $pgTools = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\pg_dump.exe' -ErrorAction SilentlyContinue |
+    Sort-Object FullName -Descending | Select-Object -First 1
+  if (-not $pgTools) { Die 'PostgreSQL pg_dump/pg_restore/psql 도구를 설치하세요.' }
+  $env:Path = (Split-Path -Parent $pgTools.FullName) + ';' + $env:Path
+}
+
 # ------------------------------------------------------------------ 자동 백업 등록
 if ($InstallTask) {
-  $me = $MyInvocation.MyCommand.Path
+  $me = Join-Path $AppRoot 'deploy\backup-windows.ps1'
+  if (-not (Test-Path $me)) { Die '설치 폴더에 백업 스크립트가 없습니다. 설치 프로그램을 갱신하세요.' }
   if (Get-ScheduledTask -TaskName $BackupTask -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $BackupTask -Confirm:$false
   }
@@ -79,29 +91,50 @@ if ($Restore) {
   $tmp = Join-Path $env:TEMP ("ddeck-restore-" + (Get-Random))
   New-Item -ItemType Directory -Force -Path $tmp | Out-Null
   try {
-    Expand-Archive -Path $Restore -DestinationPath $tmp -Force
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-
-    if ($DatabaseUrl -like 'postgresql*') {
-      $pgRestore = (Get-ChildItem 'C:\Program Files\PostgreSQL' -Filter 'pg_restore.exe' -Recurse -ErrorAction SilentlyContinue |
-                    Select-Object -First 1).FullName
-      if (-not $pgRestore) { Die "pg_restore.exe 를 찾을 수 없습니다." }
-      $pw = Read-Host "PostgreSQL 의 postgres 계정 비밀번호" -AsSecureString
-      $env:PGPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
-      & $pgRestore -U postgres -h 127.0.0.1 -d ddeck --clean --if-exists (Join-Path $tmp 'db.dump')
-      $env:PGPASSWORD = ''
-    } else {
-      Copy-Item (Join-Path $tmp 'ddeck.db') (Join-Path $BackendDir 'ddeck.db') -Force
+    & $VenvPy (Join-Path $PSScriptRoot 'backup_bundle.py') --extract $Restore --destination $tmp
+    if ($LASTEXITCODE -ne 0) { Die '백업 무결성 검사 실패' }
+    if (-not (Test-Path (Join-Path $tmp 'storage'))) { Die '백업에 storage 폴더가 없습니다.' }
+    if ($DatabaseUrl -notlike 'postgresql*') {
+      & $VenvPy $SqliteHelper validate (Join-Path $tmp 'ddeck.db')
+      if ($LASTEXITCODE -ne 0) { Die '복원본 무결성 검사 실패' }
+    } elseif (-not (Test-Path (Join-Path $tmp 'db.dump'))) { Die 'DB 덤프가 없습니다.' }
+    Stop-DdeckTask $TaskName $BackendDir
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Quiet
+    if ($LASTEXITCODE -ne 0) {
+      Start-ScheduledTask -TaskName $TaskName
+      Die '복원 전 백업 실패: 현재 데이터를 변경하지 않았습니다.'
     }
 
+    if ($DatabaseUrl -like 'postgresql*') {
+      & $VenvPy (Join-Path $PSScriptRoot 'backup_bundle.py') --root $AppRoot --restore-postgres (Join-Path $tmp 'db.dump')
+      if ($LASTEXITCODE -ne 0) { Die 'DB 복구 실패: 서비스를 중지 상태로 유지합니다.' }
+    } else {
+      $dbPath = & $VenvPy (Join-Path $PSScriptRoot 'backup_bundle.py') --root $AppRoot --database-path
+      if ($LASTEXITCODE -ne 0 -or -not $dbPath) { Die 'SQLite 경로 확인 실패' }
+      & $VenvPy $SqliteHelper restore (Join-Path $tmp 'ddeck.db') $dbPath
+      if ($LASTEXITCODE -ne 0) { Die 'SQLite 복원 실패: 서비스를 중지 상태로 유지합니다.' }
+    }
+
+    $StorageDir = & $VenvPy (Join-Path $PSScriptRoot 'backup_bundle.py') --root $AppRoot --storage-path
+    if ($LASTEXITCODE -ne 0 -or -not $StorageDir) { Die '첨부 경로 확인 실패' }
     $storageBak = Join-Path $tmp 'storage'
     if (Test-Path $storageBak) {
       if (Test-Path $StorageDir) { Remove-Item -Recurse -Force $StorageDir }
       Copy-Item $storageBak $StorageDir -Recurse -Force
     }
     Start-ScheduledTask -TaskName $TaskName
+    $taskArgs = (Get-ScheduledTask -TaskName $TaskName).Actions.Arguments
+    $healthPort = 8000
+    if ($taskArgs -match '(?:--port|-Port)\s+(\d+)') { $healthPort = [int]$Matches[1] }
+    $healthy = $false
+    for ($try = 0; $try -lt 30; $try++) {
+      try {
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:$healthPort/healthz" -UseBasicParsing -TimeoutSec 2
+        if ($response.StatusCode -eq 200) { $healthy = $true; break }
+      } catch { }
+      Start-Sleep -Seconds 1
+    }
+    if (-not $healthy) { Stop-DdeckTask $TaskName $BackendDir; Die '복원 후 건강 검사 실패: 서비스를 중지했습니다.' }
     Write-Host ""
     Write-Host "[OK] 복구 완료" -ForegroundColor Green
   } finally {
@@ -110,63 +143,7 @@ if ($Restore) {
   exit 0
 }
 
-# ------------------------------------------------------------------ 백업
-$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$tmp = Join-Path $env:TEMP ("ddeck-backup-" + (Get-Random))
-New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-
-try {
-  Step "데이터베이스"
-  if ($DatabaseUrl -like 'postgresql*') {
-    $pgDump = (Get-ChildItem 'C:\Program Files\PostgreSQL' -Filter 'pg_dump.exe' -Recurse -ErrorAction SilentlyContinue |
-               Select-Object -First 1).FullName
-    if (-not $pgDump) { Die "pg_dump.exe 를 찾을 수 없습니다." }
-    # .env 의 URL 에서 비밀번호를 꺼내 쓴다. 대화형 입력 없이 무인 백업이 되어야 한다.
-    if ($DatabaseUrl -match '://([^:]+):([^@]+)@') {
-      $env:PGUSER = $Matches[1]; $env:PGPASSWORD = $Matches[2]
-    }
-    & $pgDump -h 127.0.0.1 -Fc ddeck -f (Join-Path $tmp 'db.dump')
-    if ($LASTEXITCODE -ne 0) { Die "pg_dump 실패" }
-    $env:PGPASSWORD = ''
-    Ok "PostgreSQL 덤프 ($([math]::Round((Get-Item (Join-Path $tmp 'db.dump')).Length/1MB,2)) MB)"
-  } else {
-    # SQLite 는 .backup 을 써야 쓰기 중에도 일관된 스냅샷이 나온다.
-    $dbPath = Join-Path $BackendDir 'ddeck.db'
-    $venvPy = Join-Path $BackendDir '.venv\Scripts\python.exe'
-    $dst = (Join-Path $tmp 'ddeck.db') -replace '\\','/'
-    $srcQ = $dbPath -replace '\\','/'
-    & $venvPy -c "import sqlite3;s=sqlite3.connect(r'$srcQ');d=sqlite3.connect(r'$dst');s.backup(d);d.close();s.close()"
-    if ($LASTEXITCODE -ne 0) { Copy-Item $dbPath (Join-Path $tmp 'ddeck.db') -Force }
-    Ok "SQLite 스냅샷 ($([math]::Round((Get-Item (Join-Path $tmp 'ddeck.db')).Length/1MB,2)) MB)"
-  }
-
-  Step "첨부파일"
-  if (Test-Path $StorageDir) {
-    Copy-Item $StorageDir (Join-Path $tmp 'storage') -Recurse -Force
-    Ok "storage"
-  } else {
-    New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'storage') | Out-Null
-    Ok "첨부파일 없음"
-  }
-
-  Step "압축"
-  $archive = Join-Path $BackupDir "ddeck_$stamp.zip"
-  Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $archive -Force
-  Ok "$(Split-Path -Leaf $archive) ($([math]::Round((Get-Item $archive).Length/1MB,2)) MB)"
-
-  Step "오래된 백업 정리"
-  $old = Get-ChildItem $BackupDir -Filter 'ddeck_*.zip' |
-         Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$KeepDays) }
-  $old | Remove-Item -Force
-  $left = (Get-ChildItem $BackupDir -Filter 'ddeck_*.zip').Count
-  Ok "$KeepDays 일 초과 $($old.Count) 건 삭제 / 보관 중 $left 건"
-
-  if (-not $Quiet) {
-    Write-Host ""
-    Write-Host "백업 완료: $archive" -ForegroundColor Green
-    Write-Host "복구: .\deploy\backup-windows.ps1 -Restore `"$archive`""
-  }
-} finally {
-  if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
-}
+# Shared portable ZIP format (also reads previous tar.gz bundles on restore).
+$bundle = Join-Path $PSScriptRoot 'backup_bundle.py'
+& $VenvPy $bundle --root $AppRoot
+if ($LASTEXITCODE -ne 0) { Die '백업 실패. backups/status.json과 LAST_FAILED를 확인하세요.' }

@@ -56,25 +56,6 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- 예약된 알람이 실제로 울릴 때 동작하는 리시버.
-             flutter_local_notifications 가 제공한다. -->
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
-            android:exported="false"/>
-
-        <!-- 재부팅·앱 업데이트 후 예약을 복원한다. 이것이 없으면 폰을 껐다 켠
-             직원은 그날 알림을 하나도 못 받는다. -->
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
-            </intent-filter>
-        </receiver>
-
         <!-- 앱이 강제 종료되면 예약한 알람이 못 울릴 수 있다고 알려 주는 서비스 (alarm 패키지). -->
         <service android:name="com.gdelataillade.alarm.services.NotificationOnKillService"/>
 

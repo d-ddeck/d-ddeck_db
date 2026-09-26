@@ -1,12 +1,15 @@
 """Declarative base, shared column mixins, and portable column types."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Uuid, func
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql.functions import FunctionElement
 from sqlalchemy.types import TypeDecorator
 
 # JSON on SQLite, JSONB on PostgreSQL - same Python-side API either way.
@@ -48,9 +51,7 @@ class Base(DeclarativeBase):
 class UUIDMixin:
     """UUID PKs: safe to generate client-side and to merge across sites later."""
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=uuid.uuid4, index=True
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
 
 
 class TimestampMixin:
@@ -103,3 +104,20 @@ def enum_type(py_enum, length: int = 32):
         values_callable=lambda e: [m.value for m in e],
         validate_strings=True,
     )
+
+
+class SerialTrim(FunctionElement):
+    """Compile PostgreSQL's canonical TRIM syntax so reflected indexes compare equal."""
+
+    type = String()
+    inherit_cache = True
+
+
+@compiles(SerialTrim)
+def compile_serial_trim(element, compiler, **kwargs):
+    return f"trim({compiler.process(element.clauses, **kwargs)})"
+
+
+@compiles(SerialTrim, "postgresql")
+def compile_postgresql_serial_trim(element, compiler, **kwargs):
+    return f"TRIM(BOTH FROM {compiler.process(element.clauses, **kwargs)})"

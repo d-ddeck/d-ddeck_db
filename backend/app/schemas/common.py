@@ -1,11 +1,19 @@
 """Envelope types every module reuses."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Generic, TypeVar
+from typing import Annotated, ClassVar, Generic, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 T = TypeVar("T")
 
@@ -66,7 +74,7 @@ class Page(BaseModel, Generic[T]):
     pages: int
 
     @classmethod
-    def build(cls, items: list[T], total: int, page: int, size: int) -> "Page[T]":
+    def build(cls, items: list[T], total: int, page: int, size: int) -> Page[T]:
         return cls(
             items=items,
             total=total,
@@ -104,3 +112,16 @@ class CodeItemBrief(ORMModel):
 class DateRange(BaseModel):
     date_from: datetime | None = Field(None, description="inclusive, ISO-8601 UTC")
     date_to: datetime | None = Field(None, description="exclusive, ISO-8601 UTC")
+
+
+class PatchModel(BaseModel):
+    non_nullable: ClassVar[set[str]] = set()
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_null(cls, data):
+        if isinstance(data, dict):
+            for key in cls.non_nullable:
+                if key in data and data[key] is None:
+                    raise ValueError(f"{key} 값은 비울 수 없습니다.")
+        return data

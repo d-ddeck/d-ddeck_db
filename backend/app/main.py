@@ -3,6 +3,7 @@
 Run:  uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Docs: http://127.0.0.1:8000/docs   (OpenAPI JSON at /openapi.json)
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,13 +11,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import SessionLocal, engine
 from app.core.errors import register_exception_handlers
+from app.core.upload_limit import UploadLimitMiddleware
 from app.models import Base
 from app.services import bootstrap, scheduler
+from app.version import VERSION
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -46,9 +51,10 @@ DESCRIPTION = """
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # create_all is the skeleton's schema path. Once the shape settles, switch
-    # to `alembic upgrade head` and drop this line - see alembic/README.
-    Base.metadata.create_all(bind=engine)
+    # Production schema changes are applied by Alembic before startup.
+    # See alembic/README.md for existing create_all database adoption.
+    if settings.ENVIRONMENT.strip().lower() != "production":
+        Base.metadata.create_all(bind=engine)
     settings.storage_path.mkdir(parents=True, exist_ok=True)
 
     db = SessionLocal()
@@ -71,10 +77,11 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     description=DESCRIPTION,
-    version="0.1.0",
+    version=VERSION,
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
 )
 
 # Wildcard CORS and credentials cannot be combined, and desktop/mobile clients
@@ -88,6 +95,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(UploadLimitMiddleware)
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
@@ -96,13 +104,21 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 def root():
     return {
         "name": settings.APP_NAME,
-        "version": "0.1.0",
+        "version": VERSION,
         "api": settings.API_V1_PREFIX,
-        "docs": "/docs",
+        "docs": "/docs" if settings.DEBUG else None,
     }
 
 
 @app.get("/healthz", tags=["meta"])
 def healthz():
     """Unauthenticated liveness probe for a load balancer or systemd."""
-    return {"status": "ok"}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {"status": "ok", "version": VERSION}
+    except Exception:
+        log.exception("Database readiness check failed")
+        return JSONResponse(
+            {"status": "degraded", "database_ok": False}, status_code=503
+        )

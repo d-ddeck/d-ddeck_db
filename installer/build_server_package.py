@@ -1,7 +1,7 @@
 """우분투 서버용 단일 설치 파일(.run)을 만든다.
 
 프로젝트 폴더를 통째로 옮기는 대신 파일 하나만 미니PC로 보내고
-`sudo ./ddeck-server-1.0.0.run` 한 줄로 설치가 끝나게 한다.
+`sudo ./ddeck-server-1.0.5.run` 한 줄로 설치가 끝나게 한다.
 
 만들어지는 것은 자기 압축 해제 셸 스크립트다. 앞부분은 평범한 sh 스크립트이고
 뒷부분에 tar.gz 바이트가 그대로 붙어 있다. 실행하면 스스로를 잘라 임시 폴더에
@@ -26,12 +26,12 @@ DIST = ROOT / "dist"
 # 서버에 필요한 것만 담는다. 클라이언트(app/)와 설치 산출물은 뺀다.
 INCLUDE = ["backend", "deploy"]
 
-# .venv-linux: 이 저장소는 Windows 에서 만든 .venv 를 커밋해 두고 있어서, 리눅스
-# 개발 PC 는 다른 이름의 venv 를 쓴다. 빠뜨리면 패키지가 100MB 넘게 부푼다.
+# 개발 PC의 가상환경은 운영 패키지에서 제외한다.
 EXCLUDE_DIRS = {".venv", ".venv-linux", "__pycache__", ".git", ".ruff_cache", "storage", "backups"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".db", ".db-wal", ".db-shm", ".log"}
 # .env 는 서버마다 다르고 비밀키가 들어 있다. 절대 패키지에 넣지 않는다.
-EXCLUDE_NAMES = {".env", ".DS_Store"}
+EXCLUDE_NAMES = {".env", ".DS_Store", "seed_demo.py", "smoke_test.py",
+                 "smoke_test_legacy.py", "smoke_test_review.py", "smoke_test_priority2.py", "test_migrations.py", "test_sqlite_backup.py", "test_update.py"}
 
 STUB = """#!/bin/sh
 # ============================================================
@@ -41,7 +41,7 @@ STUB = """#!/bin/sh
 #    sudo ./{filename}
 #
 #  옵션은 그대로 전달된다:
-#    sudo ./{filename} --port 8080 --database postgres
+#    sudo ./{filename} --port 8080 --https
 # ============================================================
 set -eu
 
@@ -85,6 +85,10 @@ __ARCHIVE_BELOW__
 
 
 def should_skip(path: Path) -> bool:
+    if path.name.startswith(("test_", "smoke_test")):
+        return True
+    if path.name.startswith(".env") and path.name != ".env.example":
+        return True
     if path.name in EXCLUDE_NAMES:
         return True
     if path.suffix in EXCLUDE_SUFFIXES:

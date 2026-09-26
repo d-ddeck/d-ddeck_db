@@ -16,12 +16,12 @@ class CodeItemUsage {
   final String? protectedReason;
 
   factory CodeItemUsage.fromJson(Map<String, dynamic> j) => CodeItemUsage(
-        count: asInt(j['count']),
-        by: asMap(j['by']).map((key, value) => MapEntry(key, asInt(value))),
-        children: asInt(j['children']),
-        isProtected: asBool(j['is_protected']),
-        protectedReason: j['protected_reason'] as String?,
-      );
+    count: asInt(j['count']),
+    by: asMap(j['by']).map((key, value) => MapEntry(key, asInt(value))),
+    children: asInt(j['children']),
+    isProtected: asBool(j['is_protected']),
+    protectedReason: j['protected_reason'] as String?,
+  );
 }
 
 /// The six settings namespaces the server exposes at /admin/settings/{module}.
@@ -72,7 +72,9 @@ class ModuleSetting {
     value = switch (valueType) {
       'int' => input is int ? input : int.tryParse(input.toString()) ?? 0,
       'float' =>
-        input is num ? input.toDouble() : double.tryParse(input.toString()) ?? 0,
+        input is num
+            ? input.toDouble()
+            : double.tryParse(input.toString()) ?? 0,
       'bool' => asBool(input),
       'list' => input is List ? input : [input.toString()],
       _ => input,
@@ -80,22 +82,22 @@ class ModuleSetting {
   }
 
   Map<String, dynamic> toJson() => {
-        'key': key,
-        'value': value,
-        'value_type': valueType,
-        'label': label,
-        'description': description,
-        'is_public': isPublic,
-      };
+    'key': key,
+    'value': value,
+    'value_type': valueType,
+    'label': label,
+    'description': description,
+    'is_public': isPublic,
+  };
 
   factory ModuleSetting.fromJson(Map<String, dynamic> j) => ModuleSetting(
-        key: asString(j['key']),
-        valueType: asString(j['value_type'], 'string'),
-        value: j['value'],
-        label: j['label'] as String?,
-        description: j['description'] as String?,
-        isPublic: asBool(j['is_public']),
-      );
+    key: asString(j['key']),
+    valueType: asString(j['value_type'], 'string'),
+    value: j['value'],
+    label: j['label'] as String?,
+    description: j['description'] as String?,
+    isPublic: asBool(j['is_public']),
+  );
 }
 
 /// Everything one settings screen renders, in a single response.
@@ -111,10 +113,10 @@ class ModuleSettings {
   final List<CodeGroup> codeGroups;
 
   factory ModuleSettings.fromJson(Map<String, dynamic> j) => ModuleSettings(
-        module: asString(j['module']),
-        settings: asList(j['settings'], ModuleSetting.fromJson),
-        codeGroups: asList(j['code_groups'], CodeGroup.fromJson),
-      );
+    module: asString(j['module']),
+    settings: asList(j['settings'], ModuleSetting.fromJson),
+    codeGroups: asList(j['code_groups'], CodeGroup.fromJson),
+  );
 
   static ModuleSettings empty(String module) =>
       ModuleSettings(module: module, settings: const [], codeGroups: const []);
@@ -156,15 +158,15 @@ class AuditLog {
   String get actionLabel => actionLabels[action] ?? action;
 
   factory AuditLog.fromJson(Map<String, dynamic> j) => AuditLog(
-        id: asString(j['id']),
-        action: asString(j['action']),
-        actorEmail: j['actor_email'] as String?,
-        module: j['module'] as String?,
-        entityType: j['entity_type'] as String?,
-        summary: j['summary'] as String?,
-        ipAddress: j['ip_address'] as String?,
-        createdAt: asDate(j['created_at']),
-      );
+    id: asString(j['id']),
+    action: asString(j['action']),
+    actorEmail: j['actor_email'] as String?,
+    module: j['module'] as String?,
+    entityType: j['entity_type'] as String?,
+    summary: j['summary'] as String?,
+    ipAddress: j['ip_address'] as String?,
+    createdAt: asDate(j['created_at']),
+  );
 }
 
 class ServerHealth {
@@ -176,6 +178,9 @@ class ServerHealth {
     required this.databaseOk,
     required this.uptimeSeconds,
     this.serverTime,
+    this.backup = const {},
+    this.diskFreeBytes = 0,
+    this.schemaRevisions = const [],
   });
 
   final String status;
@@ -185,6 +190,9 @@ class ServerHealth {
   final bool databaseOk;
   final double uptimeSeconds;
   final DateTime? serverTime;
+  final Map<String, dynamic> backup;
+  final int diskFreeBytes;
+  final List<String> schemaRevisions;
 
   String get uptimeLabel {
     final d = Duration(seconds: uptimeSeconds.round());
@@ -195,14 +203,19 @@ class ServerHealth {
   }
 
   factory ServerHealth.fromJson(Map<String, dynamic> j) => ServerHealth(
-        status: asString(j['status']),
-        version: asString(j['version']),
-        environment: asString(j['environment']),
-        database: asString(j['database']),
-        databaseOk: asBool(j['database_ok']),
-        uptimeSeconds: asDouble(j['uptime_seconds']) ?? 0,
-        serverTime: asDate(j['server_time']),
-      );
+    status: asString(j['status']),
+    version: asString(j['version']),
+    environment: asString(j['environment']),
+    database: asString(j['database']),
+    databaseOk: asBool(j['database_ok']),
+    uptimeSeconds: asDouble(j['uptime_seconds']) ?? 0,
+    serverTime: asDate(j['server_time']),
+    backup: asMap(j['backup']),
+    diskFreeBytes: asInt(j['disk_free_bytes']),
+    schemaRevisions: (j['schema_revisions'] as List? ?? [])
+        .map((e) => '$e')
+        .toList(),
+  );
 }
 
 class SystemStats {
@@ -239,20 +252,22 @@ class SystemStats {
   }
 
   factory SystemStats.fromJson(Map<String, dynamic> j) => SystemStats(
-        usersTotal: asInt(j['users_total']),
-        usersPending: asInt(j['users_pending']),
-        usersActive: asInt(j['users_active']),
-        ticketsTotal: asInt(j['tickets_total']),
-        ticketsOpen: asInt(j['tickets_open']),
-        assetsTotal: asInt(j['assets_total']),
-        postsTotal: asInt(j['posts_total']),
-        eventsUpcoming: asInt(j['events_upcoming']),
-        storageBytes: asInt(j['storage_bytes']),
-        tables: (j['tables'] as List? ?? [])
-            .map((e) => (
-                  table: asString(asMap(e)['table']),
-                  rows: asInt(asMap(e)['rows']),
-                ))
-            .toList(),
-      );
+    usersTotal: asInt(j['users_total']),
+    usersPending: asInt(j['users_pending']),
+    usersActive: asInt(j['users_active']),
+    ticketsTotal: asInt(j['tickets_total']),
+    ticketsOpen: asInt(j['tickets_open']),
+    assetsTotal: asInt(j['assets_total']),
+    postsTotal: asInt(j['posts_total']),
+    eventsUpcoming: asInt(j['events_upcoming']),
+    storageBytes: asInt(j['storage_bytes']),
+    tables: (j['tables'] as List? ?? [])
+        .map(
+          (e) => (
+            table: asString(asMap(e)['table']),
+            rows: asInt(asMap(e)['rows']),
+          ),
+        )
+        .toList(),
+  );
 }

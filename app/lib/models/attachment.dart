@@ -31,9 +31,15 @@ class Attachment {
     return dot < 0 ? '' : originalName.substring(dot + 1).toLowerCase();
   }
 
-  bool get isImage =>
-      const {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic'}
-          .contains(extension);
+  bool get isImage => const {
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'bmp',
+    'heic',
+  }.contains(extension);
 
   /// "2.4MB" 처럼. 목록에 바이트 수를 그대로 뿌리면 읽히지 않는다.
   String get sizeLabel {
@@ -45,13 +51,13 @@ class Attachment {
   }
 
   factory Attachment.fromJson(Map<String, dynamic> j) => Attachment(
-        id: asString(j['id']),
-        entityType: asString(j['entity_type']),
-        entityId: asString(j['entity_id']),
-        originalName: asString(j['original_name']),
-        sizeBytes: asInt(j['size_bytes']),
-        contentType: j['content_type'] as String?,
-        uploadedById: j['uploaded_by_id'] as String?,
-        createdAt: asDate(j['created_at']),
-      );
+    id: asString(j['id']),
+    entityType: asString(j['entity_type']),
+    entityId: asString(j['entity_id']),
+    originalName: asString(j['original_name']),
+    sizeBytes: asInt(j['size_bytes']),
+    contentType: j['content_type'] as String?,
+    uploadedById: j['uploaded_by_id'] as String?,
+    createdAt: asDate(j['created_at']),
+  );
 }

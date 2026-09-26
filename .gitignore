@@ -36,3 +36,8 @@ backend/.venv-linux/
 
 # 구 서버 코드 사본 (회사 자료 엑셀 포함) - 커밋 금지
 dddeckservercode/
+
+# Android release signing secrets
+*.jks
+*.keystore
+**/key.properties

@@ -7,6 +7,7 @@ Two things live here that the other four modules all depend on:
 
 Plus the operator tooling: departments, audit log, health and system stats.
 """
+
 from __future__ import annotations
 
 import time
@@ -56,7 +57,15 @@ from app.schemas.admin import (
     TableStat,
 )
 from app.schemas.common import Message
-from app.services import asset_rules, audit, code_tree
+from app.services import (
+    asset_rules,
+    audit,
+    bootstrap,
+    code_tree,
+    operations,
+    settings_store,
+)
+from app.version import VERSION
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -88,7 +97,11 @@ def get_module_settings(
 
     return ModuleSettingsOut(
         module=module,
-        settings=[SettingOut.model_validate(r) for r in rows],
+        settings=[
+            SettingOut.model_validate(r)
+            for r in rows
+            if (r.module, r.key) in bootstrap.expected_setting_types()
+        ],
         code_groups=[_group_out(g) for g in groups],
     )
 
@@ -101,9 +114,25 @@ def save_module_settings(
     admin: AdminUser,
     client: Client,
 ) -> ModuleSettingsOut:
-    """What a 설정창 Save posts: the whole form at once, upserted by key."""
+    """What a 설정창 Save posts: the whole form at once, upserted by key.
+
+    값은 선언된 타입으로 검증·변환해 저장한다. 알려진 키는 기본 설정표의 타입이 기준이고
+    (화면이 보낸 value_type 이 달라도 표를 따른다), 모르는 키는 보낸 value_type 을 따른다.
+    """
+    expected = bootstrap.expected_setting_types()
     changes: dict[str, list] = {}
     for item in payload.settings:
+        if (module, item.key) not in expected:
+            raise AppError("UNKNOWN_SETTING", "지원하지 않는 설정입니다.", 400)
+        vtype = expected[(module, item.key)]
+        try:
+            value = settings_store.normalize(item.key, item.value, vtype)
+        except (TypeError, ValueError):
+            raise AppError(
+                "INVALID_SETTING_VALUE",
+                f"'{item.label or item.key}' 값이 형식({vtype})에 맞지 않습니다.",
+                details={"key": item.key, "value_type": vtype, "value": item.value},
+            ) from None
         row = db.scalar(
             select(ModuleSetting).where(
                 ModuleSetting.module == module, ModuleSetting.key == item.key
@@ -112,11 +141,11 @@ def save_module_settings(
         if row is None:
             row = ModuleSetting(module=module, key=item.key)
             db.add(row)
-            changes[item.key] = [None, item.value]
-        elif row.value != item.value:
-            changes[item.key] = [row.value, item.value]
-        row.value = item.value
-        row.value_type = item.value_type
+            changes[item.key] = [None, value]
+        elif row.value != value:
+            changes[item.key] = [row.value, value]
+        row.value = value
+        row.value_type = vtype
         row.label = item.label or row.label
         row.description = item.description or row.description
         row.is_public = item.is_public
@@ -161,12 +190,25 @@ def get_code_group(group_code: str, db: DbSession, _: CurrentUser) -> CodeGroupO
 
 @router.post("/codes", response_model=CodeGroupOut, status_code=status.HTTP_201_CREATED)
 def create_code_group(
-    payload: CodeGroupCreate, db: DbSession, _: AdminUser
+    payload: CodeGroupCreate, db: DbSession, admin: AdminUser, client: Client
 ) -> CodeGroupOut:
     if db.scalar(select(CodeGroup.id).where(CodeGroup.code == payload.code)):
-        raise AppError("CODE_TAKEN", "이미 사용 중인 분류 코드입니다.", status.HTTP_409_CONFLICT)
+        raise AppError(
+            "CODE_TAKEN", "이미 사용 중인 분류 코드입니다.", status.HTTP_409_CONFLICT
+        )
     group = CodeGroup(**payload.model_dump())
     db.add(group)
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="group",
+        entity_id=group.id,
+        summary="create_code_group",
+        client=client,
+    )
     db.commit()
     db.refresh(group)
     return _group_out(group)
@@ -174,18 +216,35 @@ def create_code_group(
 
 @router.patch("/codes/{group_id}", response_model=CodeGroupOut)
 def update_code_group(
-    group_id: uuid.UUID, payload: CodeGroupUpdate, db: DbSession, _: AdminUser
+    group_id: uuid.UUID,
+    payload: CodeGroupUpdate,
+    db: DbSession,
+    admin: AdminUser,
+    client: Client,
 ) -> CodeGroupOut:
     group = _load_group(db, group_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(group, field, value)
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="group",
+        entity_id=group.id,
+        summary="update_code_group",
+        client=client,
+    )
     db.commit()
     db.refresh(group)
     return _group_out(group)
 
 
 @router.delete("/codes/{group_id}", response_model=Message)
-def delete_code_group(group_id: uuid.UUID, db: DbSession, _: AdminUser) -> Message:
+def delete_code_group(
+    group_id: uuid.UUID, db: DbSession, admin: AdminUser, client: Client
+) -> Message:
     group = _load_group(db, group_id)
     if group.is_system:
         raise AppError(
@@ -193,15 +252,31 @@ def delete_code_group(group_id: uuid.UUID, db: DbSession, _: AdminUser) -> Messa
             "시스템 기본 분류는 삭제할 수 없습니다. 항목만 수정해 주세요.",
         )
     group.deleted_at = now_utc()
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="code_group",
+        entity_id=group.id,
+        summary="분류 그룹 삭제",
+        client=client,
+    )
     db.commit()
     return Message(message="삭제되었습니다.")
 
 
 @router.post(
-    "/codes/{group_id}/items", response_model=CodeItemOut, status_code=status.HTTP_201_CREATED
+    "/codes/{group_id}/items",
+    response_model=CodeItemOut,
+    status_code=status.HTTP_201_CREATED,
 )
 def create_code_item(
-    group_id: uuid.UUID, payload: CodeItemCreate, db: DbSession, _: AdminUser
+    group_id: uuid.UUID,
+    payload: CodeItemCreate,
+    db: DbSession,
+    admin: AdminUser,
+    client: Client,
 ) -> CodeItemOut:
     group = _load_group(db, group_id)
     existing = db.scalar(
@@ -210,18 +285,27 @@ def create_code_item(
         )
     )
     if existing is not None and existing.deleted_at is None:
-        raise AppError("CODE_TAKEN", "이미 사용 중인 항목 코드입니다.", status.HTTP_409_CONFLICT)
-    code_tree.resolve_parent(db, group, payload.parent_id)
+        raise AppError(
+            "CODE_TAKEN", "이미 사용 중인 항목 코드입니다.", status.HTTP_409_CONFLICT
+        )
+    parent_id = (
+        existing.parent_id
+        if existing is not None and "parent_id" not in payload.model_fields_set
+        else payload.parent_id
+    )
+    code_tree.resolve_parent(db, group, parent_id)
     if existing is not None:
         # 같은 코드는 같은 분류다: 삭제된 줄을 되살려 옛 기록의 연결도 돌아오게 한다.
         # 함께 지워진 하위 항목(같은 시각)도 같이 돌아온다.
         removed_at = existing.deleted_at
         for child in db.scalars(
-            select(CodeItem).where(CodeItem.parent_id == existing.id, CodeItem.deleted_at == removed_at)
+            select(CodeItem).where(
+                CodeItem.parent_id == existing.id, CodeItem.deleted_at == removed_at
+            )
         ).all():
             child.deleted_at = None
             child.is_active = True
-        for field, value in payload.model_dump().items():
+        for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(existing, field, value)
         existing.deleted_at = None
         existing.is_active = True
@@ -229,6 +313,17 @@ def create_code_item(
     else:
         item = CodeItem(group_id=group.id, **payload.model_dump())
         db.add(item)
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="item",
+        entity_id=item.id,
+        summary="create_code_item",
+        client=client,
+    )
     db.commit()
     db.refresh(item)
     return _item_out(item, group)
@@ -236,7 +331,11 @@ def create_code_item(
 
 @router.patch("/codes/items/{item_id}", response_model=CodeItemOut)
 def update_code_item(
-    item_id: uuid.UUID, payload: CodeItemUpdate, db: DbSession, _: AdminUser
+    item_id: uuid.UUID,
+    payload: CodeItemUpdate,
+    db: DbSession,
+    admin: AdminUser,
+    client: Client,
 ) -> CodeItemOut:
     item = _load_item(db, item_id)
     changes = payload.model_dump(exclude_unset=True)
@@ -244,6 +343,17 @@ def update_code_item(
         code_tree.resolve_parent(db, item.group, changes["parent_id"])
     for field, value in changes.items():
         setattr(item, field, value)
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="item",
+        entity_id=item.id,
+        summary="update_code_item",
+        client=client,
+    )
     db.commit()
     db.refresh(item)
     return _item_out(item, item.group)
@@ -279,7 +389,9 @@ def delete_code_item(
 
     usage = _item_usage(db, item.id)
     children = db.scalars(
-        select(CodeItem).where(CodeItem.parent_id == item.id, CodeItem.deleted_at.is_(None))
+        select(CodeItem).where(
+            CodeItem.parent_id == item.id, CodeItem.deleted_at.is_(None)
+        )
     ).all()
     stamp = now_utc()
     for row in (item, *children):
@@ -303,13 +415,19 @@ def delete_code_item(
     if children:
         message += f" 하위 항목 {len(children)}개도 함께 삭제했습니다."
     if used:
-        message += f" 이 항목을 쓰던 기존 기록 {used}건은 분류 이름을 그대로 보여 줍니다."
+        message += (
+            f" 이 항목을 쓰던 기존 기록 {used}건은 분류 이름을 그대로 보여 줍니다."
+        )
     return Message(message=message)
 
 
 @router.post("/codes/{group_id}/reorder", response_model=Message)
 def reorder_code_items(
-    group_id: uuid.UUID, payload: CodeItemReorder, db: DbSession, _: AdminUser
+    group_id: uuid.UUID,
+    payload: CodeItemReorder,
+    db: DbSession,
+    admin: AdminUser,
+    client: Client,
 ) -> Message:
     group = _load_group(db, group_id)
     items = {
@@ -319,6 +437,17 @@ def reorder_code_items(
     for order, item_id in enumerate(payload.item_ids, start=1):
         if item_id in items:
             items[item_id].sort_order = order
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="group",
+        entity_id=group.id,
+        summary="reorder_code_items",
+        client=client,
+    )
     db.commit()
     return Message(message="순서가 저장되었습니다.")
 
@@ -350,10 +479,21 @@ def list_departments(db: DbSession, _: CurrentUser) -> list[DepartmentOut]:
     "/departments", response_model=DepartmentOut, status_code=status.HTTP_201_CREATED
 )
 def create_department(
-    payload: DepartmentCreate, db: DbSession, _: AdminUser
+    payload: DepartmentCreate, db: DbSession, admin: AdminUser, client: Client
 ) -> DepartmentOut:
     dept = Department(**payload.model_dump())
     db.add(dept)
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="dept",
+        entity_id=dept.id,
+        summary="create_department",
+        client=client,
+    )
     db.commit()
     db.refresh(dept)
     return DepartmentOut.model_validate(dept)
@@ -361,7 +501,11 @@ def create_department(
 
 @router.patch("/departments/{department_id}", response_model=DepartmentOut)
 def update_department(
-    department_id: uuid.UUID, payload: DepartmentUpdate, db: DbSession, _: AdminUser
+    department_id: uuid.UUID,
+    payload: DepartmentUpdate,
+    db: DbSession,
+    admin: AdminUser,
+    client: Client,
 ) -> DepartmentOut:
     dept = db.scalar(
         select(Department).where(
@@ -369,12 +513,25 @@ def update_department(
         )
     )
     if dept is None:
-        raise AppError("NOT_FOUND", "부서를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "부서를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     data = payload.model_dump(exclude_unset=True)
     if data.get("parent_id") == dept.id:
         raise AppError("INVALID_PARENT", "자기 자신을 상위 부서로 지정할 수 없습니다.")
     for field, value in data.items():
         setattr(dept, field, value)
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="dept",
+        entity_id=dept.id,
+        summary="update_department",
+        client=client,
+    )
     db.commit()
     db.refresh(dept)
     return DepartmentOut.model_validate(dept)
@@ -382,19 +539,34 @@ def update_department(
 
 @router.delete("/departments/{department_id}", response_model=Message)
 def delete_department(
-    department_id: uuid.UUID, db: DbSession, _: AdminUser
+    department_id: uuid.UUID, db: DbSession, admin: AdminUser, client: Client
 ) -> Message:
     dept = db.scalar(select(Department).where(Department.id == department_id))
     if dept is None:
-        raise AppError("NOT_FOUND", "부서를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "부서를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     in_use = db.scalar(
         select(func.count(User.id)).where(
             User.department_id == department_id, User.deleted_at.is_(None)
         )
     )
     if in_use:
-        raise AppError("DEPARTMENT_IN_USE", f"소속 인원 {in_use}명이 있어 삭제할 수 없습니다.")
+        raise AppError(
+            "DEPARTMENT_IN_USE", f"소속 인원 {in_use}명이 있어 삭제할 수 없습니다."
+        )
     dept.deleted_at = now_utc()
+    db.flush()
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=admin,
+        module=ModuleKey.SYSTEM,
+        entity_type="dept",
+        entity_id=dept.id,
+        summary="delete_department",
+        client=client,
+    )
     db.commit()
     return Message(message="삭제되었습니다.")
 
@@ -441,13 +613,53 @@ def health(db: DbSession, _: CurrentUser) -> HealthOut:
         db_ok = False
     return HealthOut(
         status="ok" if db_ok else "degraded",
-        version="0.1.0",
+        version=VERSION,
         environment=env.ENVIRONMENT,
         database=engine.dialect.name,
         database_ok=db_ok,
         uptime_seconds=round(time.monotonic() - STARTED_AT, 1),
         server_time=now_utc(),
+        **(operations.health_details(db) if db_ok else {}),
     )
+
+
+@router.get("/backup")
+def backup_status(_: AdminUser):
+    return operations.backup_status()
+
+
+@router.post("/backup", status_code=202)
+def request_backup(db: DbSession, user: AdminUser, client: Client):
+    import json
+
+    if not env.SCHEDULER_ENABLED:
+        raise AppError(
+            "SCHEDULER_DISABLED", "백업 작업 실행기가 비활성화되어 있습니다.", 503
+        )
+    folder = operations.backup_root() / "backups"
+    folder.mkdir(parents=True, exist_ok=True)
+    if (folder / ".backup.lock").exists() or (folder / "request.running").exists():
+        raise AppError("BACKUP_RUNNING", "백업이 이미 실행 중입니다.", 409)
+    try:
+        with (folder / "request.json").open("x") as stream:
+            json.dump(
+                {"requested_at": now_utc().isoformat(), "user_id": str(user.id)}, stream
+            )
+    except FileExistsError:
+        raise AppError("BACKUP_REQUESTED", "이미 백업을 요청했습니다.", 409) from None
+    audit.record(
+        db,
+        action=AuditAction.CREATE,
+        actor=user,
+        module=ModuleKey.SYSTEM,
+        entity_type="backup",
+        summary="수동 백업 요청",
+        client=client,
+    )
+    db.commit()
+    return {
+        "message": "백업을 요청했습니다. 서버 상태 화면을 새로고침해 결과를 확인하세요."
+    }
 
 
 @router.get("/stats", response_model=SystemStats)
@@ -463,34 +675,48 @@ def system_stats(db: DbSession, _: AdminUser) -> SystemStats:
     return SystemStats(
         users_total=db.scalar(select(func.count(User.id)).where(live_user)) or 0,
         users_pending=db.scalar(
-            select(func.count(User.id)).where(live_user, User.status == UserStatus.PENDING)
-        ) or 0,
+            select(func.count(User.id)).where(
+                live_user, User.status == UserStatus.PENDING
+            )
+        )
+        or 0,
         users_active=db.scalar(
-            select(func.count(User.id)).where(live_user, User.status == UserStatus.APPROVED)
-        ) or 0,
+            select(func.count(User.id)).where(
+                live_user, User.status == UserStatus.APPROVED
+            )
+        )
+        or 0,
         tickets_total=db.scalar(
-            select(func.count(ServiceTicket.id)).where(ServiceTicket.deleted_at.is_(None))
-        ) or 0,
+            select(func.count(ServiceTicket.id)).where(
+                ServiceTicket.deleted_at.is_(None)
+            )
+        )
+        or 0,
         tickets_open=db.scalar(
             select(func.count(ServiceTicket.id)).where(
                 ServiceTicket.deleted_at.is_(None),
                 ServiceTicket.status.in_(OPEN_SERVICE_STATUSES),
             )
-        ) or 0,
+        )
+        or 0,
         assets_total=db.scalar(
             select(func.count(Asset.id)).where(Asset.deleted_at.is_(None))
-        ) or 0,
+        )
+        or 0,
         posts_total=db.scalar(
             select(func.count(Post.id)).where(Post.deleted_at.is_(None))
-        ) or 0,
+        )
+        or 0,
         events_upcoming=db.scalar(
             select(func.count(Event.id)).where(
                 Event.deleted_at.is_(None), Event.starts_at >= now_utc()
             )
-        ) or 0,
+        )
+        or 0,
         notifications_unsent=db.scalar(
             select(func.count(Notification.id)).where(Notification.is_read.is_(False))
-        ) or 0,
+        )
+        or 0,
         storage_bytes=storage_bytes,
         tables=_table_stats(db),
     )
@@ -500,7 +726,7 @@ def _table_stats(db: Session) -> list[TableStat]:
     out: list[TableStat] = []
     for name in sorted(inspect(engine).get_table_names()):
         try:
-            n = db.scalar(text(f"SELECT COUNT(*) FROM {name}"))  # noqa: S608
+            n = db.scalar(text(f"SELECT COUNT(*) FROM {name}"))
         except Exception:  # noqa: BLE001
             n = -1
         out.append(TableStat(table=name, rows=int(n or 0)))
@@ -510,10 +736,14 @@ def _table_stats(db: Session) -> list[TableStat]:
 # ================================================================== helpers
 def _load_group(db: Session, group_id: uuid.UUID) -> CodeGroup:
     group = db.scalar(
-        select(CodeGroup).where(CodeGroup.id == group_id, CodeGroup.deleted_at.is_(None))
+        select(CodeGroup).where(
+            CodeGroup.id == group_id, CodeGroup.deleted_at.is_(None)
+        )
     )
     if group is None:
-        raise AppError("NOT_FOUND", "분류 그룹을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "분류 그룹을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return group
 
 
@@ -524,7 +754,9 @@ def _load_group_by_code(db: Session, code: str) -> CodeGroup:
         .options(selectinload(CodeGroup.items))
     )
     if group is None:
-        raise AppError("NOT_FOUND", "분류 그룹을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "분류 그룹을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return group
 
 
@@ -552,7 +784,9 @@ def _load_item(db: Session, item_id: uuid.UUID) -> CodeItem:
         .options(selectinload(CodeItem.group))
     )
     if item is None:
-        raise AppError("NOT_FOUND", "항목을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "항목을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return item
 
 
@@ -591,12 +825,19 @@ def _item_usage(db: Session, item_id: uuid.UUID) -> dict[str, int]:
         if table.name == CodeItem.__tablename__:
             continue  # 하위 항목은 따로 센다
         cols = [
-            c for c in table.columns
-            if any(fk.column.table.name == CodeItem.__tablename__ for fk in c.foreign_keys)
+            c
+            for c in table.columns
+            if any(
+                fk.column.table.name == CodeItem.__tablename__ for fk in c.foreign_keys
+            )
         ]
         if not cols:
             continue
-        stmt = select(func.count()).select_from(table).where(or_(*[c == item_id for c in cols]))
+        stmt = (
+            select(func.count())
+            .select_from(table)
+            .where(or_(*[c == item_id for c in cols]))
+        )
         if "deleted_at" in table.c:
             stmt = stmt.where(table.c.deleted_at.is_(None))
         n = int(db.scalar(stmt) or 0)
@@ -608,9 +849,51 @@ def _item_usage(db: Session, item_id: uuid.UUID) -> dict[str, int]:
 def _child_count(db: Session, item_id: uuid.UUID) -> int:
     return int(
         db.scalar(
-            select(func.count()).select_from(CodeItem).where(
-                CodeItem.parent_id == item_id, CodeItem.deleted_at.is_(None)
-            )
+            select(func.count())
+            .select_from(CodeItem)
+            .where(CodeItem.parent_id == item_id, CodeItem.deleted_at.is_(None))
         )
         or 0
     )
+
+
+@router.delete("/history/{kind}/{identifier}", response_model=Message)
+def hide_history(
+    kind: str, identifier: uuid.UUID, db: DbSession, user: AdminUser, client: Client
+):
+    """Local-console cleanup: retain source rows for stock/rental integrity and audit."""
+    from ipaddress import ip_address
+
+    from app.models.inventory import AssetMovement
+
+    try:
+        local = ip_address(client.ip or "").is_loopback
+    except ValueError:
+        local = False
+    if not local:
+        raise AppError(
+            "LOCAL_ADMIN_REQUIRED",
+            "이력 정리는 서버 PC의 localhost로 접속한 관리자만 가능합니다.",
+            403,
+        )
+    model = {"audit": AuditLog, "movement": AssetMovement}.get(kind)
+    if model is None:
+        raise AppError("HISTORY_NOT_FOUND", "이력을 찾을 수 없습니다.", 404)
+    row = db.get(model, identifier)
+    if row is None or row.hidden_at is not None:
+        raise AppError("HISTORY_NOT_FOUND", "이력을 찾을 수 없습니다.", 404)
+    if kind == "audit" and row.entity_type != "service_ticket":
+        raise AppError("HISTORY_PROTECTED", "대응 수정 이력만 정리할 수 있습니다.", 403)
+    row.hidden_at = now_utc()
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=user,
+        module=ModuleKey.SYSTEM,
+        entity_type="history_cleanup",
+        entity_id=identifier,
+        summary=f"로컬 관리자 이력 목록 정리 ({kind}); 원본 보존",
+        client=client,
+    )
+    db.commit()
+    return Message(message="이력 목록에서 제거했습니다. 원본과 재고 참조는 보존됩니다.")

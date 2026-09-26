@@ -14,7 +14,8 @@ class InventoryRepository {
         .toList();
   }
 
-  Future<void> deleteLocation(String id) => _api.delete('/inventory/locations/$id');
+  Future<void> deleteLocation(String id) =>
+      _api.delete('/inventory/locations/$id');
 
   Future<List<StorageLocation>> locations() async {
     final res = await _api.get('/inventory/locations');
@@ -29,12 +30,15 @@ class InventoryRepository {
     required LocationType type,
     String? parentId,
   }) async {
-    final res = await _api.post('/inventory/locations', body: {
-      'code': code,
-      'name': name,
-      'type': type.value,
-      if (parentId != null) 'parent_id': parentId,
-    });
+    final res = await _api.post(
+      '/inventory/locations',
+      body: {
+        'code': code,
+        'name': name,
+        'type': type.value,
+        if (parentId != null) 'parent_id': parentId,
+      },
+    );
     return StorageLocation.fromJson(asMap(res));
   }
 
@@ -53,22 +57,25 @@ class InventoryRepository {
     bool includeSublocations = true,
     bool belowMinOnly = false,
   }) async {
-    final res = await _api.get('/inventory/assets', query: {
-      'page': page,
-      'size': size,
-      'q': query,
-      'status': status?.value,
-      'category_id': categoryId,
-      'location_id': locationId,
-      'store_id': storeId,
-      'brand_id': brandId,
-      'status_item_id': statusItemId,
-      'at_store': atStore,
-      'sort': sort,
-      // Only send when it changes the default, to keep the URL readable.
-      'include_sublocations': includeSublocations ? null : false,
-      'below_min_only': belowMinOnly ? true : null,
-    });
+    final res = await _api.get(
+      '/inventory/assets',
+      query: {
+        'page': page,
+        'size': size,
+        'q': query,
+        'status': status?.value,
+        'category_id': categoryId,
+        'location_id': locationId,
+        'store_id': storeId,
+        'brand_id': brandId,
+        'status_item_id': statusItemId,
+        'at_store': atStore,
+        'sort': sort,
+        // Only send when it changes the default, to keep the URL readable.
+        'include_sublocations': includeSublocations ? null : false,
+        'below_min_only': belowMinOnly ? true : null,
+      },
+    );
     return PagedList.fromJson(res, Asset.fromJson);
   }
 
@@ -96,23 +103,26 @@ class InventoryRepository {
     double? purchasePrice,
     String? note,
   }) async {
-    final res = await _api.post('/inventory/assets', body: {
-      'name': name,
-      'category_id': categoryId,
-      'location_id': locationId,
-      'store_id': storeId,
-      'status_item_id': statusItemId,
-      'set_no': setNo == 0 ? null : setNo,
-      'status': status?.value,
-      'manufacturer': manufacturer,
-      'model_name': modelName,
-      'serial_no': serialNo,
-      'quantity': quantity,
-      'unit': unit,
-      'min_quantity': minQuantity,
-      'purchase_price': purchasePrice,
-      'note': note,
-    }..removeWhere((_, v) => v == null));
+    final res = await _api.post(
+      '/inventory/assets',
+      body: {
+        'name': name,
+        'category_id': categoryId,
+        'location_id': locationId,
+        'store_id': storeId,
+        'status_item_id': statusItemId,
+        'set_no': setNo == 0 ? null : setNo,
+        'status': status?.value,
+        'manufacturer': manufacturer,
+        'model_name': modelName,
+        'serial_no': serialNo,
+        'quantity': quantity,
+        'unit': unit,
+        'min_quantity': minQuantity,
+        'purchase_price': purchasePrice,
+        'note': note,
+      }..removeWhere((_, v) => v == null),
+    );
     return Asset.fromJson(asMap(res));
   }
 
@@ -138,25 +148,33 @@ class InventoryRepository {
     double? quantity,
     String? reason,
   }) async {
-    final res = await _api.post('/inventory/assets/$id/move', body: {
-      'movement_type': type.value,
-      if (toLocationId != null) 'to_location_id': toLocationId,
-      if (toHolderId != null) 'to_holder_id': toHolderId,
-      if (toStoreId != null) 'to_store_id': toStoreId,
-      if (toStatusItemId != null) 'to_status_item_id': toStatusItemId,
-      if (toSetNo != null) 'to_set_no': toSetNo,
-      if (toStatus != null) 'to_status': toStatus.value,
-      if (clearStore) 'clear_store': true,
-      if (quantity != null) 'quantity': quantity,
-      if (reason?.isNotEmpty == true) 'reason': reason,
-    });
+    final res = await _api.post(
+      '/inventory/assets/$id/move',
+      body: {
+        'movement_type': type.value,
+        if (toLocationId != null) 'to_location_id': toLocationId,
+        if (toHolderId != null) 'to_holder_id': toHolderId,
+        if (toStoreId != null) 'to_store_id': toStoreId,
+        if (toStatusItemId != null) 'to_status_item_id': toStatusItemId,
+        if (toSetNo != null) 'to_set_no': toSetNo,
+        if (toStatus != null) 'to_status': toStatus.value,
+        if (clearStore) 'clear_store': true,
+        if (quantity != null) 'quantity': quantity,
+        if (reason?.isNotEmpty == true) 'reason': reason,
+      },
+    );
     return Asset.fromJson(asMap(res));
   }
 
-  Future<PagedList<AssetMovement>> movements(String id,
-      {int page = 1, int size = 30}) async {
-    final res = await _api.get('/inventory/assets/$id/movements',
-        query: {'page': page, 'size': size});
+  Future<PagedList<AssetMovement>> movements(
+    String id, {
+    int page = 1,
+    int size = 30,
+  }) async {
+    final res = await _api.get(
+      '/inventory/assets/$id/movements',
+      query: {'page': page, 'size': size},
+    );
     return PagedList.fromJson(res, AssetMovement.fromJson);
   }
 
@@ -165,31 +183,97 @@ class InventoryRepository {
   Future<InventorySummary> summary() async =>
       InventorySummary.fromJson(asMap(await _api.get('/inventory/summary')));
 
-  Future<InventoryOverview> overview() async =>
-      InventoryOverview.fromJson(asMap(await _api.get('/inventory/overview')));
+  Future<InventoryOverview>? _overview;
+  DateTime? _overviewAt;
+  void invalidateOverview() {
+    _overview = null;
+    _overviewAt = null;
+  }
+
+  Future<InventoryOverview> overview() {
+    if (_overview != null &&
+        DateTime.now().difference(_overviewAt!) < const Duration(seconds: 2)) {
+      return _overview!;
+    }
+    _overviewAt = DateTime.now();
+    return _overview = _loadOverview();
+  }
+
+  Future<InventoryOverview> _loadOverview() async {
+    try {
+      return InventoryOverview.fromJson(
+        asMap(await _api.get('/inventory/overview')),
+      );
+    } catch (_) {
+      invalidateOverview();
+      rethrow;
+    }
+  }
 
   Future<BulkCreateResult> createBulk({
-    required List<String> serialNos, String? categoryId, String? modelName,
-    String? manufacturer, String? statusItemId, String? locationId,
-    String? storeId, int setNo = 0, DateTime? purchaseDate, String? note,
-  }) async => BulkCreateResult.fromJson(asMap(await _api.post('/inventory/assets/bulk', body: {
-    'serial_nos': serialNos, 'category_id': categoryId, 'model_name': modelName,
-    'manufacturer': manufacturer, 'status_item_id': statusItemId,
-    'location_id': locationId, 'store_id': storeId, 'set_no': setNo,
-    'purchase_date': ServiceRepository.dateOnly(purchaseDate), 'note': note,
-  })));
+    required List<String> serialNos,
+    String? categoryId,
+    String? modelName,
+    String? manufacturer,
+    String? statusItemId,
+    String? locationId,
+    String? storeId,
+    int setNo = 0,
+    DateTime? purchaseDate,
+    String? note,
+  }) async => BulkCreateResult.fromJson(
+    asMap(
+      await _api.post(
+        '/inventory/assets/bulk',
+        body: {
+          'serial_nos': serialNos,
+          'category_id': categoryId,
+          'model_name': modelName,
+          'manufacturer': manufacturer,
+          'status_item_id': statusItemId,
+          'location_id': locationId,
+          'store_id': storeId,
+          'set_no': setNo,
+          'purchase_date': ServiceRepository.dateOnly(purchaseDate),
+          'note': note,
+        },
+      ),
+    ),
+  );
 
   Future<BulkMoveResult> bulkMove({
-    required List<String> assetIds, String? toStoreId, String? toLocationId,
-    String? toStatusItemId, int? toSetNo, bool clearStore = false, String? reason,
-  }) async => BulkMoveResult.fromJson(asMap(await _api.post('/inventory/assets/bulk-move', body: {
-    'asset_ids': assetIds, 'to_store_id': toStoreId, 'to_location_id': toLocationId,
-    'to_status_item_id': toStatusItemId, 'to_set_no': toSetNo,
-    'clear_store': clearStore, 'reason': reason,
-  })));
+    required List<String> assetIds,
+    String? toStoreId,
+    String? toLocationId,
+    String? toStatusItemId,
+    int? toSetNo,
+    bool clearStore = false,
+    String? reason,
+  }) async => BulkMoveResult.fromJson(
+    asMap(
+      await _api.post(
+        '/inventory/assets/bulk-move',
+        body: {
+          'asset_ids': assetIds,
+          'to_store_id': toStoreId,
+          'to_location_id': toLocationId,
+          'to_status_item_id': toStatusItemId,
+          'to_set_no': toSetNo,
+          'clear_store': clearStore,
+          'reason': reason,
+        },
+      ),
+    ),
+  );
 
   Future<List<int>> exportXlsx({Map<String, dynamic> filters = const {}}) =>
-      _api.getBytes(Uri(path: '/inventory/assets/export.xlsx', queryParameters: {
-        for (final e in filters.entries) if (e.value != null) e.key: e.value.toString(),
-      }).toString());
+      _api.getBytes(
+        Uri(
+          path: '/inventory/assets/export.xlsx',
+          queryParameters: {
+            for (final e in filters.entries)
+              if (e.value != null) e.key: e.value.toString(),
+          },
+        ).toString(),
+      );
 }

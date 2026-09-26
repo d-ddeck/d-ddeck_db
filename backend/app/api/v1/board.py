@@ -1,15 +1,17 @@
 """게시판 module: board setup (the settings screen), posts and comments."""
+
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import AdminUser, Client, CurrentUser, DbSession, PageParams
 from app.core.errors import AppError
 from app.core.security import now_utc
+from app.models.admin import Attachment
 from app.models.board import Board, Post, PostComment
 from app.models.enums import (
     ROLE_LEVEL,
@@ -40,11 +42,18 @@ router = APIRouter(prefix="/board", tags=["board"])
 
 # ================================================================== boards
 @router.get("/boards", response_model=list[BoardOut])
-def list_boards(db: DbSession, user: CurrentUser) -> list[BoardOut]:
+def list_boards(
+    db: DbSession, user: CurrentUser, include_inactive: bool = False
+) -> list[BoardOut]:
     """Only the boards this user may read, so the nav never shows a dead tab."""
     rows = db.scalars(
         select(Board)
-        .where(Board.deleted_at.is_(None), Board.is_active.is_(True))
+        .where(
+            Board.deleted_at.is_(None),
+            True
+            if include_inactive and ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.ADMIN]
+            else Board.is_active.is_(True),
+        )
         .order_by(Board.sort_order, Board.name)
     ).all()
     return [
@@ -59,7 +68,9 @@ def create_board(
     payload: BoardCreate, db: DbSession, admin: AdminUser, client: Client
 ) -> BoardOut:
     if db.scalar(select(Board.id).where(Board.code == payload.code)):
-        raise AppError("CODE_TAKEN", "이미 사용 중인 게시판 코드입니다.", status.HTTP_409_CONFLICT)
+        raise AppError(
+            "CODE_TAKEN", "이미 사용 중인 게시판 코드입니다.", status.HTTP_409_CONFLICT
+        )
     board = Board(**payload.model_dump())
     db.add(board)
     audit.record(
@@ -111,6 +122,13 @@ def delete_board(board_id: uuid.UUID, db: DbSession, admin: AdminUser) -> Messag
     board = _load_board(db, board_id)
     board.deleted_at = now_utc()
     board.is_active = False
+    from app.services.attachment_lifecycle import soft_delete
+
+    for post in db.scalars(
+        select(Post).where(Post.board_id == board.id, Post.deleted_at.is_(None))
+    ):
+        post.deleted_at = now_utc()
+        soft_delete(db, "post", post.id)
     db.commit()
     return Message(message="게시판이 삭제되었습니다.")
 
@@ -119,6 +137,7 @@ def delete_board(board_id: uuid.UUID, db: DbSession, admin: AdminUser) -> Messag
 @router.get("/boards/{board_id}/posts", response_model=Page[PostListItem])
 def list_posts(
     board_id: uuid.UUID,
+    request: Request,
     db: DbSession,
     user: CurrentUser,
     page: PageParams,
@@ -132,9 +151,19 @@ def list_posts(
         Post.deleted_at.is_(None),
         Post.status == PostStatus.PUBLISHED,
     )
+    manager = ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.MANAGER]
+    if "size" not in request.query_params:
+        from app.core.deps import Pagination
+
+        page = Pagination(page.page, board.page_size)
+    if not manager:
+        stmt = stmt.where(or_(Post.is_secret.is_(False), Post.author_id == user.id))
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(Post.title.ilike(like), Post.content.ilike(like)))
+        if not manager:
+            # 남의 비밀글은 검색 대상이 아니다 - 검색어로 제목·본문을 유추할 수 있다.
+            stmt = stmt.where(or_(Post.is_secret.is_(False), Post.author_id == user.id))
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
@@ -142,13 +171,43 @@ def list_posts(
         .offset(page.offset)
         .limit(page.size)
     ).all()
-    return Page.build(
-        [PostListItem.model_validate(r) for r in rows], total, page.page, page.size
+    counts = dict(
+        db.execute(
+            select(Attachment.entity_id, func.count())
+            .where(
+                Attachment.entity_type == "post",
+                Attachment.entity_id.in_([r.id for r in rows]),
+                Attachment.deleted_at.is_(None),
+            )
+            .group_by(Attachment.entity_id)
+        ).all()
     )
+    authors = {
+        u.id: u
+        for u in db.scalars(
+            select(User).where(User.id.in_([r.author_id for r in rows if r.author_id]))
+        ).all()
+    }
+    items: list[PostListItem] = []
+    for r in rows:
+        item = PostListItem.model_validate(r)
+        item.attachment_count = counts.get(r.id, 0)
+        item.author = (
+            UserBrief.model_validate(authors[r.author_id])
+            if r.author_id in authors
+            else None
+        )
+        if r.is_secret and not (manager or r.author_id == user.id):
+            item.title = "비밀글입니다"
+            item.attachment_count = 0
+        items.append(item)
+    return Page.build(items, total, page.page, page.size)
 
 
 @router.post(
-    "/boards/{board_id}/posts", response_model=PostDetail, status_code=status.HTTP_201_CREATED
+    "/boards/{board_id}/posts",
+    response_model=PostDetail,
+    status_code=status.HTTP_201_CREATED,
 )
 def create_post(
     board_id: uuid.UUID,
@@ -162,10 +221,15 @@ def create_post(
     if payload.is_secret and not board.allow_secret:
         raise AppError("SECRET_NOT_ALLOWED", "이 게시판은 비밀글을 허용하지 않습니다.")
     if payload.is_pinned and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
-        raise AppError("FORBIDDEN", "상단 고정 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "상단 고정 권한이 없습니다.", status.HTTP_403_FORBIDDEN
+        )
 
     post = Post(
-        board_id=board.id, author_id=user.id, created_by_id=user.id, **payload.model_dump()
+        board_id=board.id,
+        author_id=user.id,
+        created_by_id=user.id,
+        **payload.model_dump(),
     )
     db.add(post)
     db.flush()
@@ -197,6 +261,7 @@ def get_post(post_id: uuid.UUID, db: DbSession, user: CurrentUser) -> PostDetail
     post = _load_post(db, post_id)
     board = _load_board(db, post.board_id)
     _require_read(board, user)
+    _require_visible_status(post, user)
     _require_secret_access(post, user)
 
     # Views are counted per read; the author reading their own post does not count.
@@ -214,7 +279,9 @@ def update_post(
     _require_owner_or_manager(post, user)
     data = payload.model_dump(exclude_unset=True)
     if data.get("is_pinned") and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
-        raise AppError("FORBIDDEN", "상단 고정 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "상단 고정 권한이 없습니다.", status.HTTP_403_FORBIDDEN
+        )
     for field, value in data.items():
         setattr(post, field, value)
     post.updated_by_id = user.id
@@ -229,6 +296,9 @@ def delete_post(
     post = _load_post(db, post_id)
     _require_owner_or_manager(post, user)
     post.deleted_at = now_utc()
+    from app.services.attachment_lifecycle import soft_delete
+
+    soft_delete(db, "post", post.id)
     audit.record(
         db,
         action=AuditAction.DELETE,
@@ -253,6 +323,8 @@ def add_comment(
     if not board.allow_comment:
         raise AppError("COMMENT_NOT_ALLOWED", "이 게시판은 댓글을 허용하지 않습니다.")
     _require_read(board, user)
+    _require_visible_status(post, user)
+    _require_secret_access(post, user)
 
     comment = PostComment(post_id=post.id, author_id=user.id, **payload.model_dump())
     db.add(comment)
@@ -284,8 +356,13 @@ def update_comment(
         )
     )
     if comment is None:
-        raise AppError("NOT_FOUND", "댓글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
-    if comment.author_id != user.id and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
+        raise AppError(
+            "NOT_FOUND", "댓글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
+    if (
+        comment.author_id != user.id
+        and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]
+    ):
         raise AppError("FORBIDDEN", "수정 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
     comment.content = payload.content
     db.commit()
@@ -301,8 +378,13 @@ def delete_comment(comment_id: uuid.UUID, db: DbSession, user: CurrentUser) -> M
         )
     )
     if comment is None:
-        raise AppError("NOT_FOUND", "댓글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
-    if comment.author_id != user.id and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
+        raise AppError(
+            "NOT_FOUND", "댓글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
+    if (
+        comment.author_id != user.id
+        and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]
+    ):
         raise AppError("FORBIDDEN", "삭제 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
     comment.deleted_at = now_utc()
     post = db.get(Post, comment.post_id)
@@ -314,32 +396,55 @@ def delete_comment(comment_id: uuid.UUID, db: DbSession, user: CurrentUser) -> M
 
 # ================================================================== helpers
 def _load_board(db: Session, board_id: uuid.UUID) -> Board:
-    board = db.scalar(select(Board).where(Board.id == board_id, Board.deleted_at.is_(None)))
+    board = db.scalar(
+        select(Board).where(Board.id == board_id, Board.deleted_at.is_(None))
+    )
     if board is None:
-        raise AppError("NOT_FOUND", "게시판을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "게시판을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return board
 
 
 def _load_post(db: Session, post_id: uuid.UUID) -> Post:
     post = db.scalar(select(Post).where(Post.id == post_id, Post.deleted_at.is_(None)))
     if post is None:
-        raise AppError("NOT_FOUND", "게시글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "게시글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return post
 
 
 def _require_read(board: Board, user: User) -> None:
     if ROLE_LEVEL[user.role] < ROLE_LEVEL[board.read_role]:
-        raise AppError("FORBIDDEN", "이 게시판을 볼 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "이 게시판을 볼 권한이 없습니다.", status.HTTP_403_FORBIDDEN
+        )
 
 
 def _require_write(board: Board, user: User) -> None:
     if ROLE_LEVEL[user.role] < ROLE_LEVEL[board.write_role]:
-        raise AppError("FORBIDDEN", "이 게시판에 글을 쓸 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN",
+            "이 게시판에 글을 쓸 권한이 없습니다.",
+            status.HTTP_403_FORBIDDEN,
+        )
 
 
 def _require_owner_or_manager(post: Post, user: User) -> None:
     if post.author_id != user.id and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
-        raise AppError("FORBIDDEN", "본인 글만 수정/삭제할 수 있습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "본인 글만 수정/삭제할 수 있습니다.", status.HTTP_403_FORBIDDEN
+        )
+
+
+def _require_visible_status(post: Post, user: User) -> None:
+    """임시(DRAFT)·숨김(HIDDEN) 글은 작성자와 MANAGER 이상만. 남에게는 없는 글처럼 404."""
+    if post.status == PostStatus.PUBLISHED:
+        return
+    if post.author_id == user.id or ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.MANAGER]:
+        return
+    raise AppError("NOT_FOUND", "게시글을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
 
 
 def _require_secret_access(post: Post, user: User) -> None:

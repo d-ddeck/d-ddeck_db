@@ -17,6 +17,7 @@ import 'data/worklog_repository.dart';
 import 'services/alarm_service.dart';
 import 'services/vpn_service.dart';
 import 'state/auth_state.dart';
+import 'state/theme_state.dart';
 import 'ui/alarm_ring_page.dart';
 import 'ui/auth/login_page.dart';
 import 'ui/auth/signup_page.dart';
@@ -29,6 +30,8 @@ Future<void> main() async {
   // Read the site default the installer wrote next to the executable, before
   // anything asks AppConfig for a server address.
   await AppConfig.loadSiteConfig();
+  final themeState = ThemeState();
+  await themeState.load();
 
   // Composition root. Everything is plain constructor injection so a screen's
   // dependencies are visible in one place rather than behind a service locator.
@@ -46,6 +49,7 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider<ThemeState>.value(value: themeState),
         Provider<ApiClient>.value(value: api),
         Provider<AuthRepository>.value(value: authRepo),
         Provider<ServiceRepository>(create: (_) => ServiceRepository(api)),
@@ -75,34 +79,63 @@ Future<void> main() async {
   );
 }
 
-class DdeckApp extends StatelessWidget {
+class DdeckApp extends StatefulWidget {
   const DdeckApp({super.key});
+  @override
+  State<DdeckApp> createState() => _DdeckAppState();
+}
+
+class _DdeckAppState extends State<DdeckApp> {
+  final _navigator = GlobalKey<NavigatorState>();
+  AuthPhase? _previous;
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: AppConfig.appName,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      supportedLocales: const [Locale('ko', 'KR'), Locale('en')],
-      home: const _RootRouter(),
-      builder: (context, child) => ValueListenableBuilder(
-        valueListenable: context.read<AlarmService>().active,
-        builder: (context, alarm, _) => Stack(
-          fit: StackFit.expand,
-          children: [
-            if (child != null) child,
-            if (alarm != null)
-              Navigator(
-                key: ValueKey('ring-${alarm.id}'),
-                onGenerateRoute: (_) => MaterialPageRoute<void>(
-                  builder: (_) => AlarmRingPage(alarm: alarm),
+    final phase = context.select<AuthState, AuthPhase>((s) => s.phase);
+    if (_previous != phase &&
+        (phase == AuthPhase.loggedOut ||
+            phase == AuthPhase.mustChangePassword)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _navigator.currentState?.popUntil((route) => route.isFirst);
+        }
+      });
+    }
+    _previous = phase;
+    return LayoutBuilder(
+      builder: (context, constraints) => MaterialApp(
+        navigatorKey: _navigator,
+        title: AppConfig.appName,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(
+          compact:
+              context.watch<ThemeState>().compact &&
+              constraints.maxWidth >= 900,
+        ),
+        darkTheme: AppTheme.dark(
+          compact:
+              context.watch<ThemeState>().compact &&
+              constraints.maxWidth >= 900,
+        ),
+        themeMode: context.watch<ThemeState>().mode,
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('ko', 'KR'), Locale('en')],
+        home: const _RootRouter(),
+        builder: (context, child) => ValueListenableBuilder(
+          valueListenable: context.read<AlarmService>().active,
+          builder: (context, alarm, _) => Stack(
+            fit: StackFit.expand,
+            children: [
+              if (child != null) child,
+              if (alarm != null)
+                Navigator(
+                  key: ValueKey('ring-${alarm.id}'),
+                  onGenerateRoute: (_) => MaterialPageRoute<void>(
+                    builder: (_) => AlarmRingPage(alarm: alarm),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

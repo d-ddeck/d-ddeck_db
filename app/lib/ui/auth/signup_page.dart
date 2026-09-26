@@ -58,17 +58,19 @@ class _SignupPageState extends State<SignupPage> {
     });
     try {
       final message = await context.read<AuthState>().signup(
-            email: _email.text,
-            password: _password.text,
-            fullName: _name.text,
-            employeeNo: _employeeNo.text,
-            phone: _phone.text,
-            position: _position.text,
-            signupNote: _note.text,
-          );
+        email: _email.text,
+        password: _password.text,
+        fullName: _name.text,
+        employeeNo: _employeeNo.text,
+        phone: _phone.text,
+        position: _position.text,
+        signupNote: _note.text,
+      );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => SignupSubmittedPage(message: message)),
+        MaterialPageRoute(
+          builder: (_) => SignupSubmittedPage(message: message),
+        ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -98,145 +100,161 @@ class _SignupPageState extends State<SignupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('회원가입 신청')),
-      body: PageBody(child: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.zero,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SectionCard(title: '가입 정보', child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '신청 후 관리자 승인이 완료되어야 로그인할 수 있습니다.',
-                            style: Theme.of(context).textTheme.bodySmall,
+      body: PageBody(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.zero,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SectionCard(
+                title: '가입 정보',
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '신청 후 관리자 승인이 완료되어야 로그인할 수 있습니다.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const FormGap(),
+
+                      _field(
+                        controller: _email,
+                        label: '이메일 *',
+                        icon: Icons.mail_outline,
+                        keyboard: TextInputType.emailAddress,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return '이메일을 입력해 주세요.';
+                          }
+                          if (!RegExp(
+                            r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$',
+                          ).hasMatch(v.trim())) {
+                            return '이메일 형식이 올바르지 않습니다.';
+                          }
+                          return _serverFieldErrors['email'];
+                        },
+                      ),
+                      _field(
+                        controller: _name,
+                        label: '이름 *',
+                        icon: Icons.badge_outlined,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? '이름을 입력해 주세요.'
+                            : _serverFieldErrors['full_name'],
+                      ),
+                      TextFormField(
+                        controller: _password,
+                        decoration: InputDecoration(
+                          labelText: '비밀번호 *',
+                          helperText: '8자 이상, 영문과 숫자를 포함해야 합니다.',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  const FormGap(),
-
-                  _field(
-                    controller: _email,
-                    label: '이메일 *',
-                    icon: Icons.mail_outline,
-                    keyboard: TextInputType.emailAddress,
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return '이메일을 입력해 주세요.';
-                      }
-                      if (!RegExp(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$')
-                          .hasMatch(v.trim())) {
-                        return '이메일 형식이 올바르지 않습니다.';
-                      }
-                      return _serverFieldErrors['email'];
-                    },
-                  ),
-                  _field(
-                    controller: _name,
-                    label: '이름 *',
-                    icon: Icons.badge_outlined,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? '이름을 입력해 주세요.'
-                        : _serverFieldErrors['full_name'],
-                  ),
-                  TextFormField(
-                    controller: _password,
-                    decoration: InputDecoration(
-                      labelText: '비밀번호 *',
-                      helperText: '8자 이상, 영문과 숫자를 포함해야 합니다.',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscure
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined),
-                        onPressed: () => setState(() => _obscure = !_obscure),
+                        obscureText: _obscure,
+                        validator: _validatePassword,
                       ),
-                    ),
-                    obscureText: _obscure,
-                    validator: _validatePassword,
-                  ),
-                  const FormGap(),
-                  TextFormField(
-                    controller: _confirm,
-                    decoration: const InputDecoration(
-                      labelText: '비밀번호 확인 *',
-                      prefixIcon: Icon(Icons.lock_reset_outlined),
-                    ),
-                    obscureText: _obscure,
-                    validator: (v) =>
-                        v != _password.text ? '비밀번호가 일치하지 않습니다.' : null,
-                  ),
-                  const FormGap(),
+                      const FormGap(),
+                      TextFormField(
+                        controller: _confirm,
+                        decoration: const InputDecoration(
+                          labelText: '비밀번호 확인 *',
+                          prefixIcon: Icon(Icons.lock_reset_outlined),
+                        ),
+                        obscureText: _obscure,
+                        validator: (v) =>
+                            v != _password.text ? '비밀번호가 일치하지 않습니다.' : null,
+                      ),
+                      const FormGap(),
 
-                  _field(
-                    controller: _employeeNo,
-                    label: '사번',
-                    icon: Icons.tag,
-                    validator: (_) => _serverFieldErrors['employee_no'],
-                  ),
-                  _field(
-                    controller: _phone,
-                    label: '연락처',
-                    icon: Icons.phone_outlined,
-                    keyboard: TextInputType.phone,
-                  ),
-                  _field(
-                    controller: _position,
-                    label: '직급',
-                    icon: Icons.work_outline,
-                  ),
-                  TextFormField(
-                    controller: _note,
-                    decoration: const InputDecoration(
-                      labelText: '신청 사유 / 메모',
-                      helperText: '관리자가 승인 화면에서 확인합니다.',
-                      alignLabelWithHint: true,
-                    ),
-                    maxLines: 3,
-                  ),
+                      _field(
+                        controller: _employeeNo,
+                        label: '사번',
+                        icon: Icons.tag,
+                        validator: (_) => _serverFieldErrors['employee_no'],
+                      ),
+                      _field(
+                        controller: _phone,
+                        label: '연락처',
+                        icon: Icons.phone_outlined,
+                        keyboard: TextInputType.phone,
+                      ),
+                      _field(
+                        controller: _position,
+                        label: '직급',
+                        icon: Icons.work_outline,
+                      ),
+                      TextFormField(
+                        controller: _note,
+                        decoration: const InputDecoration(
+                          labelText: '신청 사유 / 메모',
+                          helperText: '관리자가 승인 화면에서 확인합니다.',
+                          alignLabelWithHint: true,
+                        ),
+                        maxLines: 3,
+                      ),
 
-                  if (_error != null) ...[
-                    const FormGap(),
-                    ErrorBanner(message: _error!),
-                  ],
+                      if (_error != null) ...[
+                        const FormGap(),
+                        ErrorBanner(message: _error!),
+                      ],
 
-                  const FormGap(),
-                  FormActions(child: FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('가입 신청'),
-                  )),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed:
-                        _busy ? null : () => Navigator.of(context).pop(),
-                    child: const Text('이미 계정이 있습니다'),
+                      const FormGap(),
+                      FormActions(
+                        child: FilledButton(
+                          onPressed: _busy ? null : _submit,
+                          child: _busy
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('가입 신청'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('이미 계정이 있습니다'),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            )),
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 
@@ -252,10 +270,7 @@ class _SignupPageState extends State<SignupPage> {
       child: TextFormField(
         controller: controller,
         keyboardType: keyboard,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-        ),
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
         validator: validator,
       ),
     );
@@ -314,117 +329,131 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         title: const Text('비밀번호 변경'),
         automaticallyImplyLeading: !widget.forced,
       ),
-      body: PageBody(child: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.zero,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SectionCard(title: '비밀번호 변경', child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (widget.forced)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.tertiaryContainer,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '초기 비밀번호를 사용 중입니다. 계속하려면 비밀번호를 변경해 주세요.',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+      body: PageBody(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.zero,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SectionCard(
+                title: '비밀번호 변경',
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (widget.forced)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ],
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '초기 비밀번호를 사용 중입니다. 계속하려면 비밀번호를 변경해 주세요.',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const FormGap(),
+                      TextFormField(
+                        controller: _current,
+                        decoration: const InputDecoration(
+                          labelText: '현재 비밀번호',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        obscureText: true,
+                        validator: (v) => (v == null || v.isEmpty)
+                            ? '현재 비밀번호를 입력해 주세요.'
+                            : null,
                       ),
-                    ),
-                  const FormGap(),
-                  TextFormField(
-                    controller: _current,
-                    decoration: const InputDecoration(
-                      labelText: '현재 비밀번호',
-                      prefixIcon: Icon(Icons.lock_outline),
-                    ),
-                    obscureText: true,
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? '현재 비밀번호를 입력해 주세요.' : null,
-                  ),
-                  const FormGap(),
-                  TextFormField(
-                    controller: _next,
-                    decoration: const InputDecoration(
-                      labelText: '새 비밀번호',
-                      helperText: '8자 이상, 영문과 숫자를 포함해야 합니다.',
-                      prefixIcon: Icon(Icons.lock_reset_outlined),
-                    ),
-                    obscureText: true,
-                    validator: (v) {
-                      if (v == null || v.length < 8) return '8자 이상이어야 합니다.';
-                      if (!v.contains(RegExp(r'[A-Za-z]'))) {
-                        return '영문을 1자 이상 포함해야 합니다.';
-                      }
-                      if (!v.contains(RegExp(r'[0-9]'))) {
-                        return '숫자를 1자 이상 포함해야 합니다.';
-                      }
-                      if (v == _current.text) return '이전과 다른 비밀번호를 사용해 주세요.';
-                      return null;
-                    },
-                  ),
-                  const FormGap(),
-                  TextFormField(
-                    controller: _confirm,
-                    decoration: const InputDecoration(
-                      labelText: '새 비밀번호 확인',
-                      prefixIcon: Icon(Icons.check_circle_outline),
-                    ),
-                    obscureText: true,
-                    validator: (v) =>
-                        v != _next.text ? '비밀번호가 일치하지 않습니다.' : null,
-                  ),
-                  if (_error != null) ...[
-                    const FormGap(),
-                    ErrorBanner(message: _error!),
-                  ],
-                  const FormGap(),
-                  FormActions(child: FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('변경하기'),
-                  )),
-                  if (widget.forced) ...[
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => context.read<AuthState>().logout(),
-                      child: const Text('로그아웃'),
-                    ),
-                  ],
-                  const FormGap(),
-                  Text(
-                    '변경 후 모든 기기에서 로그아웃되며, 새 비밀번호로 다시 로그인해야 합니다.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      const FormGap(),
+                      TextFormField(
+                        controller: _next,
+                        decoration: const InputDecoration(
+                          labelText: '새 비밀번호',
+                          helperText: '8자 이상, 영문과 숫자를 포함해야 합니다.',
+                          prefixIcon: Icon(Icons.lock_reset_outlined),
+                        ),
+                        obscureText: true,
+                        validator: (v) {
+                          if (v == null || v.length < 8) return '8자 이상이어야 합니다.';
+                          if (!v.contains(RegExp(r'[A-Za-z]'))) {
+                            return '영문을 1자 이상 포함해야 합니다.';
+                          }
+                          if (!v.contains(RegExp(r'[0-9]'))) {
+                            return '숫자를 1자 이상 포함해야 합니다.';
+                          }
+                          if (v == _current.text) {
+                            return '이전과 다른 비밀번호를 사용해 주세요.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const FormGap(),
+                      TextFormField(
+                        controller: _confirm,
+                        decoration: const InputDecoration(
+                          labelText: '새 비밀번호 확인',
+                          prefixIcon: Icon(Icons.check_circle_outline),
+                        ),
+                        obscureText: true,
+                        validator: (v) =>
+                            v != _next.text ? '비밀번호가 일치하지 않습니다.' : null,
+                      ),
+                      if (_error != null) ...[
+                        const FormGap(),
+                        ErrorBanner(message: _error!),
+                      ],
+                      const FormGap(),
+                      FormActions(
+                        child: FilledButton(
+                          onPressed: _busy ? null : _submit,
+                          child: _busy
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('변경하기'),
+                        ),
+                      ),
+                      if (widget.forced) ...[
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => context.read<AuthState>().logout(),
+                          child: const Text('로그아웃'),
+                        ),
+                      ],
+                      const FormGap(),
+                      Text(
+                        '변경 후 모든 기기에서 로그아웃되며, 새 비밀번호로 다시 로그인해야 합니다.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            )),
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 }

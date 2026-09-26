@@ -3,19 +3,21 @@
 Signup never grants access; it creates a PENDING row and pings the admins.
 An account only becomes usable once an admin approves it.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import timedelta
 
 import jwt
-from fastapi import APIRouter, status
-from sqlalchemy import select
+from fastapi import APIRouter, Request, status
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings as env
 from app.core.deps import Client, CurrentUser, DbSession
 from app.core.errors import AppError
+from app.core.rate_limit import auth_limit
 from app.core.security import (
     create_token,
     hash_password,
@@ -48,15 +50,19 @@ from app.schemas.common import Message
 from app.services import audit, notifications, settings_store
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_DUMMY_HASH = hash_password("dummy-password-not-an-account")
 
 
 # ------------------------------------------------------------------ signup
 @router.post("/signup", response_model=Message, status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, db: DbSession, client: Client) -> Message:
     email = payload.email.lower().strip()
+    auth_limit(client.ip, email, "signup", 5)
 
     if db.scalar(select(User.id).where(User.email == email)):
-        raise AppError("EMAIL_TAKEN", "이미 등록된 이메일입니다.", status.HTTP_409_CONFLICT)
+        raise AppError(
+            "EMAIL_TAKEN", "이미 등록된 이메일입니다.", status.HTTP_409_CONFLICT
+        )
 
     allowed = settings_store.get(db, ModuleKey.AUTH, "allowed_email_domains", []) or []
     if allowed and email.rsplit("@", 1)[-1] not in allowed:
@@ -69,10 +75,14 @@ def signup(payload: SignupRequest, db: DbSession, client: Client) -> Message:
     if payload.employee_no and db.scalar(
         select(User.id).where(User.employee_no == payload.employee_no)
     ):
-        raise AppError("EMPNO_TAKEN", "이미 등록된 사번입니다.", status.HTTP_409_CONFLICT)
+        raise AppError(
+            "EMPNO_TAKEN", "이미 등록된 사번입니다.", status.HTTP_409_CONFLICT
+        )
 
     # If approval is switched off in the 관리 설정, the account is usable at once.
-    needs_approval = settings_store.get(db, ModuleKey.AUTH, "require_admin_approval", True)
+    needs_approval = settings_store.get(
+        db, ModuleKey.AUTH, "require_admin_approval", True
+    )
 
     user = User(
         email=email,
@@ -152,6 +162,7 @@ def _find_login_user(db: Session, identifier: str) -> User | None:
 @router.post("/login", response_model=TokenPair)
 def login(payload: LoginRequest, db: DbSession, client: Client) -> TokenPair:
     email = payload.email.lower().strip()
+    auth_limit(client.ip, email, "login", 20)
     user = _find_login_user(db, email)
 
     # Same error for unknown email and wrong password: do not leak who has an account.
@@ -161,6 +172,7 @@ def login(payload: LoginRequest, db: DbSession, client: Client) -> TokenPair:
         status.HTTP_401_UNAUTHORIZED,
     )
     if user is None:
+        verify_password(payload.password, _DUMMY_HASH)
         audit.record(
             db,
             action=AuditAction.LOGIN_FAILED,
@@ -172,14 +184,6 @@ def login(payload: LoginRequest, db: DbSession, client: Client) -> TokenPair:
         raise bad_credentials
 
     now = now_utc()
-    if user.locked_until and user.locked_until > now:
-        remaining = int((user.locked_until - now).total_seconds() // 60) + 1
-        raise AppError(
-            "ACCOUNT_LOCKED",
-            f"로그인 시도 횟수를 초과했습니다. {remaining}분 후 다시 시도해 주세요.",
-            status.HTTP_423_LOCKED,
-        )
-
     if not verify_password(payload.password, user.password_hash):
         max_fail = settings_store.get(db, ModuleKey.AUTH, "max_failed_logins", 5)
         lock_minutes = settings_store.get(db, ModuleKey.AUTH, "lockout_minutes", 15)
@@ -199,6 +203,25 @@ def login(payload: LoginRequest, db: DbSession, client: Client) -> TokenPair:
         )
         db.commit()
         raise bad_credentials
+
+    if user.locked_until and user.locked_until > now:
+        audit.record(
+            db,
+            action=AuditAction.LOGIN_FAILED,
+            actor=user,
+            module=ModuleKey.AUTH,
+            entity_type="user",
+            entity_id=user.id,
+            summary="잠긴 계정 로그인 시도",
+            client=client,
+        )
+        db.commit()
+        remaining = int((user.locked_until - now).total_seconds() // 60) + 1
+        raise AppError(
+            "ACCOUNT_LOCKED",
+            f"로그인 시도 횟수를 초과했습니다. {remaining}분 후 다시 시도해 주세요.",
+            status.HTTP_423_LOCKED,
+        )
 
     if not user.can_login:
         raise AppError(
@@ -233,15 +256,23 @@ def login(payload: LoginRequest, db: DbSession, client: Client) -> TokenPair:
 
 
 def _issue_tokens(
-    db: Session, user: User, client, device_name: str | None = None
+    db: Session,
+    user: User,
+    client,
+    device_name: str | None = None,
+    session_id: uuid.UUID | None = None,
 ) -> TokenPair:
+    session_id = session_id or uuid.uuid4()
     access, access_exp = create_token(
-        user.id, "access", {"role": user.role.value, "email": user.email}
+        user.id,
+        "access",
+        {"role": user.role.value, "email": user.email, "sid": str(session_id)},
     )
     refresh, refresh_exp = create_token(user.id, "refresh")
     db.add(
         RefreshToken(
             user_id=user.id,
+            session_id=session_id,
             token_hash=hash_refresh_token(refresh),
             expires_at=refresh_exp,
             user_agent=(device_name or client.user_agent or "")[:255] or None,
@@ -259,7 +290,10 @@ def _issue_tokens(
 
 # ------------------------------------------------------------------ refresh
 @router.post("/refresh", response_model=AccessToken)
-def refresh_token(payload: RefreshRequest, db: DbSession) -> AccessToken:
+def refresh_token(
+    payload: RefreshRequest, db: DbSession, client: Client
+) -> AccessToken:
+    auth_limit(client.ip, hash_refresh_token(payload.refresh_token), "refresh", 60)
     try:
         claims = jwt.decode(
             payload.refresh_token, env.SECRET_KEY, algorithms=[env.ALGORITHM]
@@ -279,7 +313,22 @@ def refresh_token(payload: RefreshRequest, db: DbSession) -> AccessToken:
             RefreshToken.token_hash == hash_refresh_token(payload.refresh_token)
         )
     )
-    if row is None or row.revoked_at is not None or row.expires_at <= now_utc():
+    if row is not None and row.revoked_at is not None:
+        _revoke_sessions(db, row.user_id)
+        audit.record(
+            db,
+            action=AuditAction.LOGIN_FAILED,
+            module=ModuleKey.AUTH,
+            entity_type="user",
+            entity_id=row.user_id,
+            summary="리프레시 토큰 재사용 감지: 전체 세션 회수",
+            client=client,
+        )
+        db.commit()
+        raise AppError(
+            "SESSION_EXPIRED", "세션이 만료되었습니다. 다시 로그인해 주세요.", 401
+        )
+    if row is None or row.expires_at <= now_utc():
         raise AppError(
             "SESSION_EXPIRED",
             "세션이 만료되었습니다. 다시 로그인해 주세요.",
@@ -289,25 +338,75 @@ def refresh_token(payload: RefreshRequest, db: DbSession) -> AccessToken:
     user = db.get(User, row.user_id)
     if user is None or not user.can_login:
         raise AppError(
-            "ACCOUNT_NOT_ACTIVE", "사용할 수 없는 계정입니다.", status.HTTP_403_FORBIDDEN
+            "ACCOUNT_NOT_ACTIVE",
+            "사용할 수 없는 계정입니다.",
+            status.HTTP_403_FORBIDDEN,
         )
 
-    access, access_exp = create_token(
-        user.id, "access", {"role": user.role.value, "email": user.email}
+    if user.locked_until and user.locked_until > now_utc():
+        raise AppError(
+            "ACCOUNT_LOCKED", "계정이 잠겨 있습니다. 잠시 후 다시 시도해 주세요.", 423
+        )
+    claimed = db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.id == row.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now_utc())
+    ).rowcount
+    if claimed != 1:
+        _revoke_sessions(db, user.id)
+        db.commit()
+        raise AppError("SESSION_EXPIRED", "토큰 재사용으로 세션이 종료되었습니다.", 401)
+    pair = _issue_tokens(
+        db, user, client, device_name=row.user_agent, session_id=row.session_id
     )
-    return AccessToken(access_token=access, expires_at=access_exp)
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=user,
+        module=ModuleKey.AUTH,
+        entity_type="session",
+        entity_id=row.session_id,
+        summary="세션 토큰 갱신",
+        client=client,
+    )
+    db.commit()
+    return AccessToken(
+        access_token=pair.access_token,
+        refresh_token=pair.refresh_token,
+        expires_at=pair.expires_at,
+    )
+
+
+def _revoke_sessions(db, user_id, session_id=None):
+    query = update(RefreshToken).where(
+        RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None)
+    )
+    devices = update(Device).where(Device.user_id == user_id)
+    if session_id is not None:
+        query = query.where(RefreshToken.session_id == session_id)
+        devices = devices.where(Device.session_id == session_id)
+    db.execute(query.values(revoked_at=now_utc()))
+    db.execute(devices.values(is_active=False))
 
 
 @router.post("/logout", response_model=Message)
-def logout(payload: RefreshRequest, db: DbSession, user: CurrentUser, client: Client) -> Message:
+def logout(
+    payload: RefreshRequest, db: DbSession, user: CurrentUser, client: Client
+) -> Message:
     row = db.scalar(
         select(RefreshToken).where(
             RefreshToken.token_hash == hash_refresh_token(payload.refresh_token),
             RefreshToken.user_id == user.id,
         )
     )
-    if row and row.revoked_at is None:
-        row.revoked_at = now_utc()
+    if row:
+        _revoke_sessions(db, user.id, row.session_id)
+    if payload.push_token:
+        db.execute(
+            update(Device)
+            .where(Device.user_id == user.id, Device.push_token == payload.push_token)
+            .values(is_active=False)
+        )
     audit.record(
         db,
         action=AuditAction.LOGOUT,
@@ -328,9 +427,21 @@ def me(user: CurrentUser) -> UserProfile:
 
 
 @router.patch("/me", response_model=UserProfile)
-def update_me(payload: UserUpdateSelf, db: DbSession, user: CurrentUser) -> UserProfile:
+def update_me(
+    payload: UserUpdateSelf, db: DbSession, user: CurrentUser, client: Client
+) -> UserProfile:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=user,
+        module=ModuleKey.AUTH,
+        entity_type="user",
+        entity_id=user.id,
+        summary="내 정보 수정",
+        client=client,
+    )
     db.commit()
     db.refresh(user)
     return UserProfile.model_validate(user)
@@ -348,13 +459,7 @@ def change_password(
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
 
-    # Every other session dies with the old password.
-    for row in db.scalars(
-        select(RefreshToken).where(
-            RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
-        )
-    ).all():
-        row.revoked_at = now_utc()
+    _revoke_sessions(db, user.id)
 
     audit.record(
         db,
@@ -375,23 +480,40 @@ def change_password(
 def my_sessions(db: DbSession, user: CurrentUser) -> list[SessionOut]:
     rows = db.scalars(
         select(RefreshToken)
-        .where(RefreshToken.user_id == user.id)
+        .where(
+            RefreshToken.user_id == user.id,
+            RefreshToken.revoked_at.is_(None),
+            RefreshToken.expires_at > now_utc(),
+        )
         .order_by(RefreshToken.created_at.desc())
-        .limit(50)
     ).all()
-    return [SessionOut.model_validate(r) for r in rows]
+    return [SessionOut.model_validate(row) for row in rows]
 
 
 @router.delete("/sessions/{session_id}", response_model=Message)
-def revoke_session(session_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Message:
+def revoke_session(
+    session_id: uuid.UUID, db: DbSession, user: CurrentUser, client: Client
+) -> Message:
     row = db.scalar(
         select(RefreshToken).where(
             RefreshToken.id == session_id, RefreshToken.user_id == user.id
         )
     )
     if row is None:
-        raise AppError("NOT_FOUND", "세션을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
-    row.revoked_at = row.revoked_at or now_utc()
+        raise AppError(
+            "NOT_FOUND", "세션을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
+    _revoke_sessions(db, user.id, row.session_id)
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=user,
+        module=ModuleKey.AUTH,
+        entity_type="session",
+        entity_id=row.session_id,
+        summary="세션 해제",
+        client=client,
+    )
     db.commit()
     return Message(message="세션이 해제되었습니다.")
 
@@ -399,7 +521,11 @@ def revoke_session(session_id: uuid.UUID, db: DbSession, user: CurrentUser) -> M
 # ------------------------------------------------------------------ devices
 @router.post("/devices", response_model=DeviceOut)
 def register_device(
-    payload: DeviceRegister, db: DbSession, user: CurrentUser
+    payload: DeviceRegister,
+    db: DbSession,
+    user: CurrentUser,
+    request: Request,
+    client: Client,
 ) -> DeviceOut:
     """Upsert by push token so reinstalling the app does not pile up rows."""
     device = db.scalar(
@@ -415,6 +541,16 @@ def register_device(
     device.app_version = payload.app_version
     device.last_seen_at = now_utc()
     device.is_active = True
+    device.session_id = request.state.session_id
+    audit.record(
+        db,
+        action=AuditAction.UPDATE,
+        actor=user,
+        module=ModuleKey.AUTH,
+        entity_type="device",
+        summary="기기 등록",
+        client=client,
+    )
     db.commit()
     db.refresh(device)
     return DeviceOut.model_validate(device)
@@ -423,18 +559,34 @@ def register_device(
 @router.get("/devices", response_model=list[DeviceOut])
 def my_devices(db: DbSession, user: CurrentUser) -> list[DeviceOut]:
     rows = db.scalars(
-        select(Device).where(Device.user_id == user.id).order_by(Device.created_at.desc())
+        select(Device)
+        .where(Device.user_id == user.id)
+        .order_by(Device.created_at.desc())
     ).all()
     return [DeviceOut.model_validate(r) for r in rows]
 
 
 @router.delete("/devices/{device_id}", response_model=Message)
-def remove_device(device_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Message:
+def remove_device(
+    device_id: uuid.UUID, db: DbSession, user: CurrentUser, client: Client
+) -> Message:
     device = db.scalar(
         select(Device).where(Device.id == device_id, Device.user_id == user.id)
     )
     if device is None:
-        raise AppError("NOT_FOUND", "기기를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "기기를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
+    audit.record(
+        db,
+        action=AuditAction.DELETE,
+        actor=user,
+        module=ModuleKey.AUTH,
+        entity_type="device",
+        entity_id=device.id,
+        summary="기기 등록 해제",
+        client=client,
+    )
     db.delete(device)
     db.commit()
     return Message(message="기기 등록이 해제되었습니다.")

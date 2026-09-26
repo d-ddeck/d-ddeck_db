@@ -23,12 +23,17 @@ class CalendarRepository {
     required String name,
     CalendarType type = CalendarType.personal,
     String color = '#3B82F6',
+    String? departmentId,
   }) async {
-    final res = await _api.post('/calendar/calendars', body: {
-      'name': name,
-      'type': type.value,
-      'color': color,
-    });
+    final res = await _api.post(
+      '/calendar/calendars',
+      body: {
+        'name': name,
+        'type': type.value,
+        'color': color,
+        if (departmentId != null) 'department_id': departmentId,
+      },
+    );
     return AppCalendar.fromJson(asMap(res));
   }
 
@@ -39,13 +44,20 @@ class CalendarRepository {
     required DateTime to,
     String? calendarId,
     bool mineOnly = false,
+    String? categoryId,
+    String? participantId,
   }) async {
-    final res = await _api.get('/calendar/events', query: {
-      'date_from': from,
-      'date_to': to,
-      'calendar_id': calendarId,
-      'mine_only': mineOnly ? true : null,
-    });
+    final res = await _api.get(
+      '/calendar/events',
+      query: {
+        'date_from': from,
+        'date_to': to,
+        'calendar_id': calendarId,
+        'mine_only': mineOnly ? true : null,
+        'category_id': categoryId,
+        'participant_id': participantId,
+      },
+    );
     return (res as List? ?? [])
         .map((e) => CalendarEvent.fromJson(asMap(e)))
         .toList();
@@ -69,32 +81,42 @@ class CalendarRepository {
     bool allDay = false,
     bool isPrivate = false,
     List<String> participantIds = const [],
+    String? rrule,
+    DateTime? recurrenceEnd,
     int? reminderMinutes,
     List<Map<String, dynamic>>? reminders,
   }) async {
-    final res = await _api.post('/calendar/events', body: {
-      'calendar_id': calendarId,
-      'title': title,
-      'starts_at': startsAt.toUtc().toIso8601String(),
-      'ends_at': endsAt.toUtc().toIso8601String(),
-      if (description?.isNotEmpty == true) 'description': description,
-      if (location?.isNotEmpty == true) 'location': location,
-      if (categoryId != null) 'category_id': categoryId,
-      if (color?.trim().isNotEmpty == true) 'color': color!.trim(),
-      'all_day': allDay,
-      'is_private': isPrivate,
-      'participant_ids': participantIds,
-      if (reminders != null) 'reminders': reminders
-      else if (reminderMinutes != null)
-        'reminders': [
-          {'offset_minutes': reminderMinutes, 'method': 'PUSH'}
-        ],
-    });
+    final res = await _api.post(
+      '/calendar/events',
+      body: {
+        'calendar_id': calendarId,
+        'title': title,
+        'starts_at': startsAt.toUtc().toIso8601String(),
+        'ends_at': endsAt.toUtc().toIso8601String(),
+        if (description?.isNotEmpty == true) 'description': description,
+        if (location?.isNotEmpty == true) 'location': location,
+        if (categoryId != null) 'category_id': categoryId,
+        if (color?.trim().isNotEmpty == true) 'color': color!.trim(),
+        'rrule': rrule,
+        'recurrence_end': recurrenceEnd?.toUtc().toIso8601String(),
+        'all_day': allDay,
+        'is_private': isPrivate,
+        'participant_ids': participantIds,
+        if (reminders != null)
+          'reminders': reminders
+        else if (reminderMinutes != null)
+          'reminders': [
+            {'offset_minutes': reminderMinutes, 'method': 'PUSH'},
+          ],
+      },
+    );
     return CalendarEvent.fromJson(asMap(res));
   }
 
   Future<CalendarEvent> updateEvent(
-      String id, Map<String, dynamic> changes) async {
+    String id,
+    Map<String, dynamic> changes,
+  ) async {
     final res = await _api.patch('/calendar/events/$id', body: changes);
     return CalendarEvent.fromJson(asMap(res));
   }
@@ -102,8 +124,10 @@ class CalendarRepository {
   Future<void> deleteEvent(String id) => _api.delete('/calendar/events/$id');
 
   Future<void> respond(String eventId, ParticipantResponse response) =>
-      _api.post('/calendar/events/$eventId/respond',
-          body: {'response': response.value});
+      _api.post(
+        '/calendar/events/$eventId/respond',
+        body: {'response': response.value},
+      );
 
   /// 기기에 걸어둘 알람 목록. 한 번의 요청으로 알림 구성에 필요한 정보를
   /// 모두 받아, 이후에는 네트워크 없이도 울릴 수 있게 한다.
@@ -123,11 +147,14 @@ class CalendarRepository {
     int size = 30,
     bool unreadOnly = false,
   }) async {
-    final res = await _api.get('/calendar/notifications', query: {
-      'page': page,
-      'size': size,
-      'unread_only': unreadOnly ? true : null,
-    });
+    final res = await _api.get(
+      '/calendar/notifications',
+      query: {
+        'page': page,
+        'size': size,
+        'unread_only': unreadOnly ? true : null,
+      },
+    );
     return PagedList.fromJson(res, AppNotification.fromJson);
   }
 

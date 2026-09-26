@@ -4,6 +4,7 @@ Classification is deliberately split into four CodeItem FKs
 (category / symptom / cause / action) because that is exactly the breakdown the
 auto-statistics screen groups by.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -23,11 +24,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import (
-    UTCDateTime,
     AuthorMixin,
     Base,
     SoftDeleteMixin,
     TimestampMixin,
+    UTCDateTime,
     UUIDMixin,
     enum_type,
 )
@@ -50,7 +51,9 @@ class Customer(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
 class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     __tablename__ = "service_tickets"
 
-    ticket_no: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    ticket_no: Mapped[str] = mapped_column(
+        String(40), unique=True, index=True, nullable=False
+    )
     # 구 서버(CS_Record)의 기록 번호. Migrated tickets keep their old number as
     # ticket_no as well - the team refers to 건 by that number - and this column
     # marks which rows came across so a re-run can find them again.
@@ -61,7 +64,9 @@ class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Bas
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("customers.id", ondelete="SET NULL"), index=True
     )
-    customer_name: Mapped[str | None] = mapped_column(String(150))  # walk-in, no master row
+    customer_name: Mapped[str | None] = mapped_column(
+        String(150)
+    )  # walk-in, no master row
     contact_phone: Mapped[str | None] = mapped_column(String(50))
     site_address: Mapped[str | None] = mapped_column(String(300))
     # 매장 - the site the equipment is installed at. Distinct from customer_id:
@@ -99,10 +104,16 @@ class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Bas
 
     # --- workflow ---
     status: Mapped[ServiceStatus] = mapped_column(
-        enum_type(ServiceStatus), default=ServiceStatus.RECEIVED, nullable=False, index=True
+        enum_type(ServiceStatus),
+        default=ServiceStatus.RECEIVED,
+        nullable=False,
+        index=True,
     )
     priority: Mapped[ServicePriority] = mapped_column(
-        enum_type(ServicePriority), default=ServicePriority.NORMAL, nullable=False, index=True
+        enum_type(ServicePriority),
+        default=ServicePriority.NORMAL,
+        nullable=False,
+        index=True,
     )
     channel: Mapped[ServiceChannel] = mapped_column(
         enum_type(ServiceChannel), default=ServiceChannel.PHONE, nullable=False
@@ -119,13 +130,13 @@ class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Bas
         UTCDateTime, nullable=False, index=True
     )
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        UTCDateTime, index=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
     due_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     # --- cost ---
-    is_warranty: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    is_warranty: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, index=True
+    )
     work_minutes: Mapped[int | None] = mapped_column(Integer)
     labor_cost: Mapped[float | None] = mapped_column(Numeric(14, 2))
     parts_cost: Mapped[float | None] = mapped_column(Numeric(14, 2))
@@ -134,33 +145,39 @@ class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Bas
     # --- 렌탈: equipment lent to the site while theirs is being repaired ---
     # The old server drove 재고 status from these fields (렌탈 중 <-> 창고). That
     # automation is not wired up yet; these hold the record so it can be.
-    is_rental: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    is_rental: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
     rental_type_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("code_items.id", ondelete="SET NULL")
     )
     rental_serials: Mapped[str | None] = mapped_column(String(300))  # 쉼표 구분 S/N
-    rental_due_date: Mapped[date | None] = mapped_column(Date)       # 회수 예정일
-    rental_returned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    rental_return_date: Mapped[date | None] = mapped_column(Date)    # 실제 회수일
+    rental_due_date: Mapped[date | None] = mapped_column(Date)  # 회수 예정일
+    rental_returned: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    rental_return_date: Mapped[date | None] = mapped_column(Date)  # 실제 회수일
 
     # --- content ---
-    description: Mapped[str | None] = mapped_column(Text)   # 접수 내용
-    result_note: Mapped[str | None] = mapped_column(Text)   # 처리 결과
+    description: Mapped[str | None] = mapped_column(Text)  # 접수 내용
+    result_note: Mapped[str | None] = mapped_column(Text)  # 처리 결과
     satisfaction: Mapped[int | None] = mapped_column(Integer)  # 1-5
 
-    customer: Mapped["Customer | None"] = relationship()
-    parts: Mapped[list["ServicePart"]] = relationship(
+    customer: Mapped[Customer | None] = relationship()
+    parts: Mapped[list[ServicePart]] = relationship(
         back_populates="ticket", cascade="all, delete-orphan"
     )
-    logs: Mapped[list["ServiceLog"]] = relationship(
-        back_populates="ticket", cascade="all, delete-orphan", order_by="ServiceLog.created_at"
+    logs: Mapped[list[ServiceLog]] = relationship(
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="ServiceLog.created_at",
     )
-    causes: Mapped[list["ServiceTicketCause"]] = relationship(
+    causes: Mapped[list[ServiceTicketCause]] = relationship(
         back_populates="ticket",
         cascade="all, delete-orphan",
         order_by="ServiceTicketCause.seq",
     )
-    responders: Mapped[list["ServiceTicketResponder"]] = relationship(
+    responders: Mapped[list[ServiceTicketResponder]] = relationship(
         back_populates="ticket",
         cascade="all, delete-orphan",
         order_by="ServiceTicketResponder.seq",
@@ -183,7 +200,10 @@ class ServicePart(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "service_parts"
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("service_tickets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("service_tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     asset_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("assets.id", ondelete="SET NULL")
@@ -193,7 +213,11 @@ class ServicePart(UUIDMixin, TimestampMixin, Base):
     unit_price: Mapped[float | None] = mapped_column(Numeric(14, 2))
     note: Mapped[str | None] = mapped_column(Text)
 
-    ticket: Mapped["ServiceTicket"] = relationship(back_populates="parts")
+    stock_deducted: Mapped[float] = mapped_column(
+        Numeric(12, 3), default=0, server_default="0", nullable=False
+    )
+
+    ticket: Mapped[ServiceTicket] = relationship(back_populates="parts")
 
 
 class ServiceLog(UUIDMixin, TimestampMixin, Base):
@@ -202,7 +226,10 @@ class ServiceLog(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "service_logs"
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("service_tickets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("service_tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL")
@@ -212,7 +239,8 @@ class ServiceLog(UUIDMixin, TimestampMixin, Base):
     content: Mapped[str | None] = mapped_column(Text)
     work_minutes: Mapped[int | None] = mapped_column(Integer)
 
-    ticket: Mapped["ServiceTicket"] = relationship(back_populates="logs")
+    ticket: Mapped[ServiceTicket] = relationship(back_populates="logs")
+
 
 class ServiceTicketCause(UUIDMixin, TimestampMixin, Base):
     """분류 하나. A ticket has one row per 서비스구분 it was filed under.
@@ -232,7 +260,10 @@ class ServiceTicketCause(UUIDMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("ticket_id", "seq", name="uq_ticket_cause_seq"),)
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("service_tickets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("service_tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -252,7 +283,7 @@ class ServiceTicketCause(UUIDMixin, TimestampMixin, Base):
         Uuid, ForeignKey("code_items.id", ondelete="SET NULL"), index=True
     )
 
-    ticket: Mapped["ServiceTicket"] = relationship(back_populates="causes")
+    ticket: Mapped[ServiceTicket] = relationship(back_populates="causes")
 
 
 class ServiceTicketResponder(UUIDMixin, TimestampMixin, Base):
@@ -267,14 +298,19 @@ class ServiceTicketResponder(UUIDMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "service_ticket_responders"
-    __table_args__ = (UniqueConstraint("ticket_id", "seq", name="uq_ticket_responder_seq"),)
+    __table_args__ = (
+        UniqueConstraint("ticket_id", "seq", name="uq_ticket_responder_seq"),
+    )
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("service_tickets.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("service_tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     responder_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("code_items.id", ondelete="SET NULL"), index=True
     )
 
-    ticket: Mapped["ServiceTicket"] = relationship(back_populates="responders")
+    ticket: Mapped[ServiceTicket] = relationship(back_populates="responders")

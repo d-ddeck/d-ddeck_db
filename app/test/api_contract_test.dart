@@ -38,17 +38,26 @@ import 'package:ddeck_app/models/service.dart';
 import 'package:ddeck_app/models/user.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const serverUrl =
-    String.fromEnvironment('CONTRACT_URL', defaultValue: 'http://127.0.0.1:8000');
-const demoEmail = String.fromEnvironment('CONTRACT_EMAIL',
-    defaultValue: 'seojun.kim@ddeck.local');
-const demoPassword =
-    String.fromEnvironment('CONTRACT_PW', defaultValue: 'demo1234');
+const serverUrl = String.fromEnvironment(
+  'CONTRACT_URL',
+  defaultValue: 'http://127.0.0.1:8000',
+);
+const demoEmail = String.fromEnvironment(
+  'CONTRACT_EMAIL',
+  defaultValue: 'seojun.kim@ddeck.local',
+);
+const demoPassword = String.fromEnvironment(
+  'CONTRACT_PW',
+  defaultValue: 'demo1234',
+);
 
 Future<bool> serverIsUp() async {
   try {
-    final socket = await Socket.connect('127.0.0.1', 8000,
-        timeout: const Duration(milliseconds: 600));
+    final socket = await Socket.connect(
+      '127.0.0.1',
+      8000,
+      timeout: const Duration(milliseconds: 600),
+    );
     socket.destroy();
     return true;
   } catch (_) {
@@ -83,8 +92,9 @@ Future<void> main() async {
   // Sign in before the group is declared, the same way serverIsUp() is awaited
   // above: `skip:` is evaluated at declaration time, so a decision made inside
   // setUpAll would come too late to keep the bodies from running.
-  String? skipReason =
-      up ? null : 'backend not running on $serverUrl - skipping live contract tests';
+  String? skipReason = up
+      ? null
+      : 'backend not running on $serverUrl - skipping live contract tests';
   if (up) {
     api = ApiClient(tokenStore: TokenStore());
     await api.setServerUrl(serverUrl, persist: false);
@@ -103,7 +113,8 @@ Future<void> main() async {
       // The server answers but the demo account is not there, so this instance
       // holds real data rather than seed_demo's. The assertions below describe
       // the demo fixture, so they would report failures that are not defects.
-      skipReason = '$demoEmail cannot log in on $serverUrl - '
+      skipReason =
+          '$demoEmail cannot log in on $serverUrl - '
           'this server has no demo data, skipping live contract tests';
     }
   }
@@ -123,8 +134,11 @@ Future<void> main() async {
     test('/auth/me round-trips the same account', () async {
       final profile = await authRepo.me();
       expect(profile.id, me.id);
-      expect(profile.departmentName, isNotNull,
-          reason: 'demo users belong to a department');
+      expect(
+        profile.departmentName,
+        isNotNull,
+        reason: 'demo users belong to a department',
+      );
     });
 
     test('ticket list parses, including string decimals', () async {
@@ -147,8 +161,11 @@ Future<void> main() async {
     test('ticket detail carries joined parts and logs', () async {
       final page = await serviceRepo.list(size: 20);
       final detail = await serviceRepo.get(page.items.first.id);
-      expect(detail.logs, isNotEmpty,
-          reason: 'every ticket gets an intake log row');
+      expect(
+        detail.logs,
+        isNotEmpty,
+        reason: 'every ticket gets an intake log row',
+      );
     });
 
     test('statistics summary is internally consistent', () async {
@@ -188,7 +205,9 @@ Future<void> main() async {
       // The +00:00 offset must be percent-encoded; this is the regression
       // guard for that, since a raw + becomes a space and fails validation.
       final from = DateTime.now().subtract(const Duration(days: 30));
-      final s = await serviceRepo.summary(dateFrom: from);
+      final s = await serviceRepo.summary(
+        filter: ServiceFilter(dateFrom: from),
+      );
       expect(s.total, greaterThanOrEqualTo(0));
     });
 
@@ -215,8 +234,11 @@ Future<void> main() async {
       final tree = await inventoryRepo.tree();
       expect(tree, isNotEmpty);
       final flat = StorageLocation.flatten(tree);
-      expect(flat.length, greaterThan(tree.length),
-          reason: 'the demo tree is nested');
+      expect(
+        flat.length,
+        greaterThan(tree.length),
+        reason: 'the demo tree is nested',
+      );
     });
 
     test('inventory summary parses its buckets', () async {
@@ -290,8 +312,11 @@ Future<void> main() async {
 
     test('pending approval queue is readable by an admin', () async {
       final page = await authRepo.pendingUsers();
-      expect(page.total, greaterThanOrEqualTo(1),
-          reason: 'demo data leaves one account waiting');
+      expect(
+        page.total,
+        greaterThanOrEqualTo(1),
+        reason: 'demo data leaves one account waiting',
+      );
       expect(page.items.first.signupNote, isNotNull);
     });
   }, skip: skipReason);

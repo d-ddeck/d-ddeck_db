@@ -112,10 +112,24 @@ foreach ($c in @((Join-Path (Split-Path -Parent $ScriptDir) 'backend'), (Join-Pa
 }
 if (-not $Src) { Die "backend 폴더를 찾을 수 없습니다. 리포지토리 안에서 실행해 주세요." }
 Ok "소스: $Src"
+. (Join-Path $ScriptDir 'windows-service.ps1')
+$ExistingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$IsUpgrade = (Test-Path (Join-Path $BackendDir '.env')) -and $null -ne $ExistingTask
+if ($IsUpgrade -and -not $PSBoundParameters.ContainsKey('Port')) {
+  $arguments = ($ExistingTask.Actions | Select-Object -First 1).Arguments
+  if ($arguments -match '--port\s+(\d+)') { $Port = [int]$Matches[1] }
+}
 
 # 포트 충돌 - 이 PC 가 이미 다른 용도로 쓰이고 있을 수 있다.
 $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-if ($busy) {
+if ($busy -and $IsUpgrade) {
+  foreach ($listener in $busy) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)"
+    if (-not $process.CommandLine -or $process.CommandLine -notmatch [regex]::Escape($BackendDir)) {
+      Die "포트 $Port 은 다른 프로세스가 사용 중입니다."
+    }
+  }
+} elseif ($busy) {
   $owner = (Get-Process -Id $busy[0].OwningProcess -ErrorAction SilentlyContinue).ProcessName
   Die "포트 $Port 이(가) 이미 사용 중입니다 (프로세스: $owner). -Port 로 다른 포트를 지정하세요."
 }
@@ -152,13 +166,29 @@ foreach ($d in @($AppRoot, $BackendDir, $StorageDir, $BackupDir)) {
   New-Item -ItemType Directory -Force -Path $d | Out-Null
 }
 
+if ($IsUpgrade) {
+  Step '기존 서버 중지 및 백업'
+  Stop-DdeckTask $TaskName $BackendDir
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ScriptDir 'backup-windows.ps1') -Quiet
+  if ($LASTEXITCODE -ne 0) {
+    Start-ScheduledTask -TaskName $TaskName
+    Die '백업 실패로 갱신을 중단합니다.'
+  }
+  Warn '이후 갱신 실패 시 서비스를 중지 상태로 유지합니다. backups 폴더의 백업을 확인하세요.'
+}
+
 # 기존 설정과 데이터는 보존하고 코드만 갱신한다.
 $exclude = @('.venv','__pycache__','.env','storage','ddeck.db','ddeck.db-wal','ddeck.db-shm')
 robocopy $Src $BackendDir /MIR /NFL /NDL /NJH /NJS /NP `
-  /XD ".venv" "__pycache__" "storage" /XF ".env" "*.db" "*.db-wal" "*.db-shm" | Out-Null
+  /XD ".venv" ".venv-linux" "__pycache__" "storage" /XF ".env" "*.db" "*.db-wal" "*.db-shm" | Out-Null
 if ($LASTEXITCODE -ge 8) { Die "코드 복사 실패 (robocopy 종료코드 $LASTEXITCODE)" }
 $global:LASTEXITCODE = 0
 Ok "코드 배치: $BackendDir"
+$DeployDir = Join-Path $AppRoot 'deploy'
+New-Item -ItemType Directory -Force -Path $DeployDir | Out-Null
+if ($ScriptDir -ne $DeployDir) {
+  Copy-Item (Join-Path $ScriptDir '*') $DeployDir -Recurse -Force
+}
 
 # ------------------------------------------------------------------ 가상환경
 Step "가상환경 구성 (몇 분 걸릴 수 있습니다)"
@@ -267,7 +297,7 @@ if (Test-Path $EnvFile) {
     "DATABASE_URL=$DatabaseUrl",
     '',
     "SECRET_KEY=$secret",
-    'ACCESS_TOKEN_EXPIRE_MINUTES=60',
+    'ACCESS_TOKEN_EXPIRE_MINUTES=15',
     'REFRESH_TOKEN_EXPIRE_DAYS=14',
     'PASSWORD_MIN_LENGTH=8',
     '',
@@ -283,7 +313,10 @@ if (Test-Path $EnvFile) {
     '',
     'SCHEDULER_ENABLED=true',
     'REMINDER_SCAN_SECONDS=60',
-    'FCM_SERVER_KEY='
+    'FCM_PROJECT_ID='
+    'FCM_CREDENTIALS_FILE='
+    'RCLONE_REMOTE='
+    'RCLONE_CONFIG='
   )
   Set-Content -Path $EnvFile -Value $lines -Encoding utf8
   Ok ".env 생성 (SECRET_KEY / 관리자 비밀번호 난수 생성)"
@@ -297,6 +330,13 @@ Ok "설정 파일 권한 제한 (SYSTEM / Administrators 만)"
 Step "데이터베이스 스키마 적용"
 Push-Location $BackendDir
 try {
+  if ($IsUpgrade) {
+    & $VenvPy scripts/adopt_schema.py *> $null
+    if ($LASTEXITCODE -eq 0) {
+      & $VenvPy scripts/adopt_schema.py --stamp
+      if ($LASTEXITCODE -ne 0) { Die '기존 DB 등록 실패' }
+    }
+  }
   & $VenvPy -m alembic upgrade head
   if ($LASTEXITCODE -ne 0) { Die "Alembic 마이그레이션 실패" }
 } finally { Pop-Location }
@@ -325,8 +365,9 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
 }
 # 워커는 1개여야 한다. 일정 알림 스케줄러가 프로세스 안에서 돌기 때문에
 # 여러 개로 늘리면 같은 알림이 중복 발송된다.
-$action  = New-ScheduledTaskAction -Execute $uvicorn `
-  -Argument "app.main:app --host 0.0.0.0 --port $Port" -WorkingDirectory $BackendDir
+$runner = Join-Path $AppRoot 'deploy\run-server-windows.ps1'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$runner`" -BackendDir `"$BackendDir`" -Port $Port" -WorkingDirectory $BackendDir
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
@@ -342,7 +383,7 @@ try {
   Write-Host "  서버는 수동으로 띄울 수 있지만, 재부팅하면 자동으로 뜨지 않습니다."
   Write-Host "  수동 실행:"
   Write-Host "    cd `"$BackendDir`""
-  Write-Host "    .\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port $Port"
+  Write-Host "    .\.venv\Scripts\uvicorn.exe app.main:app --no-proxy-headers --host 0.0.0.0 --port $Port"
   Write-Host ""
   Die "자동 시작 등록 실패. 위 오류를 알려주시면 원인을 찾을 수 있습니다."
 }
@@ -377,7 +418,7 @@ if (-not $health) {
   Write-Host ""
   Write-Host "서버가 응답하지 않습니다. 직접 실행해 원인을 확인해 보세요:" -ForegroundColor Red
   Write-Host "  cd `"$BackendDir`""
-  Write-Host "  .\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port $Port"
+  Write-Host "  .\.venv\Scripts\uvicorn.exe app.main:app --no-proxy-headers --host 0.0.0.0 --port $Port"
   Die "설치는 되었으나 기동에 실패했습니다."
 }
 Ok "healthz 응답: $health"

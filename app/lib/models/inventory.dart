@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'common.dart';
 
 enum AssetStatus {
+  unknown('UNKNOWN', '알 수 없는 상태', Color(0xFF64748B)),
   inStock('IN_STOCK', '재고', Color(0xFF10B981)),
   inUse('IN_USE', '사용중', Color(0xFF3B82F6)),
   repair('REPAIR', '수리중', Color(0xFFF59E0B)),
@@ -15,8 +16,10 @@ enum AssetStatus {
   final String label;
   final Color color;
 
-  static AssetStatus parse(String? v) => AssetStatus.values
-      .firstWhere((s) => s.value == v, orElse: () => AssetStatus.inStock);
+  static AssetStatus parse(String? v) => AssetStatus.values.firstWhere(
+    (s) => s.value == v,
+    orElse: () => AssetStatus.unknown,
+  );
 }
 
 enum LocationType {
@@ -33,8 +36,10 @@ enum LocationType {
   final String label;
   final IconData icon;
 
-  static LocationType parse(String? v) => LocationType.values
-      .firstWhere((t) => t.value == v, orElse: () => LocationType.etc);
+  static LocationType parse(String? v) => LocationType.values.firstWhere(
+    (t) => t.value == v,
+    orElse: () => LocationType.etc,
+  );
 }
 
 /// Movement kinds. The server derives the resulting status from these, so the
@@ -53,8 +58,10 @@ enum MovementType {
   final String label;
   final IconData icon;
 
-  static MovementType parse(String? v) => MovementType.values
-      .firstWhere((t) => t.value == v, orElse: () => MovementType.move);
+  static MovementType parse(String? v) => MovementType.values.firstWhere(
+    (t) => t.value == v,
+    orElse: () => MovementType.move,
+  );
 
   /// Whether this move needs a destination location picked in the UI.
   bool get needsLocation => this == move || this == inbound;
@@ -90,20 +97,19 @@ class StorageLocation {
   String get display => path ?? name;
 
   /// Deepest segment, for compact list rows.
-  String get shortLabel =>
-      path == null ? name : path!.split(' > ').last;
+  String get shortLabel => path == null ? name : path!.split(' > ').last;
 
   factory StorageLocation.fromJson(Map<String, dynamic> j) => StorageLocation(
-        id: asString(j['id']),
-        code: asString(j['code']),
-        name: asString(j['name']),
-        type: LocationType.parse(j['type'] as String?),
-        parentId: j['parent_id'] as String?,
-        path: j['path'] as String?,
-        isActive: asBool(j['is_active'], true),
-        assetCount: asInt(j['asset_count']),
-        children: asList(j['children'], StorageLocation.fromJson),
-      );
+    id: asString(j['id']),
+    code: asString(j['code']),
+    name: asString(j['name']),
+    type: LocationType.parse(j['type'] as String?),
+    parentId: j['parent_id'] as String?,
+    path: j['path'] as String?,
+    isActive: asBool(j['is_active'], true),
+    assetCount: asInt(j['asset_count']),
+    children: asList(j['children'], StorageLocation.fromJson),
+  );
 
   /// Flattens a tree into indented rows for a dropdown.
   static List<(StorageLocation, int)> flatten(
@@ -194,49 +200,52 @@ class Asset {
   String get statusLabel => statusItem?.name ?? status.label;
 
   /// 지금 어디에 있는지 한 줄로.
-  String get placeLabel =>
-      storeName ?? location?.shortLabel ?? '위치 미지정';
+  String get placeLabel => storeName ?? location?.shortLabel ?? '위치 미지정';
 
   bool get warrantyExpired =>
       warrantyUntil != null && warrantyUntil!.isBefore(DateTime.now());
 
   factory Asset.fromJson(Map<String, dynamic> j) => Asset(
-        id: asString(j['id']),
-        assetNo: asString(j['asset_no']),
-        name: asString(j['name']),
-        status: AssetStatus.parse(j['status'] as String?),
-        quantity: asDouble(j['quantity']) ?? 0,
-        unit: asString(j['unit'], 'EA'),
-        categoryId: j['category_id'] as String?,
-        category:
-            j['category'] is Map ? CodeItem.fromJson(asMap(j['category'])) : null,
-        modelName: j['model_name'] as String?,
-        manufacturer: j['manufacturer'] as String?,
-        serialNo: j['serial_no'] as String?,
-        barcode: j['barcode'] as String?,
-        spec: j['spec'] as String?,
-        locationId: j['location_id'] as String?,
-        location: j['location'] is Map
-            ? StorageLocation.fromJson(asMap(j['location']))
-            : null,
-        holderId: j['holder_id'] as String?,
-        holder:
-            j['holder'] is Map ? UserBrief.fromJson(asMap(j['holder'])) : null,
-        storeId: j['store_id'] as String?,
-        storeName: j['store'] is Map ? asString(asMap(j['store'])['name']) : null,
-        setNo: asInt(j['set_no']),
-        statusItemId: j['status_item_id'] as String? ?? (j['status_item'] is Map ? asString(asMap(j['status_item'])['id']) : null),
-        statusItem: j['status_item'] is Map
-            ? CodeItem.fromJson(asMap(j['status_item']))
-            : null,
-        minQuantity: asDouble(j['min_quantity']),
-        purchaseDate: asDate(j['purchase_date']),
-        purchasePrice: asDouble(j['purchase_price']),
-        supplier: j['supplier'] as String?,
-        warrantyUntil: asDate(j['warranty_until']),
-        note: j['note'] as String?,
-        isBelowMin: asBool(j['is_below_min']),
-      );
+    id: asString(j['id']),
+    assetNo: asString(j['asset_no']),
+    name: asString(j['name']),
+    status: AssetStatus.parse(j['status'] as String?),
+    quantity: asDouble(j['quantity']) ?? 0,
+    unit: asString(j['unit'], 'EA'),
+    categoryId: j['category_id'] as String?,
+    category: j['category'] is Map
+        ? CodeItem.fromJson(asMap(j['category']))
+        : null,
+    modelName: j['model_name'] as String?,
+    manufacturer: j['manufacturer'] as String?,
+    serialNo: j['serial_no'] as String?,
+    barcode: j['barcode'] as String?,
+    spec: j['spec'] as String?,
+    locationId: j['location_id'] as String?,
+    location: j['location'] is Map
+        ? StorageLocation.fromJson(asMap(j['location']))
+        : null,
+    holderId: j['holder_id'] as String?,
+    holder: j['holder'] is Map ? UserBrief.fromJson(asMap(j['holder'])) : null,
+    storeId: j['store_id'] as String?,
+    storeName: j['store'] is Map ? asString(asMap(j['store'])['name']) : null,
+    setNo: asInt(j['set_no']),
+    statusItemId:
+        j['status_item_id'] as String? ??
+        (j['status_item'] is Map
+            ? asString(asMap(j['status_item'])['id'])
+            : null),
+    statusItem: j['status_item'] is Map
+        ? CodeItem.fromJson(asMap(j['status_item']))
+        : null,
+    minQuantity: asDouble(j['min_quantity']),
+    purchaseDate: asDate(j['purchase_date']),
+    purchasePrice: asDouble(j['purchase_price']),
+    supplier: j['supplier'] as String?,
+    warrantyUntil: asDate(j['warranty_until']),
+    note: j['note'] as String?,
+    isBelowMin: asBool(j['is_below_min']),
+  );
 }
 
 class AssetMovement {
@@ -254,6 +263,8 @@ class AssetMovement {
     this.fromStatusItemId,
     this.toStatusItemId,
     this.reason,
+    this.referenceType,
+    this.referenceId,
   });
 
   final String id;
@@ -269,26 +280,29 @@ class AssetMovement {
   final String? fromStatusItemId;
   final String? toStatusItemId;
   final String? reason;
+  final String? referenceType, referenceId;
 
   factory AssetMovement.fromJson(Map<String, dynamic> j) => AssetMovement(
-        id: asString(j['id']),
-        movementType: MovementType.parse(j['movement_type'] as String?),
-        movedAt: asDate(j['moved_at']) ?? DateTime.now(),
-        fromLocationId: j['from_location_id'] as String?,
-        toLocationId: j['to_location_id'] as String?,
-        fromStatus: j['from_status'] == null
-            ? null
-            : AssetStatus.parse(j['from_status'] as String?),
-        toStatus: j['to_status'] == null
-            ? null
-            : AssetStatus.parse(j['to_status'] as String?),
-        quantity: asDouble(j['quantity']),
-        fromStoreId: j['from_store_id'] as String?,
-        toStoreId: j['to_store_id'] as String?,
-        fromStatusItemId: j['from_status_item_id'] as String?,
-        toStatusItemId: j['to_status_item_id'] as String?,
-        reason: j['reason'] as String?,
-      );
+    id: asString(j['id']),
+    movementType: MovementType.parse(j['movement_type'] as String?),
+    movedAt: asDate(j['moved_at']) ?? DateTime.now(),
+    fromLocationId: j['from_location_id'] as String?,
+    toLocationId: j['to_location_id'] as String?,
+    fromStatus: j['from_status'] == null
+        ? null
+        : AssetStatus.parse(j['from_status'] as String?),
+    toStatus: j['to_status'] == null
+        ? null
+        : AssetStatus.parse(j['to_status'] as String?),
+    quantity: asDouble(j['quantity']),
+    fromStoreId: j['from_store_id'] as String?,
+    toStoreId: j['to_store_id'] as String?,
+    fromStatusItemId: j['from_status_item_id'] as String?,
+    toStatusItemId: j['to_status_item_id'] as String?,
+    reason: j['reason'] as String?,
+    referenceType: j['reference_type'] as String?,
+    referenceId: j['reference_id'] as String?,
+  );
 }
 
 class CountBucket {
@@ -305,11 +319,11 @@ class CountBucket {
   final double? quantity;
 
   factory CountBucket.fromJson(Map<String, dynamic> j) => CountBucket(
-        key: asString(j['key']),
-        label: asString(j['label']),
-        count: asInt(j['count']),
-        quantity: asDouble(j['quantity']),
-      );
+    key: asString(j['key']),
+    label: asString(j['label']),
+    count: asInt(j['count']),
+    quantity: asDouble(j['quantity']),
+  );
 }
 
 class InventorySummary {
@@ -334,25 +348,25 @@ class InventorySummary {
   final double? totalValue;
 
   factory InventorySummary.fromJson(Map<String, dynamic> j) => InventorySummary(
-        totalAssets: asInt(j['total_assets']),
-        totalQuantity: asDouble(j['total_quantity']) ?? 0,
-        totalValue: asDouble(j['total_value']),
-        belowMinCount: asInt(j['below_min_count']),
-        warrantyExpiringCount: asInt(j['warranty_expiring_count']),
-        byStatus: asList(j['by_status'], CountBucket.fromJson),
-        byCategory: asList(j['by_category'], CountBucket.fromJson),
-        byLocation: asList(j['by_location'], CountBucket.fromJson),
-      );
+    totalAssets: asInt(j['total_assets']),
+    totalQuantity: asDouble(j['total_quantity']) ?? 0,
+    totalValue: asDouble(j['total_value']),
+    belowMinCount: asInt(j['below_min_count']),
+    warrantyExpiringCount: asInt(j['warranty_expiring_count']),
+    byStatus: asList(j['by_status'], CountBucket.fromJson),
+    byCategory: asList(j['by_category'], CountBucket.fromJson),
+    byLocation: asList(j['by_location'], CountBucket.fromJson),
+  );
 
   static InventorySummary empty() => const InventorySummary(
-        totalAssets: 0,
-        totalQuantity: 0,
-        byStatus: [],
-        byCategory: [],
-        byLocation: [],
-        belowMinCount: 0,
-        warrantyExpiringCount: 0,
-      );
+    totalAssets: 0,
+    totalQuantity: 0,
+    byStatus: [],
+    byCategory: [],
+    byLocation: [],
+    belowMinCount: 0,
+    warrantyExpiringCount: 0,
+  );
 }
 
 class OverviewRow {
@@ -369,12 +383,12 @@ class OverviewRow {
   final Map<String, int> counts;
   final int total;
   factory OverviewRow.fromJson(Map<String, dynamic> j) => OverviewRow(
-        key: asString(j['key']),
-        label: asString(j['label']),
-        color: j['color'] as String?,
-        counts: asMap(j['counts']).map((k, v) => MapEntry(k, asInt(v))),
-        total: asInt(j['total']),
-      );
+    key: asString(j['key']),
+    label: asString(j['label']),
+    color: j['color'] as String?,
+    counts: asMap(j['counts']).map((k, v) => MapEntry(k, asInt(v))),
+    total: asInt(j['total']),
+  );
 }
 
 class AttentionAsset {
@@ -402,18 +416,18 @@ class AttentionAsset {
   final String? storeName;
   final String? locationName;
   final String? note;
-  AttentionAsset.fromJson(Map<String, dynamic> j) :
-        id = asString(j['id']),
-        assetNo = asString(j['asset_no']),
-        name = asString(j['name']),
-        categoryId = j['category_id'] as String?,
-        categoryName = j['category_name'] as String?,
-        serialNo = j['serial_no'] as String?,
-        statusName = j['status_name'] as String?,
-        storeId = j['store_id'] as String?,
-        storeName = j['store_name'] as String?,
-        locationName = j['location_name'] as String?,
-        note = j['note'] as String?;
+  AttentionAsset.fromJson(Map<String, dynamic> j)
+    : id = asString(j['id']),
+      assetNo = asString(j['asset_no']),
+      name = asString(j['name']),
+      categoryId = j['category_id'] as String?,
+      categoryName = j['category_name'] as String?,
+      serialNo = j['serial_no'] as String?,
+      statusName = j['status_name'] as String?,
+      storeId = j['store_id'] as String?,
+      storeName = j['store_name'] as String?,
+      locationName = j['location_name'] as String?,
+      note = j['note'] as String?;
 }
 
 class InventoryOverview {
@@ -435,7 +449,8 @@ class InventoryOverview {
   final List<OverviewRow> byPlace;
   final List<AttentionAsset> attention;
   final List<RentalAsset> rentals;
-  factory InventoryOverview.fromJson(Map<String, dynamic> j) => InventoryOverview(
+  factory InventoryOverview.fromJson(Map<String, dynamic> j) =>
+      InventoryOverview(
         total: asInt(j['total']),
         kinds: asList(j['kinds'], CodeItem.fromJson),
         statuses: asList(j['statuses'], CodeItem.fromJson),
@@ -457,29 +472,29 @@ class BulkMoveResult {
   final List<String> skipped;
   final List<String> errors;
   factory BulkMoveResult.fromJson(Map<String, dynamic> j) => BulkMoveResult(
-        moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
-        skipped: (j['skipped'] as List? ?? []).map((e) => e.toString()).toList(),
-        errors: (j['errors'] as List? ?? []).map((e) => e.toString()).toList(),
-      );
+    moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
+    skipped: (j['skipped'] as List? ?? []).map((e) => e.toString()).toList(),
+    errors: (j['errors'] as List? ?? []).map((e) => e.toString()).toList(),
+  );
 }
 
 class BulkCreateResult {
-  const BulkCreateResult({
-    required this.created,
-    required this.duplicates,
-  });
+  const BulkCreateResult({required this.created, required this.duplicates});
   final List<Asset> created;
   final List<String> duplicates;
   factory BulkCreateResult.fromJson(Map<String, dynamic> j) => BulkCreateResult(
-        created: asList(j['created'], Asset.fromJson),
-        duplicates: (j['duplicates'] as List? ?? []).map((e) => e.toString()).toList(),
-      );
+    created: asList(j['created'], Asset.fromJson),
+    duplicates: (j['duplicates'] as List? ?? [])
+        .map((e) => e.toString())
+        .toList(),
+  );
 }
 
 class RentalAsset extends AttentionAsset {
   // The JSON map is also used by the rental-specific initializers.
   // ignore: use_super_parameters
-  RentalAsset.fromJson(Map<String, dynamic> j) : ticketId = j['ticket_id'] as String?,
+  RentalAsset.fromJson(Map<String, dynamic> j)
+    : ticketId = j['ticket_id'] as String?,
       ticketNo = j['ticket_no'] as String?,
       rentedAt = asDate(j['rented_at']),
       dueDate = asDate(j['due_date']),

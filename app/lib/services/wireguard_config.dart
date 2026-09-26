@@ -78,7 +78,9 @@ class WireguardConfig {
 
     for (final rawLine in cleaned.split('\n')) {
       final line = rawLine.trim();
-      if (line.isEmpty || line.startsWith('#') || line.startsWith(';')) continue;
+      if (line.isEmpty || line.startsWith('#') || line.startsWith(';')) {
+        continue;
+      }
 
       if (line.startsWith('[') && line.endsWith(']')) {
         final name = line.substring(1, line.length - 1).trim().toLowerCase();
@@ -132,16 +134,15 @@ class WireguardConfig {
   ///
   /// ipTIME 이 만들어 주는 기본값이 이것인데, 그대로 쓰면 직원 인터넷이 회사
   /// 업로드 속도에 묶인다. 분할 터널로 고쳐 쓰라고 안내해야 한다.
-  bool get isFullTunnel =>
-      _cidrs(allowedIps).any((c) => c.prefix == 0);
+  bool get isFullTunnel => _cidrs(allowedIps).any((c) => c.prefix == 0);
 
   /// 화면에 띄워도 되는 요약. **비밀키는 들어가지 않는다.**
   Map<String, String> get summary => {
-        if (address != null) '내 주소': address!,
-        if (endpoint != null) '접속 대상': endpoint!,
-        if (allowedIps != null) '터널 경유 대역': allowedIps!,
-        if (keepalive != null) 'Keepalive': keepalive!,
-      };
+    if (address != null) '내 주소': address!,
+    if (endpoint != null) '접속 대상': endpoint!,
+    if (allowedIps != null) '터널 경유 대역': allowedIps!,
+    if (keepalive != null) 'Keepalive': keepalive!,
+  };
 
   /// 막지는 않되 알려 줘야 할 것들. 비어 있으면 그대로 써도 좋다.
   List<String> problems() {
@@ -158,8 +159,10 @@ class WireguardConfig {
     if ((allowedIps ?? '').isEmpty) {
       out.add('AllowedIPs 가 없습니다.');
     } else if (isFullTunnel) {
-      out.add('전체 터널(0.0.0.0/0) 설정입니다. 인터넷까지 회사 회선을 거치므로 '
-          '분할 터널로 고쳐 쓰기를 권합니다.');
+      out.add(
+        '전체 터널(0.0.0.0/0) 설정입니다. 인터넷까지 회사 회선을 거치므로 '
+        '분할 터널로 고쳐 쓰기를 권합니다.',
+      );
     }
     if ((keepalive ?? '').isEmpty) {
       out.add('PersistentKeepalive 가 없습니다. 첫 접속이 느릴 수 있습니다.');

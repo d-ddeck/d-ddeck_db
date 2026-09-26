@@ -1,4 +1,5 @@
 """캘린더 module: shared schedules, invitations, reminders and notifications."""
+
 from __future__ import annotations
 
 import uuid
@@ -86,18 +87,27 @@ def list_calendars(db: DbSession, user: CurrentUser) -> list[CalendarOut]:
     return [CalendarOut.model_validate(r) for r in rows]
 
 
-@router.post("/calendars", response_model=CalendarOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/calendars", response_model=CalendarOut, status_code=status.HTTP_201_CREATED
+)
 def create_calendar(
     payload: CalendarCreate, db: DbSession, user: CurrentUser
 ) -> CalendarOut:
-    if payload.type != CalendarType.PERSONAL and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]:
+    if (
+        payload.type != CalendarType.PERSONAL
+        and ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.MANAGER]
+    ):
         raise AppError(
-            "FORBIDDEN", "공유 캘린더는 팀장 이상만 만들 수 있습니다.", status.HTTP_403_FORBIDDEN
+            "FORBIDDEN",
+            "공유 캘린더는 팀장 이상만 만들 수 있습니다.",
+            status.HTTP_403_FORBIDDEN,
         )
     if payload.type == CalendarType.PERSONAL and not settings_store.get(
         db, ModuleKey.CALENDAR, "allow_personal_calendar", True
     ):
-        raise AppError("PERSONAL_CALENDAR_DISABLED", "개인 캘린더 사용이 비활성화되어 있습니다.")
+        raise AppError(
+            "PERSONAL_CALENDAR_DISABLED", "개인 캘린더 사용이 비활성화되어 있습니다."
+        )
 
     calendar = Calendar(
         **payload.model_dump(),
@@ -125,12 +135,23 @@ def update_calendar(
 
 
 @router.delete("/calendars/{calendar_id}", response_model=Message)
-def delete_calendar(calendar_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Message:
+def delete_calendar(
+    calendar_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> Message:
     calendar = _load_calendar(db, calendar_id)
     _require_calendar_admin(calendar, user)
     if calendar.type == CalendarType.COMPANY:
         raise AppError("CANNOT_DELETE", "전사 캘린더는 삭제할 수 없습니다.")
     calendar.deleted_at = now_utc()
+    from app.services.attachment_lifecycle import soft_delete
+
+    for event in db.scalars(
+        select(Event).where(
+            Event.calendar_id == calendar.id, Event.deleted_at.is_(None)
+        )
+    ):
+        event.deleted_at = now_utc()
+        soft_delete(db, "event", event.id)
     db.commit()
     return Message(message="삭제되었습니다.")
 
@@ -140,10 +161,12 @@ def delete_calendar(calendar_id: uuid.UUID, db: DbSession, user: CurrentUser) ->
 def list_events(
     db: DbSession,
     user: CurrentUser,
-    date_from: datetime = Query(description="range start, inclusive"),
-    date_to: datetime = Query(description="range end, exclusive"),
+    date_from: datetime = Query(description="range start, inclusive"),  # noqa: B008 - FastAPI parameter declaration
+    date_to: datetime = Query(description="range end, exclusive"),  # noqa: B008 - FastAPI parameter declaration
     calendar_id: uuid.UUID | None = None,
     mine_only: bool = False,
+    category_id: uuid.UUID | None = None,
+    participant_id: uuid.UUID | None = None,
 ) -> list[EventOut]:
     """Month/week view feed.
 
@@ -167,7 +190,9 @@ def list_events(
         .order_by(Event.starts_at)
     )
     if calendar_id and calendar_id not in visible:
-        raise AppError("FORBIDDEN", "접근할 수 없는 캘린더입니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "접근할 수 없는 캘린더입니다.", status.HTTP_403_FORBIDDEN
+        )
     if mine_only:
         stmt = stmt.where(
             or_(
@@ -180,12 +205,38 @@ def list_events(
             )
         )
 
+    if category_id:
+        stmt = stmt.where(Event.category_id == category_id)
+    if participant_id:
+        stmt = stmt.where(
+            Event.id.in_(
+                select(EventParticipant.event_id).where(
+                    EventParticipant.user_id == participant_id
+                )
+            )
+        )
     rows = db.scalars(stmt).all()
+    involved_ids = (
+        set(
+            db.scalars(
+                select(EventParticipant.event_id).where(
+                    EventParticipant.user_id == user.id,
+                    EventParticipant.event_id.in_([e.id for e in rows]),
+                )
+            ).all()
+        )
+        if rows
+        else set()
+    )
     # A private event shows as a busy block to everyone except its people.
     out: list[EventOut] = []
     for e in rows:
         item = EventOut.model_validate(e)
-        if e.is_private and not _is_involved(db, e, user):
+        if e.is_private and not (
+            e.id in involved_ids
+            or e.created_by_id == user.id
+            or ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.MANAGER]
+        ):
             item.title = "비공개 일정"
             item.description = None
             item.location = None
@@ -199,7 +250,9 @@ def create_event(
 ) -> EventDetail:
     calendar = _load_calendar(db, payload.calendar_id)
     if calendar.id not in _visible_calendar_ids(db, user):
-        raise AppError("FORBIDDEN", "접근할 수 없는 캘린더입니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "접근할 수 없는 캘린더입니다.", status.HTTP_403_FORBIDDEN
+        )
 
     data = payload.model_dump(exclude={"participant_ids", "reminders"})
     event = Event(**data, created_by_id=user.id)
@@ -223,6 +276,9 @@ def create_event(
         )
 
     _set_reminders(db, event, payload.reminders, calendar)
+    from app.services.recurrence import expand
+
+    expand(db, event)
 
     invitees = [uid for uid in participant_ids if uid != user.id]
     if invitees:
@@ -256,7 +312,9 @@ def get_event(event_id: uuid.UUID, db: DbSession, user: CurrentUser) -> EventDet
     if event.calendar_id not in _visible_calendar_ids(db, user) and not _is_involved(
         db, event, user
     ):
-        raise AppError("FORBIDDEN", "접근할 수 없는 일정입니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", "접근할 수 없는 일정입니다.", status.HTTP_403_FORBIDDEN
+        )
     if event.is_private and not _is_involved(db, event, user):
         raise AppError("FORBIDDEN", "비공개 일정입니다.", status.HTTP_403_FORBIDDEN)
     return _event_detail(db, event_id)
@@ -272,7 +330,9 @@ def update_event(
 ) -> EventDetail:
     event = _load_event(db, event_id)
     _require_event_owner(db, event, user)
-    data = payload.model_dump(exclude={"participant_ids", "reminders"}, exclude_unset=True)
+    data = payload.model_dump(
+        exclude={"participant_ids", "reminders"}, exclude_unset=True
+    )
     before = {k: getattr(event, k) for k in data}
 
     for field, value in data.items():
@@ -298,6 +358,15 @@ def update_event(
                 ).all()
             ]
         _set_reminders(db, event, specs, calendar, replace=True)
+
+    if event.recurrence_parent_id is None:
+        from app.services.recurrence import rebuild
+
+        rebuild(db, event)
+    elif event.rrule:
+        raise AppError(
+            "NESTED_RECURRENCE", "반복 일정의 개별 항목에는 반복을 설정할 수 없습니다."
+        )
 
     existing = db.scalars(
         select(EventParticipant.user_id).where(EventParticipant.event_id == event.id)
@@ -336,12 +405,20 @@ def delete_event(
     event = _load_event(db, event_id)
     _require_event_owner(db, event, user)
     event.deleted_at = now_utc()
+    from app.services.attachment_lifecycle import soft_delete
+
+    soft_delete(db, "event", event.id)
     event.status = EventStatus.CANCELED
+    from app.services.recurrence import retire_children
+
+    retire_children(db, event)
 
     recipients = [
         uid
         for uid in db.scalars(
-            select(EventParticipant.user_id).where(EventParticipant.event_id == event.id)
+            select(EventParticipant.user_id).where(
+                EventParticipant.event_id == event.id
+            )
         ).all()
         if uid != user.id
     ]
@@ -382,7 +459,9 @@ def respond(
         )
     )
     if row is None:
-        raise AppError("NOT_INVITED", "초대된 일정이 아닙니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "NOT_INVITED", "초대된 일정이 아닙니다.", status.HTTP_403_FORBIDDEN
+        )
     row.response = payload.response
     row.responded_at = now_utc()
     db.commit()
@@ -402,7 +481,9 @@ def list_notifications(
         stmt = stmt.where(Notification.is_read.is_(False))
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
-        stmt.order_by(Notification.created_at.desc()).offset(page.offset).limit(page.size)
+        stmt.order_by(Notification.created_at.desc())
+        .offset(page.offset)
+        .limit(page.size)
     ).all()
     return Page.build(
         [NotificationOut.model_validate(r) for r in rows], total, page.page, page.size
@@ -427,7 +508,9 @@ def mark_read(notification_id: uuid.UUID, db: DbSession, user: CurrentUser) -> M
         )
     )
     if row is None:
-        raise AppError("NOT_FOUND", "알림을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "알림을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     if not row.is_read:
         row.is_read = True
         row.read_at = now_utc()
@@ -565,17 +648,25 @@ def _require_calendar_admin(calendar: Calendar, user: User) -> None:
 
 def _load_calendar(db: Session, calendar_id: uuid.UUID) -> Calendar:
     calendar = db.scalar(
-        select(Calendar).where(Calendar.id == calendar_id, Calendar.deleted_at.is_(None))
+        select(Calendar).where(
+            Calendar.id == calendar_id, Calendar.deleted_at.is_(None)
+        )
     )
     if calendar is None:
-        raise AppError("NOT_FOUND", "캘린더를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "캘린더를 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return calendar
 
 
 def _load_event(db: Session, event_id: uuid.UUID) -> Event:
-    event = db.scalar(select(Event).where(Event.id == event_id, Event.deleted_at.is_(None)))
+    event = db.scalar(
+        select(Event).where(Event.id == event_id, Event.deleted_at.is_(None))
+    )
     if event is None:
-        raise AppError("NOT_FOUND", "일정을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "일정을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
     return event
 
 
@@ -733,15 +824,21 @@ def _event_detail(db: Session, event_id: uuid.UUID) -> EventDetail:
         )
     )
     if event is None:
-        raise AppError("NOT_FOUND", "일정을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            "NOT_FOUND", "일정을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
+        )
 
     out = EventDetail.model_validate(event)
-    users = {
-        u.id: u
-        for u in db.scalars(
-            select(User).where(User.id.in_([p.user_id for p in event.participants]))
-        ).all()
-    } if event.participants else {}
+    users = (
+        {
+            u.id: u
+            for u in db.scalars(
+                select(User).where(User.id.in_([p.user_id for p in event.participants]))
+            ).all()
+        }
+        if event.participants
+        else {}
+    )
     for p_out, p in zip(out.participants, event.participants, strict=False):
         u = users.get(p.user_id)
         p_out.user = UserBrief.model_validate(u) if u else None

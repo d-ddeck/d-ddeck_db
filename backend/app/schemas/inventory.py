@@ -1,14 +1,16 @@
 """재고관리 payloads: locations, assets, movements, stock summary."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import AssetStatus, LocationType, MovementType
-from app.schemas.common import CodeItemBrief, ORMModel, UserBrief
+from app.schemas.common import CodeItemBrief, ORMModel, PatchModel, UserBrief
 
 
 # ---------------------------------------------------------------- locations
@@ -23,7 +25,9 @@ class LocationCreate(BaseModel):
     note: str | None = None
 
 
-class LocationUpdate(BaseModel):
+class LocationUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"name", "sort_order", "is_active", "type"}
+
     name: str | None = Field(None, max_length=120)
     type: LocationType | None = None
     parent_id: uuid.UUID | None = None
@@ -51,7 +55,7 @@ class LocationOut(ORMModel):
 class LocationNode(LocationOut):
     """Tree response for the location picker."""
 
-    children: list["LocationNode"] = Field(default_factory=list)
+    children: list[LocationNode] = Field(default_factory=list)
     asset_count: int = 0
 
 
@@ -78,18 +82,20 @@ class AssetCreate(BaseModel):
         None, description="세부 상태 코드(설치 / 렌탈 중 / AS 대기 ...)"
     )
 
-    quantity: Decimal = Decimal(1)
+    quantity: Decimal = Field(default=Decimal(1), ge=0)
     unit: str = Field("EA", max_length=20)
-    min_quantity: Decimal | None = None
+    min_quantity: Decimal | None = Field(default=None, ge=0)
 
     purchase_date: date | None = None
-    purchase_price: Decimal | None = None
+    purchase_price: Decimal | None = Field(default=None, ge=0)
     supplier: str | None = Field(None, max_length=150)
     warranty_until: date | None = None
     note: str | None = None
 
 
-class AssetUpdate(BaseModel):
+class AssetUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"set_no", "unit", "quantity", "status", "name"}
+
     """Location and holder changes should go through /move so history is kept."""
 
     name: str | None = Field(None, max_length=200)
@@ -99,11 +105,11 @@ class AssetUpdate(BaseModel):
     serial_no: str | None = Field(None, max_length=150)
     barcode: str | None = Field(None, max_length=150)
     spec: str | None = None
-    quantity: Decimal | None = None
+    quantity: Decimal | None = Field(default=None, ge=0)
     unit: str | None = Field(None, max_length=20)
-    min_quantity: Decimal | None = None
+    min_quantity: Decimal | None = Field(default=None, ge=0)
     purchase_date: date | None = None
-    purchase_price: Decimal | None = None
+    purchase_price: Decimal | None = Field(default=None, ge=0)
     supplier: str | None = Field(None, max_length=150)
     warranty_until: date | None = None
     note: str | None = None
@@ -111,6 +117,7 @@ class AssetUpdate(BaseModel):
 
 
 class AssetOut(ORMModel):
+    notices: list[str] = Field(default_factory=list)
     id: uuid.UUID
     asset_no: str
     name: str
@@ -146,7 +153,7 @@ class AssetDetail(AssetOut):
     location: LocationOut | None = None
     holder: UserBrief | None = None
     category: CodeItemBrief | None = None
-    store: "StoreBrief | None" = None
+    store: StoreBrief | None = None
     status_item: CodeItemBrief | None = None
     is_below_min: bool = False
 
@@ -178,7 +185,7 @@ class AssetMoveRequest(BaseModel):
     clear_store: bool = Field(
         False, description="매장에서 거두어들일 때 true - 매장 연결을 끊는다"
     )
-    quantity: Decimal | None = None
+    quantity: Decimal | None = Field(default=None, ge=0)
     moved_at: datetime | None = Field(None, description="defaults to now in UTC")
     reason: str | None = None
     reference_type: str | None = Field(None, max_length=60)
@@ -233,7 +240,9 @@ LocationNode.model_rebuild()
 class AssetBulkCreate(BaseModel):
     """S/N 여러 개를 한 번에 등록 (구 서버 '입고·등록'). 나머지 칸은 공통."""
 
-    serial_nos: list[str] = Field(min_length=1, description="S/N 목록. 공백·쉼표로 나눠 보내도 된다")
+    serial_nos: list[str] = Field(
+        min_length=1, description="S/N 목록. 공백·쉼표로 나눠 보내도 된다"
+    )
     name: str | None = Field(None, max_length=200, description="비우면 '종류 품명'")
     category_id: uuid.UUID | None = None
     model_name: str | None = Field(None, max_length=150)

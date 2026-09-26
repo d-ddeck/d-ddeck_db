@@ -1,13 +1,15 @@
 """게시판 payloads. BoardCreate/BoardUpdate double as the board 설정창 form."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import BoardType, PostStatus, Role
-from app.schemas.common import ORMModel, UserBrief
+from app.schemas.common import ORMModel, PatchModel, UserBrief
 
 
 class BoardCreate(BaseModel):
@@ -25,7 +27,21 @@ class BoardCreate(BaseModel):
     sort_order: int = 0
 
 
-class BoardUpdate(BaseModel):
+class BoardUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {
+        "write_role",
+        "read_role",
+        "allow_comment",
+        "allow_attachment",
+        "type",
+        "notify_on_post",
+        "is_active",
+        "name",
+        "page_size",
+        "sort_order",
+        "allow_secret",
+    }
+
     name: str | None = Field(None, max_length=120)
     type: BoardType | None = None
     description: str | None = None
@@ -66,7 +82,15 @@ class PostCreate(BaseModel):
     status: PostStatus = PostStatus.PUBLISHED
 
 
-class PostUpdate(BaseModel):
+class PostUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {
+        "is_pinned",
+        "is_secret",
+        "content",
+        "status",
+        "title",
+    }
+
     title: str | None = Field(None, max_length=250)
     content: str | None = None
     is_pinned: bool | None = None
@@ -85,6 +109,8 @@ class PostListItem(ORMModel):
     is_pinned: bool
     is_secret: bool
     view_count: int
+    attachment_count: int = 0
+    author: UserBrief | None = None
     comment_count: int
     created_at: datetime
     updated_at: datetime
@@ -96,7 +122,9 @@ class CommentCreate(BaseModel):
     is_secret: bool = False
 
 
-class CommentUpdate(BaseModel):
+class CommentUpdate(PatchModel):
+    non_nullable: ClassVar[set[str]] = {"content"}
+
     content: str = Field(min_length=1)
 
 

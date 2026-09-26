@@ -10,6 +10,8 @@ class BrandSummary {
     required this.assetCount,
     this.brandId,
     this.color,
+    this.ticketCount = 0,
+    this.openTicketCount = 0,
   });
 
   final String? brandId;
@@ -18,17 +20,20 @@ class BrandSummary {
   final int storeCount;
   final int openStoreCount;
   final int assetCount;
+  final int ticketCount, openTicketCount;
 
   int get closedStoreCount => storeCount - openStoreCount;
 
   factory BrandSummary.fromJson(Map<String, dynamic> j) => BrandSummary(
-        brandId: j['brand_id'] as String?,
-        brandName: asString(j['brand_name'], '미지정'),
-        color: j['color'] as String?,
-        storeCount: asInt(j['store_count']),
-        openStoreCount: asInt(j['open_store_count']),
-        assetCount: asInt(j['asset_count']),
-      );
+    brandId: j['brand_id'] as String?,
+    ticketCount: asInt(j['ticket_count']),
+    openTicketCount: asInt(j['open_ticket_count']),
+    brandName: asString(j['brand_name'], '미지정'),
+    color: j['color'] as String?,
+    storeCount: asInt(j['store_count']),
+    openStoreCount: asInt(j['open_store_count']),
+    assetCount: asInt(j['asset_count']),
+  );
 }
 
 class StoreSet {
@@ -41,10 +46,10 @@ class StoreSet {
   String get label => name?.isNotEmpty == true ? name! : '세트 $setNo';
 
   factory StoreSet.fromJson(Map<String, dynamic> j) => StoreSet(
-        id: asString(j['id']),
-        setNo: asInt(j['set_no']),
-        name: j['name'] as String?,
-      );
+    id: asString(j['id']),
+    setNo: asInt(j['set_no']),
+    name: j['name'] as String?,
+  );
 }
 
 /// 매장 한 곳에 나가 있는 우리 장비 한 대.
@@ -76,19 +81,20 @@ class AssetInStore {
   String get statusLabel => statusItem?.name ?? status.label;
 
   factory AssetInStore.fromJson(Map<String, dynamic> j) => AssetInStore(
-        id: asString(j['id']),
-        assetNo: asString(j['asset_no']),
-        name: asString(j['name']),
-        status: AssetStatus.parse(j['status'] as String?),
-        category:
-            j['category'] is Map ? CodeItem.fromJson(asMap(j['category'])) : null,
-        modelName: j['model_name'] as String?,
-        serialNo: j['serial_no'] as String?,
-        statusItem: j['status_item'] is Map
-            ? CodeItem.fromJson(asMap(j['status_item']))
-            : null,
-        setNo: asInt(j['set_no']),
-      );
+    id: asString(j['id']),
+    assetNo: asString(j['asset_no']),
+    name: asString(j['name']),
+    status: AssetStatus.parse(j['status'] as String?),
+    category: j['category'] is Map
+        ? CodeItem.fromJson(asMap(j['category']))
+        : null,
+    modelName: j['model_name'] as String?,
+    serialNo: j['serial_no'] as String?,
+    statusItem: j['status_item'] is Map
+        ? CodeItem.fromJson(asMap(j['status_item']))
+        : null,
+    setNo: asInt(j['set_no']),
+  );
 }
 
 /// 보유 장비를 종류별로 묶은 것. 매장 화면이 종류 단위로 읽힌다.
@@ -108,12 +114,12 @@ class StoreAssetGroup {
   final List<AssetInStore> assets;
 
   factory StoreAssetGroup.fromJson(Map<String, dynamic> j) => StoreAssetGroup(
-        categoryId: j['category_id'] as String?,
-        categoryName: asString(j['category_name'], '미분류'),
-        color: j['color'] as String?,
-        count: asInt(j['count']),
-        assets: asList(j['assets'], AssetInStore.fromJson),
-      );
+    categoryId: j['category_id'] as String?,
+    categoryName: asString(j['category_name'], '미분류'),
+    color: j['color'] as String?,
+    count: asInt(j['count']),
+    assets: asList(j['assets'], AssetInStore.fromJson),
+  );
 }
 
 class Store {
@@ -121,6 +127,8 @@ class Store {
     required this.id,
     required this.name,
     required this.isClosed,
+    this.isActive = true,
+    this.lastTicketAt,
     this.brandId,
     this.brand,
     this.openDate,
@@ -144,6 +152,8 @@ class Store {
   final String id;
   final String name;
   final bool isClosed;
+  final bool isActive;
+  final DateTime? lastTicketAt;
   final String? brandId;
   final CodeItem? brand;
   final DateTime? openDate;
@@ -168,28 +178,30 @@ class Store {
   String get brandName => brand?.name ?? '미지정';
 
   factory Store.fromJson(Map<String, dynamic> j) => Store(
-        id: asString(j['id']),
-        name: asString(j['name']),
-        isClosed: asBool(j['is_closed'], false),
-        brandId: j['brand_id'] as String?,
-        brand: j['brand'] is Map ? CodeItem.fromJson(asMap(j['brand'])) : null,
-        openDate: asDate(j['open_date']),
-        closedDate: asDate(j['closed_date']),
-        gripperType: j['gripper_type'] as String?,
-        note: j['note'] as String?,
-        assetCount: asInt(j['asset_count']),
-        ticketCount: asInt(j['ticket_count']),
-        sets: asList(j['sets'], StoreSet.fromJson),
-        openTicketCount: asInt(j['open_ticket_count']),
-        installDate: asDate(j['install_date']),
-        categoryCounts: asList(j['category_counts'], CategoryCount.fromJson),
-        unreturnedRentals: asList(j['unreturned_rentals'], StoreRentalRow.fromJson),
-        recentTickets: asList(j['recent_tickets'], StoreTicketBrief.fromJson),
-        recoverOptions: asList(j['recover_options'], CodeItem.fromJson),
-        movableCount: asInt(j['movable_count']),
-        rentalCount: asInt(j['rental_count']),
-        assetGroups: asList(j['asset_groups'], StoreAssetGroup.fromJson),
-      );
+    id: asString(j['id']),
+    name: asString(j['name']),
+    isClosed: asBool(j['is_closed'], false),
+    isActive: asBool(j['is_active'], true),
+    lastTicketAt: asDate(j['last_ticket_at']),
+    brandId: j['brand_id'] as String?,
+    brand: j['brand'] is Map ? CodeItem.fromJson(asMap(j['brand'])) : null,
+    openDate: asDate(j['open_date']),
+    closedDate: asDate(j['closed_date']),
+    gripperType: j['gripper_type'] as String?,
+    note: j['note'] as String?,
+    assetCount: asInt(j['asset_count']),
+    ticketCount: asInt(j['ticket_count']),
+    sets: asList(j['sets'], StoreSet.fromJson),
+    openTicketCount: asInt(j['open_ticket_count']),
+    installDate: asDate(j['install_date']),
+    categoryCounts: asList(j['category_counts'], CategoryCount.fromJson),
+    unreturnedRentals: asList(j['unreturned_rentals'], StoreRentalRow.fromJson),
+    recentTickets: asList(j['recent_tickets'], StoreTicketBrief.fromJson),
+    recoverOptions: asList(j['recover_options'], CodeItem.fromJson),
+    movableCount: asInt(j['movable_count']),
+    rentalCount: asInt(j['rental_count']),
+    assetGroups: asList(j['asset_groups'], StoreAssetGroup.fromJson),
+  );
 }
 
 class CategoryCount {
@@ -204,11 +216,11 @@ class CategoryCount {
   final String? color;
   final int count;
   factory CategoryCount.fromJson(Map<String, dynamic> j) => CategoryCount(
-        categoryId: j['category_id'] as String?,
-        label: asString(j['label']),
-        color: j['color'] as String?,
-        count: asInt(j['count']),
-      );
+    categoryId: j['category_id'] as String?,
+    label: asString(j['label']),
+    color: j['color'] as String?,
+    count: asInt(j['count']),
+  );
 }
 
 class StoreRentalRow {
@@ -227,13 +239,13 @@ class StoreRentalRow {
   final DateTime? dueDate;
   final int? dday;
   factory StoreRentalRow.fromJson(Map<String, dynamic> j) => StoreRentalRow(
-        ticketId: asString(j['ticket_id']),
-        ticketNo: asString(j['ticket_no']),
-        rentalType: j['rental_type'] as String?,
-        serials: j['serials'] as String?,
-        dueDate: asDate(j['due_date']),
-        dday: j['dday'] == null ? null : asInt(j['dday']),
-      );
+    ticketId: asString(j['ticket_id']),
+    ticketNo: asString(j['ticket_no']),
+    rentalType: j['rental_type'] as String?,
+    serials: j['serials'] as String?,
+    dueDate: asDate(j['due_date']),
+    dday: j['dday'] == null ? null : asInt(j['dday']),
+  );
 }
 
 class StoreTicketBrief {
@@ -254,14 +266,16 @@ class StoreTicketBrief {
   final DateTime? completedAt;
   final List<String> causeLabels;
   factory StoreTicketBrief.fromJson(Map<String, dynamic> j) => StoreTicketBrief(
-        id: asString(j['id']),
-        ticketNo: asString(j['ticket_no']),
-        title: asString(j['title']),
-        status: asString(j['status']),
-        receivedAt: asDate(j['received_at']),
-        completedAt: asDate(j['completed_at']),
-        causeLabels: (j['cause_labels'] as List? ?? []).map((e) => e.toString()).toList(),
-      );
+    id: asString(j['id']),
+    ticketNo: asString(j['ticket_no']),
+    title: asString(j['title']),
+    status: asString(j['status']),
+    receivedAt: asDate(j['received_at']),
+    completedAt: asDate(j['completed_at']),
+    causeLabels: (j['cause_labels'] as List? ?? [])
+        .map((e) => e.toString())
+        .toList(),
+  );
 }
 
 class StoreCloseResult {
@@ -274,10 +288,10 @@ class StoreCloseResult {
   final List<String> moved;
   final List<String> notices;
   factory StoreCloseResult.fromJson(Map<String, dynamic> j) => StoreCloseResult(
-        store: Store.fromJson(asMap(j['store'])),
-        moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
-        notices: (j['notices'] as List? ?? []).map((e) => e.toString()).toList(),
-      );
+    store: Store.fromJson(asMap(j['store'])),
+    moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
+    notices: (j['notices'] as List? ?? []).map((e) => e.toString()).toList(),
+  );
 }
 
 class EquipmentSetupResult {
@@ -291,7 +305,8 @@ class EquipmentSetupResult {
   final List<String> moved;
   final List<String> kept;
   final Store store;
-  factory EquipmentSetupResult.fromJson(Map<String, dynamic> j) => EquipmentSetupResult(
+  factory EquipmentSetupResult.fromJson(Map<String, dynamic> j) =>
+      EquipmentSetupResult(
         added: (j['added'] as List? ?? []).map((e) => e.toString()).toList(),
         moved: (j['moved'] as List? ?? []).map((e) => e.toString()).toList(),
         kept: (j['kept'] as List? ?? []).map((e) => e.toString()).toList(),

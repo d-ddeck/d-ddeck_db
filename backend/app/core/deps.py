@@ -1,4 +1,5 @@
 """Shared FastAPI dependencies: current user, role gates, pagination, client info."""
+
 from __future__ import annotations
 
 import uuid
@@ -11,11 +12,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.errors import AppError
-from app.core.security import decode_token
+from app.core.security import decode_token, now_utc
 from app.models.enums import ROLE_LEVEL, Role, UserStatus
-from app.models.user import User
+from app.models.user import RefreshToken, User
 
 # auto_error=False so we can return our own error envelope instead of Starlette's.
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -24,6 +26,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 def get_current_user(
+    request: Request,
     db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> User:
@@ -35,7 +38,8 @@ def get_current_user(
         payload = decode_token(credentials.credentials, expected_type="access")
     except jwt.ExpiredSignatureError:
         raise AppError(
-            "TOKEN_EXPIRED", "토큰이 만료되었습니다. 다시 로그인해 주세요.",
+            "TOKEN_EXPIRED",
+            "토큰이 만료되었습니다. 다시 로그인해 주세요.",
             status.HTTP_401_UNAUTHORIZED,
         ) from None
     except jwt.PyJWTError:
@@ -65,7 +69,65 @@ def get_current_user(
             status.HTTP_403_FORBIDDEN,
             {"status": user.status.value},
         )
+
+    try:
+        session_id = uuid.UUID(payload["sid"])
+    except (KeyError, ValueError, TypeError):
+        raise AppError("SESSION_EXPIRED", "다시 로그인해 주세요.", 401) from None
+    active = db.scalar(
+        select(RefreshToken.id)
+        .where(
+            RefreshToken.user_id == user.id,
+            RefreshToken.session_id == session_id,
+            RefreshToken.revoked_at.is_(None),
+            RefreshToken.expires_at > now_utc(),
+        )
+        .limit(1)
+    )
+    if active is None:
+        raise AppError(
+            "SESSION_EXPIRED", "세션이 종료되었습니다. 다시 로그인해 주세요.", 401
+        )
+    request.state.session_id = session_id
+
+    # 초기·초기화된 비밀번호는 서버가 직접 막는다. 클라이언트 화면만 믿으면 curl 로
+    # 우회할 수 있다. 비밀번호를 바꾸는 데 필요한 길만 열어 둔다.
+    if user.must_change_password and not _password_change_allowed(request):
+        raise AppError(
+            "PASSWORD_CHANGE_REQUIRED",
+            "비밀번호를 먼저 변경해야 합니다.",
+            status.HTTP_403_FORBIDDEN,
+            {"must_change_password": True},
+        )
+    from app.models.enums import ModuleKey
+    from app.services import settings_store
+
+    if (
+        ROLE_LEVEL[user.role] < ROLE_LEVEL[Role.ADMIN]
+        and settings_store.get(db, ModuleKey.SYSTEM, "maintenance_mode", False)
+        and not _password_change_allowed(request)
+    ):
+        raise AppError(
+            "MAINTENANCE_MODE",
+            settings_store.get(db, ModuleKey.SYSTEM, "maintenance_message", "")
+            or "서버 점검 중입니다.",
+            503,
+        )
     return user
+
+
+_PASSWORD_CHANGE_PATHS = {"/auth/change-password", "/auth/logout"}
+
+
+def _password_change_allowed(request: Request) -> bool:
+    path = request.url.path
+    prefix = settings.API_V1_PREFIX
+    if prefix and path.startswith(prefix):
+        path = path[len(prefix) :]
+    if path in _PASSWORD_CHANGE_PATHS:
+        return True
+    # 프로필 읽기는 허용(앱이 "누구인지" 확인해 변경 화면으로 보낸다), 수정은 아님.
+    return path == "/auth/me" and request.method == "GET"
 
 
 def _status_message(st: UserStatus) -> str:
@@ -128,11 +190,36 @@ class ClientInfo:
 
 
 def client_info(request: Request) -> ClientInfo:
-    # X-Forwarded-For first: behind nginx, request.client.host is the proxy.
-    forwarded = request.headers.get("x-forwarded-for")
-    ip = forwarded.split(",")[0].strip() if forwarded else (
-        request.client.host if request.client else None
-    )
+    from ipaddress import ip_address, ip_network
+
+    peer = request.client.host if request.client else None
+    trusted = [
+        ip_network(v.strip(), strict=False)
+        for v in settings.TRUSTED_PROXY_IPS.split(",")
+        if v.strip()
+    ]
+
+    def is_trusted(value):
+        try:
+            return any(ip_address(value) in network for network in trusted)
+        except ValueError:
+            return False
+
+    ip = peer
+    if peer and is_trusted(peer):
+        chain = [
+            v.strip()
+            for v in request.headers.get("x-forwarded-for", "").split(",")
+            if v.strip()
+        ]
+        for candidate in reversed(chain):
+            if not is_trusted(ip):
+                break
+            try:
+                ip_address(candidate)
+            except ValueError:
+                break
+            ip = candidate
     return ClientInfo(ip=ip, user_agent=request.headers.get("user-agent"))
 
 

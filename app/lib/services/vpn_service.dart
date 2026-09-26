@@ -19,10 +19,11 @@ import 'wireguard_config.dart';
 /// 볼 일이 없고, 볼 수 있으면 새어 나갈 수 있다.
 class VpnService extends ChangeNotifier {
   VpnService({FlutterSecureStorage? storage})
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          );
 
   final FlutterSecureStorage _storage;
 
@@ -99,9 +100,18 @@ class VpnService extends ChangeNotifier {
   /// 전체 터널(0.0.0.0/0)이면 회사망만 타도록 좁혀서 저장한다. 직원 개인
   /// 인터넷까지 회사 회선을 거치게 두지 않으려는 것이고, 구 서버가 PC 에서
   /// 스크립트로 하던 일과 같다.
-  Future<void> register(WireguardConfig config, {bool forceSplitTunnel = true}) async {
-    final effective =
-        (forceSplitTunnel && config.isFullTunnel) ? config.toSplitTunnel() : config;
+  bool get supportsTunnels => isSupported;
+
+  Future<void> register(
+    WireguardConfig config, {
+    bool forceSplitTunnel = true,
+  }) async {
+    if (!supportsTunnels) {
+      throw UnsupportedError("PC에서는 공식 WireGuard 앱을 사용해 주세요.");
+    }
+    final effective = (forceSplitTunnel && config.isFullTunnel)
+        ? config.toSplitTunnel()
+        : config;
 
     await _write(_kConfig, effective.toIni());
     await _write(_kEndpoint, effective.endpoint ?? '');
@@ -175,8 +185,10 @@ class VpnService extends ChangeNotifier {
 
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
-    await WireGuardFlutter.instance
-        .initialize(interfaceName: _interfaceName, vpnName: _vpnName);
+    await WireGuardFlutter.instance.initialize(
+      interfaceName: _interfaceName,
+      vpnName: _vpnName,
+    );
     _initialized = true;
   }
 
@@ -186,8 +198,7 @@ class VpnService extends ChangeNotifier {
       VpnStage.connecting ||
       VpnStage.preparing ||
       VpnStage.authenticating ||
-      VpnStage.waitingConnection =>
-        VpnConnection.connecting,
+      VpnStage.waitingConnection => VpnConnection.connecting,
       VpnStage.disconnecting => VpnConnection.disconnecting,
       _ => VpnConnection.disconnected,
     };

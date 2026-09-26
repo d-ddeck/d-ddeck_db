@@ -8,11 +8,12 @@ class BoardRepository {
 
   /// Only the boards this account may read, so the tab bar never shows a tab
   /// that would 403 when tapped.
-  Future<List<Board>> boards() async {
-    final res = await _api.get('/board/boards');
-    return (res as List? ?? [])
-        .map((e) => Board.fromJson(asMap(e)))
-        .toList()
+  Future<List<Board>> boards({bool includeInactive = false}) async {
+    final res = await _api.get(
+      '/board/boards',
+      query: {'include_inactive': includeInactive},
+    );
+    return (res as List? ?? []).map((e) => Board.fromJson(asMap(e))).toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   }
 
@@ -22,8 +23,10 @@ class BoardRepository {
     int size = 20,
     String? query,
   }) async {
-    final res = await _api.get('/board/boards/$boardId/posts',
-        query: {'page': page, 'size': size, 'q': query});
+    final res = await _api.get(
+      '/board/boards/$boardId/posts',
+      query: {'page': page, 'size': size, 'q': query},
+    );
     return PagedList.fromJson(res, Post.fromJson);
   }
 
@@ -37,12 +40,15 @@ class BoardRepository {
     bool isPinned = false,
     bool isSecret = false,
   }) async {
-    final res = await _api.post('/board/boards/$boardId/posts', body: {
-      'title': title,
-      'content': content,
-      'is_pinned': isPinned,
-      'is_secret': isSecret,
-    });
+    final res = await _api.post(
+      '/board/boards/$boardId/posts',
+      body: {
+        'title': title,
+        'content': content,
+        'is_pinned': isPinned,
+        'is_secret': isSecret,
+      },
+    );
     return Post.fromJson(asMap(res));
   }
 
@@ -51,13 +57,21 @@ class BoardRepository {
     return Post.fromJson(asMap(res));
   }
 
-  Future<void> deletePost(String postId) =>
-      _api.delete('/board/posts/$postId');
+  Future<void> createBoard(Map<String, dynamic> data) =>
+      _api.post('/board/boards', body: data);
+  Future<void> deleteBoard(String id) => _api.delete('/board/boards/$id');
 
-  Future<PostComment> addComment(String postId, String content,
-      {bool isSecret = false}) async {
-    final res = await _api.post('/board/posts/$postId/comments',
-        body: {'content': content, 'is_secret': isSecret});
+  Future<void> deletePost(String postId) => _api.delete('/board/posts/$postId');
+
+  Future<PostComment> addComment(
+    String postId,
+    String content, {
+    bool isSecret = false,
+  }) async {
+    final res = await _api.post(
+      '/board/posts/$postId/comments',
+      body: {'content': content, 'is_secret': isSecret},
+    );
     return PostComment.fromJson(asMap(res));
   }
 
@@ -65,7 +79,10 @@ class BoardRepository {
       _api.delete('/board/comments/$commentId');
 
   /// Saves a board's settings. This endpoint is the 게시판 설정창.
-  Future<Board> updateBoard(String boardId, Map<String, dynamic> changes) async {
+  Future<Board> updateBoard(
+    String boardId,
+    Map<String, dynamic> changes,
+  ) async {
     final res = await _api.patch('/board/boards/$boardId', body: changes);
     return Board.fromJson(asMap(res));
   }

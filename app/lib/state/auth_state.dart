@@ -10,6 +10,7 @@ import '../data/auth_repository.dart';
 import '../data/calendar_repository.dart';
 import '../models/user.dart';
 import '../services/alarm_service.dart';
+import '../services/push_service.dart';
 import '../services/synced_alarm_store.dart';
 
 /// Where the app is in the entry flow. The root widget switches on this.
@@ -37,20 +38,31 @@ class AuthState extends ChangeNotifier {
   }) {
     // Fires when a refresh fails or an admin suspends the account mid-session.
     alarms.onStopped = syncAlarms;
-    api.onSessionExpired = () => _forceLogout('세션이 만료되었습니다. 다시 로그인해 주세요.');
+    api.onSessionExpired = () {
+      // ApiClient 가 세션을 확정적으로 끝냈다는 신호(리프레시 토큰 거부,
+      // 계정 정지). bootstrap() 이 "판정 불가" 와 "거부" 를 가르는 데 쓴다.
+      _sessionEndedByClient = true;
+      _forceLogout('세션이 만료되었습니다. 다시 로그인해 주세요.');
+    };
   }
+
+  /// 서버에 닿지 못해 저장된 세션을 확인할 수 없을 때 로그인 화면에 띄우는 문구.
+  static const connectivityNotice =
+      '서버에 연결할 수 없습니다. 네트워크(VPN)를 확인한 뒤 다시 시도해 주세요.';
 
   final ApiClient api;
   final TokenStore tokenStore;
   final AuthRepository authRepo;
   final CalendarRepository calendarRepo;
   final AlarmService alarms;
+  final _push = PushService();
 
   AuthPhase _phase = AuthPhase.loading;
   UserProfile? _user;
   String? _notice;
   int _unread = 0;
   Timer? _pollTimer;
+  bool _sessionEndedByClient = false;
 
   AuthPhase get phase => _phase;
   UserProfile? get user => _user;
@@ -77,16 +89,37 @@ class AuthState extends ChangeNotifier {
       _set(AuthPhase.loggedOut);
       return;
     }
+    _sessionEndedByClient = false;
     try {
       // Any authenticated call triggers the refresh interceptor, so /auth/me
       // doubles as "is this saved session still good?".
       final profile = await authRepo.me();
       _adopt(profile);
-    } on ApiException {
-      await tokenStore.clearSession();
+    } on ApiException catch (e) {
+      if (_isSessionRejected(e)) {
+        await tokenStore.clearSession();
+        _set(AuthPhase.loggedOut);
+        return;
+      }
+      // 서버에 닿지 못했거나 서버 쪽 장애라 세션이 살았는지 판정할 수 없다.
+      // 토큰을 지우면 점검·VPN 미연결 한 번에 자동 로그인이 영구히 풀리므로
+      // 남겨 두고, 다음 실행 때 다시 시도한다.
+      _notice = connectivityNotice;
       _set(AuthPhase.loggedOut);
     }
   }
+
+  /// bootstrap() 에서 잡은 오류가 "저장된 세션이 거부됐다" 는 뜻인지.
+  ///
+  /// 앱 시작 시 액세스 토큰은 항상 비어 있으므로 /auth/me 는 늘 401 →
+  /// 리프레시 순서로 흐른다. 리프레시가 실제로 거부되면 ApiClient 가 먼저
+  /// onSessionExpired 를 부르므로([_sessionEndedByClient]), 그 신호 없이
+  /// 도착한 401 은 리프레시 요청 자체가 실패한(연결 끊김·5xx) 경우다. 이때와
+  /// 최초 요청의 연결 실패는 세션 유효성을 알 수 없는 상황이라 거부로 보지
+  /// 않는다. 그 외 4xx 판정(403·404 등)은 지금처럼 거부로 다룬다.
+  bool _isSessionRejected(ApiException e) =>
+      _sessionEndedByClient ||
+      !(e.isConnectivityProblem || e.statusCode == 401);
 
   Future<void> setServerUrl(String url) async {
     await api.setServerUrl(url);
@@ -122,16 +155,15 @@ class AuthState extends ChangeNotifier {
     String? position,
     String? employeeNo,
     String? signupNote,
-  }) =>
-      authRepo.signup(
-        email: email.trim(),
-        password: password,
-        fullName: fullName.trim(),
-        phone: phone,
-        position: position,
-        employeeNo: employeeNo,
-        signupNote: signupNote,
-      );
+  }) => authRepo.signup(
+    email: email.trim(),
+    password: password,
+    fullName: fullName.trim(),
+    phone: phone,
+    position: position,
+    employeeNo: employeeNo,
+    signupNote: signupNote,
+  );
 
   Future<void> changePassword(String current, String next) async {
     await authRepo.changePassword(current, next);
@@ -140,16 +172,25 @@ class AuthState extends ChangeNotifier {
     await _forceLogout('비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해 주세요.');
   }
 
+  bool isLoggingOut = false;
   Future<void> logout() async {
-    final refresh = await tokenStore.readRefreshToken();
-    if (refresh != null) {
-      try {
-        await authRepo.logout(refresh);
-      } on ApiException {
-        // Already invalid server-side; clearing locally is what matters.
+    if (isLoggingOut) return;
+    isLoggingOut = true;
+    notifyListeners();
+    try {
+      final refresh = await tokenStore.readRefreshToken();
+      if (refresh != null) {
+        try {
+          await authRepo.logout(refresh);
+        } on ApiException {
+          // Already invalid server-side; clearing locally is what matters.
+        }
       }
+      await _forceLogout(null);
+    } finally {
+      isLoggingOut = false;
+      notifyListeners();
     }
-    await _forceLogout(null);
   }
 
   Future<void> refreshProfile() async {
@@ -177,13 +218,10 @@ class AuthState extends ChangeNotifier {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(
-      AppConfig.notificationPollInterval,
-      (_) {
-        refreshUnread();
-        syncAlarms();
-      },
-    );
+    _pollTimer = Timer.periodic(AppConfig.notificationPollInterval, (_) {
+      refreshUnread();
+      syncAlarms();
+    });
     refreshUnread();
     syncAlarms();
   }
@@ -229,7 +267,9 @@ class AuthState extends ChangeNotifier {
           _scheduledAlarms = 0;
           notifyListeners();
         }
-      } catch (e) { debugPrint('이전 계정 알람 정리 실패: $e'); }
+      } catch (e) {
+        debugPrint('이전 계정 알람 정리 실패: $e');
+      }
     }
   }
 
@@ -241,6 +281,7 @@ class AuthState extends ChangeNotifier {
       return;
     }
     _set(AuthPhase.ready);
+    unawaited(_push.start(authRepo.registerDevice));
     // 알림 권한은 로그인 직후에 묻는다. 앱 첫 실행에 바로 물으면 무엇에
     // 쓰는지 모른 채 거부하기 쉽다.
     if (AlarmService.isSupported) {
@@ -250,6 +291,7 @@ class AuthState extends ChangeNotifier {
   }
 
   Future<void> _forceLogout(String? message) async {
+    _push.stop();
     _pollTimer?.cancel();
     _pollTimer = null;
     _scheduledAlarms = 0;
@@ -269,6 +311,7 @@ class AuthState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _push.stop();
     _pollTimer?.cancel();
     alarms.onStopped = null;
     super.dispose();

@@ -3,6 +3,13 @@ import 'package:intl/intl.dart';
 /// Shared formatters. Timestamps arrive as UTC and are already converted to
 /// local by the model layer, so these only deal with presentation.
 class Fmt {
+  static String dday(int? days) => days == null
+      ? '예정일 없음'
+      : days == 0
+      ? 'D-day'
+      : days > 0
+      ? 'D-$days'
+      : 'D+${-days}';
   static final _date = DateFormat('yyyy-MM-dd');
   static final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
   static final _time = DateFormat('HH:mm');
@@ -48,7 +55,8 @@ class Fmt {
   /// Event time range, collapsing a same-day range to "14:00 ~ 15:30".
   static String range(DateTime start, DateTime end, {bool allDay = false}) {
     if (allDay) return '${_date.format(start)} (종일)';
-    final sameDay = start.year == end.year &&
+    final sameDay =
+        start.year == end.year &&
         start.month == end.month &&
         start.day == end.day;
     if (sameDay) {

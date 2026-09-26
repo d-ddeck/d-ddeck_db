@@ -61,27 +61,36 @@ class AuthRepository {
     String? phone,
     String? position,
   }) async {
-    final res = await _api.patch('/auth/me', body: {
-      if (fullName != null) 'full_name': fullName,
-      if (phone != null) 'phone': phone,
-      if (position != null) 'position': position,
-    });
+    final res = await _api.patch(
+      '/auth/me',
+      body: {
+        if (fullName != null) 'full_name': fullName,
+        if (phone != null) 'phone': phone,
+        if (position != null) 'position': position,
+      },
+    );
     return UserProfile.fromJson(asMap(res));
   }
 
   /// Changing the password revokes every session, so the caller must send the
   /// user back to the login screen afterwards.
   Future<String> changePassword(String current, String next) async {
-    final res = await _api.post('/auth/change-password', body: {
-      'current_password': current,
-      'new_password': next,
-    });
+    final res = await _api.post(
+      '/auth/change-password',
+      body: {'current_password': current, 'new_password': next},
+    );
     return asString(asMap(res)['message'], '비밀번호가 변경되었습니다.');
   }
 
   // --------------------------------------------------------------- admin
-  Future<PagedList<UserProfile>> pendingUsers({int page = 1, int size = 20}) async {
-    final res = await _api.get('/users/pending', query: {'page': page, 'size': size});
+  Future<PagedList<UserProfile>> pendingUsers({
+    int page = 1,
+    int size = 20,
+  }) async {
+    final res = await _api.get(
+      '/users/pending',
+      query: {'page': page, 'size': size},
+    );
     return PagedList.fromJson(res, UserProfile.fromJson);
   }
 
@@ -91,43 +100,65 @@ class AuthRepository {
     String? status,
     String? query,
   }) async {
-    final res = await _api.get('/users', query: {
-      'page': page,
-      'size': size,
-      'status': status,
-      'q': query,
-    });
+    final res = await _api.get(
+      '/users',
+      query: {'page': page, 'size': size, 'status': status, 'q': query},
+    );
     return PagedList.fromJson(res, UserProfile.fromJson);
   }
 
+  Future<String> resetPassword(String id) async =>
+      asString(asMap(await _api.post('/users/$id/reset-password'))['message']);
+  Future<List<Map<String, dynamic>>> sessions() async =>
+      (await _api.get('/auth/sessions') as List).map(asMap).toList();
+  Future<void> revokeSession(String id) => _api.delete('/auth/sessions/$id');
+
   Future<void> deleteUser(String id) => _api.delete('/users/$id');
 
-  Future<UserProfile> updateUser(String id, Map<String, dynamic> changes) async {
+  Future<UserProfile> updateUser(
+    String id,
+    Map<String, dynamic> changes,
+  ) async {
     final res = await _api.patch('/users/$id', body: changes);
     return UserProfile.fromJson(asMap(res));
   }
 
-  Future<UserProfile> approve(String userId, Role role,
-      {String? departmentId}) async {
-    final res = await _api.post('/users/$userId/approve', body: {
-      'role': role.value,
-      if (departmentId != null) 'department_id': departmentId,
-    });
+  Future<UserProfile> approve(
+    String userId,
+    Role role, {
+    String? departmentId,
+  }) async {
+    final res = await _api.post(
+      '/users/$userId/approve',
+      body: {
+        'role': role.value,
+        if (departmentId != null) 'department_id': departmentId,
+      },
+    );
     return UserProfile.fromJson(asMap(res));
   }
 
   Future<UserProfile> reject(String userId, String reason) async {
-    final res =
-        await _api.post('/users/$userId/reject', body: {'reason': reason});
+    final res = await _api.post(
+      '/users/$userId/reject',
+      body: {'reason': reason},
+    );
     return UserProfile.fromJson(asMap(res));
   }
 
   /// The member picker behind assignee and participant fields.
   Future<PagedList<UserBrief>> directory({String? query, int size = 50}) async {
-    final res = await _api
-        .get('/users/directory', query: {'q': query, 'size': size, 'page': 1});
+    final res = await _api.get(
+      '/users/directory',
+      query: {'q': query, 'size': size, 'page': 1},
+    );
     return PagedList.fromJson(res, UserBrief.fromJson);
   }
+
+  Future<List<Map<String, dynamic>>> userSessions(String userId) async =>
+      (await _api.get('/users/$userId/sessions') as List)
+          .map((row) => asMap(row))
+          .toList();
 
   Future<List<Department>> departments() async {
     final res = await _api.get('/admin/departments');
@@ -137,16 +168,15 @@ class AuthRepository {
   }
 
   // ------------------------------------------------------------- devices
-  /// Registers this install for push. The server stores the token now and
-  /// starts using it once FCM is wired up on the backend.
+  /// Registers this install for the configured Firebase push delivery.
   Future<void> registerDevice(String pushToken) => _api.post(
-        '/auth/devices',
-        body: {
-          'platform': _platform(),
-          'push_token': pushToken,
-          'device_name': _deviceName(),
-        },
-      );
+    '/auth/devices',
+    body: {
+      'platform': _platform(),
+      'push_token': pushToken,
+      'device_name': _deviceName(),
+    },
+  );
 
   static String _platform() {
     if (kIsWeb) return 'WEB';
