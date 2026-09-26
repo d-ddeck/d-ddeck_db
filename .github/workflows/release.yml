@@ -106,11 +106,14 @@ jobs:
           python scripts/smoke_test_priority2.py
           python scripts/smoke_test_priority345.py
           python scripts/test_ui_review.py
+          python scripts/test_client_updates.py
           python scripts/test_legacy_history.py
           python ../deploy/test_backup_bundle.py
           python ../deploy/test_sqlite_backup.py
           python ../deploy/test_update.py
           python ../deploy/test_operations.py
+          python ../deploy/test_register_systemd.py
+          python -m unittest discover -s ../deploy -p test_prepare_legacy_sqlite.py
           bash -n ../deploy/install.sh ../deploy/update.sh ../deploy/backup.sh
 
       - uses: subosito/flutter-action@v2
@@ -245,16 +248,27 @@ jobs:
         with:
           path: out
           merge-multiple: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 클라이언트 업데이트 정보 서명
+        env:
+          UPDATE_SIGNING_KEY_BASE64: ${{ secrets.UPDATE_SIGNING_KEY_BASE64 }}
+        run: |
+          pip install cryptography==50.0.1
+          python installer/build_update_manifest.py --directory out --version "${{ needs.meta.outputs.version }}"
       - name: 산출물 확인
         run: |
           cp docs/사용자-가이드.pdf "out/ddeck-user-guide-${{ needs.meta.outputs.version }}.pdf"
           cd out
-          sha256sum *.exe *.apk *.run *.pdf > SHA256SUMS
+          sha256sum *.exe *.apk *.run *.pdf update-manifest.json > SHA256SUMS
           ls -la
       - uses: actions/upload-artifact@v4
         with:
           name: checksums
-          path: out/SHA256SUMS
+          path: |
+            out/SHA256SUMS
+            out/update-manifest.json
       # 릴리스 노트는 docs/releases/<버전>.md 에 쓴다 (dist/ 는 gitignore 라
       # 체크아웃에 없다). 파일이 없으면 기본 한 줄로 대신한다 - 노트가 없다고
       # 릴리스가 실패하면 안 된다.
@@ -281,3 +295,4 @@ jobs:
             out/ddeck-server-*.run
             out/ddeck-user-guide-*.pdf
             out/SHA256SUMS
+            out/update-manifest.json

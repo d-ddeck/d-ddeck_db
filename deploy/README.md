@@ -21,24 +21,24 @@ Windows PC 에서 서버용 설치 파일을 만듭니다.
 python installer/build_server_package.py
 ```
 
-`dist/ddeck-server-1.0.7.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
+`dist/ddeck-server-1.0.8.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
 
 ```powershell
-scp dist/ddeck-server-1.0.7.run 사용자명@미니PC주소:~/
+scp dist/ddeck-server-1.0.8.run 사용자명@미니PC주소:~/
 ```
 
 미니PC 에서:
 
 ```bash
-chmod +x ddeck-server-1.0.7.run
-sudo ./ddeck-server-1.0.7.run
+chmod +x ddeck-server-1.0.8.run
+sudo ./ddeck-server-1.0.8.run
 ```
 
 끝입니다. 아래 "파일 옮기기" 와 "설치" 를 한 번에 처리합니다.
 옵션도 그대로 전달됩니다:
 
 ```bash
-sudo ./ddeck-server-1.0.7.run --port 8080 --admin it@mycompany.co.kr
+sudo ./ddeck-server-1.0.8.run --port 8080 --admin it@mycompany.co.kr
 ```
 
 > 프로젝트 폴더 전체가 아니라 `backend/` 와 `deploy/` 만 담기며,
@@ -116,6 +116,140 @@ sudo ./deploy/install.sh --sqlite                         # PostgreSQL 없이 (�
 | 설정 | `/opt/ddeck/backend/.env` (`SECRET_KEY` 자동 생성, 권한 600) |
 | 첨부파일 | `/opt/ddeck/storage` |
 | 이름 | avahi(mDNS)로 `호스트이름.local` 접속 가능 |
+
+## 기존 VS Code 실행 서버를 systemctl로 관리하기
+
+`/home/.../d-ddeck_db`에서 직접 실행하던 서버는 기존 폴더와 `.env`, DB,
+첨부파일, 가상환경을 유지한 채 서비스로 등록할 수 있습니다. 신규 설치용
+`install.sh`나 `/opt/ddeck` 전용 `update.sh`를 이 경로에 실행하지 마세요.
+
+프로젝트 루트에서 먼저 서비스 설정을 미리 확인합니다(변경 없음).
+
+```bash
+python3 deploy/register_systemd.py --venv .venv-linux
+```
+
+서비스 등록은 관리자 권한으로 실행합니다. 기본 서비스 이름은 `ddeck`이며,
+실행 계정은 `sudo`를 호출한 사용자입니다. 다른 계정으로 설치할 때는 기존
+파일에 접근 가능한 계정을 `--user 사용자명`으로 지정하세요.
+
+```bash
+sudo python3 deploy/register_systemd.py --venv .venv-linux --install
+systemctl cat ddeck
+```
+
+등록 시 `systemd-analyze verify`로 유닛을 검사한 뒤 `daemon-reload`만 실행합니다.
+기존 서버 종료, DB 변경, 의존성 설치, 서비스 시작 및 자동 시작 설정은 하지 않습니다.
+기존 `ddeck.service`가 다른 내용이거나 마스킹되어 있으면 덮어쓰지 않습니다.
+단, 초기 등록 스크립트가 생성한 설정과 정확히 일치하면 검사 종료 코드 수정만
+적용하고 기존 유닛을 `.before-schema-check-fix` 파일에 보관합니다.
+같은 설정으로 재실행해도 안전합니다. 가상환경이 `.venv`라면 그 이름을 사용하세요.
+한글·공백이 있는 경로를 지원하며, 프로젝트 폴더는 등록 후 이동하지 마세요.
+
+### 기존 backend/ddeck.db 보정 및 업데이트
+
+마이그레이션 이력이 없는 구형 DB가 `2cca8909675d` 기준과 일치하거나
+`asset_movements`의 매장·상태 외래 키만 누락된 경우 다음 절차를 지원합니다.
+다른 스키마 차이, 고아 참조, 중복 시리얼, 사용자 정의 트리거는 자동 처리하지 않고
+중단합니다. 현재 설치의 `.venv-linux`와 `backend/ddeck.db` 전용입니다.
+
+먼저 모든 DB 쓰기 프로세스를 종료하세요. systemd뿐 아니라 기존 VS Code에서
+실행한 Uvicorn도 `Ctrl+C`로 종료해야 합니다. 작업 중 앱 접속은 중단됩니다.
+
+```bash
+cd "/home/leemoon/바탕화면/d-ddeck_db"
+sudo systemctl stop ddeck
+sudo python3 deploy/register_systemd.py --venv .venv-linux --install
+bash deploy/migrate-existing-sqlite.sh
+```
+
+마지막 명령은 **sudo 없이** 파일 소유 계정으로 실행합니다. 설정된 DB 경로와
+8000 포트 사용 여부를 검사하고, `$HOME/ddeck-backups/migration-*`에 `.env`,
+첨부파일, 원본 SQLite 스냅샷을 보관합니다. 복사본에서 외래 키 보정 → 기준 스키마
+검증 → 기준 revision 기록 → 최신 마이그레이션 → 전체 기존 컬럼 값·행 수·참조 무결성
+검사를 수행합니다. 검증 성공 후에만 실제 DB를 교체합니다. 교체 직전 원본 데이터가
+바뀌었으면 중단하며, 교체 후 스키마 검사 실패 시 원본 DB를 복원합니다.
+
+`DB UPDATE COMPLETE`가 출력된 경우에만 시작합니다.
+
+```bash
+sudo systemctl reset-failed ddeck
+sudo systemctl start ddeck
+systemctl is-active ddeck
+sudo journalctl -u ddeck -n 40 --no-pager
+curl -fsS http://127.0.0.1:8000/
+```
+
+`active`와 서버 버전 `1.0.8`을 확인한 다음 앱에서 다시 로그인하세요.
+오류가 발생하면 서비스는 중지한 채 로그를 확인하고, `stamp head`를 강제로 실행하거나
+검증 표식이 없는 복사본을 복원하지 마세요. 백업에는 비밀 설정과 업무 데이터가
+포함되어 있으므로 공유하지 마세요.
+
+실제 DB 변경 없이 복사본만 검증하려면 다음처럼 별도 새 출력 폴더를 지정합니다.
+
+```bash
+backend/.venv-linux/bin/python deploy/prepare_legacy_sqlite.py \
+  --database backend/ddeck.db --output "$HOME/ddeck-backups/rehearsal-new"
+```
+
+### 서비스 전환
+
+1. DB·첨부파일·`.env`를 백업하고 해당 코드 버전에 맞는 DB 마이그레이션을
+   검증·완료합니다. 스키마 이력이 없으면 `backend/alembic/README.md`의
+   검증 절차가 먼저 필요하며, `stamp head`로 검증을 건너뛰지 않습니다.
+2. 기존 VS Code 서버 터미널에서 `Ctrl+C`로 서버를 종료합니다.
+3. `ss -ltnp 'sport = :8000'`으로 포트를 사용 중인 프로세스가 없는지 확인합니다.
+4. 서비스를 시작하고 상태와 API 응답을 확인합니다.
+
+```bash
+sudo systemctl start ddeck
+systemctl status ddeck --no-pager
+sudo journalctl -u ddeck -n 60 --no-pager
+curl -fsS http://127.0.0.1:8000/healthz
+curl -fsS http://127.0.0.1:8000/
+```
+
+서비스는 시작 전 `alembic check`를 실행합니다. DB가 코드와 맞지 않거나 검사가
+실패하면 **시작을 건너뛰며**, DB를 자동 수정하지 않습니다. `systemctl start`의
+종료 코드만으로 성공을 판단하지 말고 `systemctl is-active ddeck`과 로그를 확인하세요.
+현재 구형 DB에 마이그레이션 이력이 없고 외래 키가 누락된 경우에는 먼저 보정이
+필요합니다. 서비스 등록만으로 AS 관련 장비 API의 `Not Found`가 해결되지는 않습니다.
+
+`Target database is not up to date` 뒤에 `status=255/EXCEPTION`과 반복 재시도가
+나오면 초기 서비스 검사 설정입니다. 수정된 스크립트로 다시 등록하세요.
+
+```bash
+sudo systemctl stop ddeck
+sudo python3 deploy/register_systemd.py --venv .venv-linux --install
+sudo systemctl reset-failed ddeck
+```
+
+검사 래퍼는 Alembic의 실패 코드(255 포함)를 ExecCondition의 1로 변환하여
+재시도를 막습니다. 이것은 DB 업데이트를 대신하지 않으므로 스키마 보정 후 시작하세요.
+
+정상 동작을 확인한 후 부팅 시 자동 시작을 켭니다.
+
+```bash
+sudo systemctl enable ddeck
+sudo systemctl restart ddeck  # 재시작
+sudo systemctl stop ddeck     # 중지
+sudo systemctl start ddeck    # 시작
+sudo journalctl -u ddeck -f   # 실시간 로그
+```
+
+서비스는 기존 가상환경에서 단일 워커로 실행하며 `.env`는 애플리케이션이 읽습니다.
+VS Code 터미널에서만 지정했던 환경변수는 필요한 값을 `.env`에 반영해야 합니다.
+`DEBUG`에는 `true` 또는 `false`를 사용하며 `release`는 유효하지 않습니다.
+실행 계정의 홈 폴더 접근을 허용하므로, `/opt/ddeck` 신규 설치 서비스와 격리 수준은
+다릅니다. 파일 소유권이나 방화벽은 이 스크립트가 변경하지 않습니다.
+
+서비스 관리만 해제하려면 다음을 실행합니다(DB·파일은 유지됩니다).
+
+```bash
+sudo systemctl disable --now ddeck
+sudo rm /etc/systemd/system/ddeck.service
+sudo systemctl daemon-reload
+```
 
 ## 백업 등록 (꼭 하세요)
 

@@ -41,3 +41,6 @@ dddeckservercode/
 *.jks
 *.keystore
 **/key.properties
+
+# Local operational backups may contain credentials and business records
+/backups/

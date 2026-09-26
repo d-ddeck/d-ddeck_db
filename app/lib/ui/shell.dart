@@ -1,3 +1,4 @@
+import 'update_dialog.dart';
 import 'package:flutter/services.dart';
 import '../state/theme_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -486,6 +487,7 @@ class _AccountMenu extends StatelessWidget {
         const PopupMenuItem(value: 'sessions', child: Text('로그인 기기·세션')),
         const PopupMenuItem(value: 'password', child: Text('비밀번호 변경')),
         const PopupMenuItem(value: 'server', child: Text('서버 정보')),
+        const PopupMenuItem(value: 'update', child: Text('업데이트 확인')),
         if (VpnService.isSupported)
           const PopupMenuItem(value: 'vpn', child: Text('사외 접속(VPN) 설정')),
         const PopupMenuDivider(),
@@ -515,6 +517,12 @@ class _AccountMenu extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const ChangePasswordPage()),
             );
+          case 'update':
+            await checkClientUpdate(
+              context,
+              context.read<AuthState>().serverUrl,
+            );
+            break;
           case 'server':
             final controller = TextEditingController(text: auth.serverUrl);
             final next = await showDialog<String>(

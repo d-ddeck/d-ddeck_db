@@ -23,6 +23,7 @@ import 'ui/auth/login_page.dart';
 import 'ui/auth/signup_page.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
+import 'ui/update_dialog.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,6 +89,7 @@ class DdeckApp extends StatefulWidget {
 class _DdeckAppState extends State<DdeckApp> {
   final _navigator = GlobalKey<NavigatorState>();
   AuthPhase? _previous;
+  String? _updateServer;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +104,16 @@ class _DdeckAppState extends State<DdeckApp> {
       });
     }
     _previous = phase;
+    final server = context.read<ApiClient>().serverUrl;
+    if (phase != AuthPhase.loading && _updateServer != server) {
+      _updateServer = server;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final navigatorContext = _navigator.currentState?.overlay?.context;
+        if (mounted && navigatorContext != null) {
+          checkClientUpdate(navigatorContext, server, silent: true);
+        }
+      });
+    }
     return LayoutBuilder(
       builder: (context, constraints) => MaterialApp(
         navigatorKey: _navigator,

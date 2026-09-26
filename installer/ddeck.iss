@@ -45,6 +45,8 @@ UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
 SetupIconFile=..\app\windows\runner\resources\app_icon.ico
 SetupLogging=yes
+CloseApplications=yes
+RestartApplications=yes
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
@@ -152,6 +154,9 @@ begin
     // 앱이 실행 파일과 같은 폴더에서 읽는 파일. 서버가 옮겨가면 이 파일만
     // 고치면 되고, 프로그램을 다시 빌드할 필요가 없다.
     ConfigPath := ExpandConstant('{app}\ddeck.config.json');
+    // 수동 덮어쓰기 설치에서도 기존 서버 설정을 유지한다.
+    if FileExists(ConfigPath) and (ExpandConstant('{param:SERVERURL|}') = '') then
+      Exit;
     Json := '{' + #13#10 +
             '  "server_url": "' + GetServerUrl('') + '"' + #13#10 +
             '}' + #13#10;

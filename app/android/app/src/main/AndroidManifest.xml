@@ -3,6 +3,7 @@
          여기에 없으면 릴리스 APK 는 네트워크를 전혀 쓰지 못한다.
          브라우저로는 서버가 열리는데 앱만 "연결할 수 없습니다" 가 뜨는 원인. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <!-- 일정 알람 (시계 앱처럼 지정 시각에 울리기 위한 권한들) -->
     <!-- Android 13+ 는 알림 표시에 런타임 권한이 필요하다. -->

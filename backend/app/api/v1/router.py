@@ -11,6 +11,7 @@ from app.api.v1 import (
     inventory,
     service,
     store,
+    updates,
     users,
     worklog,
 )
@@ -26,3 +27,5 @@ api_router.include_router(board.router)  # 게시판
 api_router.include_router(calendar.router)  # 캘린더 + 알림
 api_router.include_router(admin.router)  # 관리기능 (설정/코드/감사/헬스)
 api_router.include_router(files.router)  # 공통 첨부파일
+
+api_router.include_router(updates.router)  # 서명된 클라이언트 업데이트
