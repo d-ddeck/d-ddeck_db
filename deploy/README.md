@@ -21,24 +21,24 @@ Windows PC 에서 서버용 설치 파일을 만듭니다.
 python installer/build_server_package.py
 ```
 
-`dist/ddeck-server-1.0.11.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
+`dist/ddeck-server-1.0.12.run` 하나가 생깁니다. 이 파일만 미니PC 로 보내면 됩니다.
 
 ```powershell
-scp dist/ddeck-server-1.0.11.run 사용자명@미니PC주소:~/
+scp dist/ddeck-server-1.0.12.run 사용자명@미니PC주소:~/
 ```
 
 미니PC 에서:
 
 ```bash
-chmod +x ddeck-server-1.0.11.run
-sudo ./ddeck-server-1.0.11.run
+chmod +x ddeck-server-1.0.12.run
+sudo ./ddeck-server-1.0.12.run
 ```
 
 끝입니다. 아래 "파일 옮기기" 와 "설치" 를 한 번에 처리합니다.
 옵션도 그대로 전달됩니다:
 
 ```bash
-sudo ./ddeck-server-1.0.11.run --port 8080 --admin it@mycompany.co.kr
+sudo ./ddeck-server-1.0.12.run --port 8080 --admin it@mycompany.co.kr
 ```
 
 > 프로젝트 폴더 전체가 아니라 `backend/` 와 `deploy/` 만 담기며,
@@ -180,7 +180,7 @@ sudo journalctl -u ddeck -n 40 --no-pager
 curl -fsS http://127.0.0.1:8000/
 ```
 
-`active`와 서버 버전 `1.0.11`을 확인한 다음 앱에서 다시 로그인하세요.
+`active`와 서버 버전 `1.0.12`을 확인한 다음 앱에서 다시 로그인하세요.
 오류가 발생하면 서비스는 중지한 채 로그를 확인하고, `stamp head`를 강제로 실행하거나
 검증 표식이 없는 복사본을 복원하지 마세요. 백업에는 비밀 설정과 업무 데이터가
 포함되어 있으므로 공유하지 마세요.

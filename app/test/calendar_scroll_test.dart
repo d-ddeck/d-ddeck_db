@@ -1,4 +1,5 @@
 import 'package:ddeck_app/data/admin_repository.dart';
+import 'package:ddeck_app/data/auth_repository.dart';
 import 'package:ddeck_app/data/calendar_repository.dart';
 import 'package:ddeck_app/models/calendar.dart';
 import 'package:ddeck_app/models/common.dart';
@@ -45,7 +46,95 @@ class _Admin implements AdminRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _Directory implements AuthRepository {
+  @override
+  Future<PagedList<UserBrief>> directory({
+    String? query,
+    int size = 50,
+  }) async => PagedList.fromJson({
+    'items': [],
+    'total': 0,
+    'page': 1,
+    'size': size,
+  }, UserBrief.fromJson);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  for (final width in [1000.0, 1440.0]) {
+    for (final scale in [1.0, 1.5, 2.0]) {
+      for (final dark in [false, true]) {
+        for (final compact in [false, true]) {
+          testWidgets(
+            'calendar search label stays inside scroll clip $width/$scale/$dark/$compact',
+            (tester) async {
+              tester.view.physicalSize = Size(width, 900);
+              tester.view.devicePixelRatio = 1;
+              addTearDown(tester.view.resetPhysicalSize);
+              addTearDown(tester.view.resetDevicePixelRatio);
+              final auth = _Auth();
+              await tester.pumpWidget(
+                MultiProvider(
+                  providers: [
+                    ChangeNotifierProvider<AuthState>.value(value: auth),
+                    Provider<CalendarRepository>.value(value: _Calendar()),
+                    Provider<AdminRepository>.value(value: _Admin()),
+                    Provider<AuthRepository>.value(value: _Directory()),
+                  ],
+                  child: MaterialApp(
+                    theme: dark
+                        ? AppTheme.dark(
+                            compact: compact,
+                          ).copyWith(platform: TargetPlatform.windows)
+                        : AppTheme.light(
+                            compact: compact,
+                          ).copyWith(platform: TargetPlatform.windows),
+                    builder: (context, child) => MediaQuery(
+                      data: MediaQuery.of(
+                        context,
+                      ).copyWith(textScaler: TextScaler.linear(scale)),
+                      child: child!,
+                    ),
+                    home: const CalendarPage(),
+                  ),
+                ),
+              );
+              await tester.pumpAndSettle();
+              final field = find.widgetWithText(TextField, '참석자 검색');
+              for (final filled in [false, true]) {
+                if (filled) {
+                  await tester.tap(field);
+                  await tester.enterText(field, '홍길동');
+                  await tester.pumpAndSettle();
+                }
+                final label = find.text('참석자 검색');
+                for (final scroll
+                    in find
+                        .ancestor(
+                          of: label,
+                          matching: find.byType(SingleChildScrollView),
+                        )
+                        .evaluate()) {
+                  expect(
+                    tester.getTopLeft(label).dy,
+                    greaterThanOrEqualTo(
+                      tester.getTopLeft(find.byWidget(scroll.widget)).dy,
+                    ),
+                    reason: 'floating label clips at scroll top',
+                  );
+                }
+                expect(tester.takeException(), isNull);
+              }
+              await tester.pumpWidget(const SizedBox());
+              auth.dispose();
+            },
+          );
+        }
+      }
+    }
+  }
+
   testWidgets(
     'touch drag over wide calendar scrolls instead of selecting a range',
     (tester) async {

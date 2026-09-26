@@ -343,6 +343,7 @@ class _ServiceListTabState extends State<ServiceListTab> {
                   ),
                   Expanded(
                     child: SingleChildScrollView(
+                      padding: fieldLabelInsets(ctx),
                       child: Wrap(
                         spacing: 12,
                         runSpacing: 12,

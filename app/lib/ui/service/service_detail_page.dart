@@ -764,6 +764,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               width: AppTheme.isWide(ctx) ? 560 : MediaQuery.sizeOf(ctx).width,
             ),
             child: SingleChildScrollView(
+              padding: fieldLabelInsets(ctx),
               child: Form(
                 key: form,
                 child: Column(
@@ -918,6 +919,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
       builder: (ctx) => ConfirmDialog.form(
         title: const Text('작업 기록 추가'),
         content: SingleChildScrollView(
+          padding: fieldLabelInsets(ctx),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -109,6 +109,11 @@ class PageBody extends StatelessWidget {
   );
 }
 
+/// Floating outline labels paint above the field's layout box. Keep that
+/// space inside any scroll clip, scaled with the user's text size.
+EdgeInsets fieldLabelInsets(BuildContext context) =>
+    EdgeInsets.only(top: MediaQuery.textScalerOf(context).scale(AppSpace.sm));
+
 class FormGap extends SizedBox {
   const FormGap({super.key}) : super(height: AppSpace.lg);
 }
@@ -127,9 +132,7 @@ class FormFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(
-      top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
-    ),
+    padding: fieldLabelInsets(context),
     child: Column(
       mainAxisSize: mainAxisSize,
       crossAxisAlignment: crossAxisAlignment,

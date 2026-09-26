@@ -329,137 +329,142 @@ class _CalendarPageState extends State<CalendarPage> {
                             .clamp(minHeight, double.infinity)
                             .toDouble()
                       : minHeight;
-                  final calendar = Column(
-                    children: [
-                      Wrap(
-                        runSpacing: 12,
-                        spacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          FilterChip(
-                            label: const Text('내 일정'),
-                            selected: _mineOnly,
-                            onSelected: (value) {
-                              setState(() => _mineOnly = value);
-                              _refresh();
-                            },
-                          ),
-                          FilterChip(
-                            label: const Text('월 전체 목록'),
-                            selected: _monthList,
-                            onSelected: (value) => setState(() {
-                              _monthList = value;
-                              _refresh();
-                            }),
-                          ),
-                          DropdownButton<String>(
-                            value: _categoryId,
-                            hint: const Text('모든 분류'),
-                            items: [
-                              const DropdownMenuItem(
-                                value: null,
-                                child: Text('모든 분류'),
-                              ),
-                              for (final category in data.categories)
-                                DropdownMenuItem(
-                                  value: category.id,
-                                  child: Text(category.name),
-                                ),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _categoryId = value);
-                              _refresh();
-                            },
-                          ),
-                          SizedBox(
-                            width: 180,
-                            child: Autocomplete<UserBrief>(
-                              displayStringForOption: (person) =>
-                                  person.fullName,
-                              optionsBuilder: (value) async =>
-                                  (await context
-                                          .read<AuthRepository>()
-                                          .directory(query: value.text))
-                                      .items,
-                              fieldViewBuilder:
-                                  (c, controller, focus, submit) => TextField(
-                                    controller: controller,
-                                    focusNode: focus,
-                                    decoration: InputDecoration(
-                                      labelText: '참석자 검색',
-                                      suffixIcon: IconButton(
-                                        tooltip: '참석자 조건 지우기',
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          controller.clear();
-                                          setState(() => _participantId = null);
-                                          _refresh();
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                              onSelected: (person) {
-                                setState(() => _participantId = person.id);
+                  final calendar = Padding(
+                    padding: fieldLabelInsets(context),
+                    child: Column(
+                      children: [
+                        Wrap(
+                          runSpacing: 12,
+                          spacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            FilterChip(
+                              label: const Text('내 일정'),
+                              selected: _mineOnly,
+                              onSelected: (value) {
+                                setState(() => _mineOnly = value);
                                 _refresh();
                               },
                             ),
-                          ),
-                          TextButton.icon(
-                            onPressed: () async {
-                              final range = await showDateRangePicker(
-                                context: context,
-                                firstDate: DateTime(2000),
-                                lastDate: DateTime(2100),
-                              );
-                              if (range != null && mounted) {
-                                _createEvent(range.start, range.end);
-                              }
-                            },
-                            icon: const Icon(Icons.date_range),
-                            label: const Text('기간 일정'),
-                          ),
-                          TextButton.icon(
-                            onPressed: _createCalendar,
-                            icon: const Icon(Icons.add),
-                            label: const Text('캘린더 만들기'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpace.md),
-                      _MonthHeader(
-                        month: _month,
-                        onPrev: () => _shiftMonth(-1),
-                        onNext: () => _shiftMonth(1),
-                        onToday: () => setState(() {
-                          final now = DateTime.now();
-                          _month = DateTime(now.year, now.month);
-                          _selected = now;
-                          _refresh();
-                        }),
-                      ),
-                      CalendarRangeSelection(
-                        firstDay: data.weeks.first.days.first,
-                        rowHeight: rowHeight,
-                        weekdayHeight:
-                            (MediaQuery.textScalerOf(context).scale(11) + 6)
-                                .clamp(22.0, double.infinity),
-                        weeks: data.weeks.length,
-                        enabled: desktop,
-                        onSelected: (start, end) => _createEvent(start, end),
-                        child: _MonthGrid(
-                          month: _month,
-                          selected: _selected,
-                          data: data,
-                          rowHeight: rowHeight,
-                          desktop: desktop,
-                          onChanged: _refresh,
-                          onCreate: _createEvent,
-                          onOverflow: (date) => _showDay(context, date, data),
-                          onSelect: (d) => setState(() => _selected = d),
+                            FilterChip(
+                              label: const Text('월 전체 목록'),
+                              selected: _monthList,
+                              onSelected: (value) => setState(() {
+                                _monthList = value;
+                                _refresh();
+                              }),
+                            ),
+                            DropdownButton<String>(
+                              value: _categoryId,
+                              hint: const Text('모든 분류'),
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('모든 분류'),
+                                ),
+                                for (final category in data.categories)
+                                  DropdownMenuItem(
+                                    value: category.id,
+                                    child: Text(category.name),
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _categoryId = value);
+                                _refresh();
+                              },
+                            ),
+                            SizedBox(
+                              width: 180,
+                              child: Autocomplete<UserBrief>(
+                                displayStringForOption: (person) =>
+                                    person.fullName,
+                                optionsBuilder: (value) async =>
+                                    (await context
+                                            .read<AuthRepository>()
+                                            .directory(query: value.text))
+                                        .items,
+                                fieldViewBuilder:
+                                    (c, controller, focus, submit) => TextField(
+                                      controller: controller,
+                                      focusNode: focus,
+                                      decoration: InputDecoration(
+                                        labelText: '참석자 검색',
+                                        suffixIcon: IconButton(
+                                          tooltip: '참석자 조건 지우기',
+                                          icon: const Icon(Icons.clear),
+                                          onPressed: () {
+                                            controller.clear();
+                                            setState(
+                                              () => _participantId = null,
+                                            );
+                                            _refresh();
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                onSelected: (person) {
+                                  setState(() => _participantId = person.id);
+                                  _refresh();
+                                },
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                final range = await showDateRangePicker(
+                                  context: context,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (range != null && mounted) {
+                                  _createEvent(range.start, range.end);
+                                }
+                              },
+                              icon: const Icon(Icons.date_range),
+                              label: const Text('기간 일정'),
+                            ),
+                            TextButton.icon(
+                              onPressed: _createCalendar,
+                              icon: const Icon(Icons.add),
+                              label: const Text('캘린더 만들기'),
+                            ),
+                          ],
                         ),
-                      ),
-                      const Divider(height: 1),
-                    ],
+                        const SizedBox(height: AppSpace.md),
+                        _MonthHeader(
+                          month: _month,
+                          onPrev: () => _shiftMonth(-1),
+                          onNext: () => _shiftMonth(1),
+                          onToday: () => setState(() {
+                            final now = DateTime.now();
+                            _month = DateTime(now.year, now.month);
+                            _selected = now;
+                            _refresh();
+                          }),
+                        ),
+                        CalendarRangeSelection(
+                          firstDay: data.weeks.first.days.first,
+                          rowHeight: rowHeight,
+                          weekdayHeight:
+                              (MediaQuery.textScalerOf(context).scale(11) + 6)
+                                  .clamp(22.0, double.infinity),
+                          weeks: data.weeks.length,
+                          enabled: desktop,
+                          onSelected: (start, end) => _createEvent(start, end),
+                          child: _MonthGrid(
+                            month: _month,
+                            selected: _selected,
+                            data: data,
+                            rowHeight: rowHeight,
+                            desktop: desktop,
+                            onChanged: _refresh,
+                            onCreate: _createEvent,
+                            onOverflow: (date) => _showDay(context, date, data),
+                            onSelect: (d) => setState(() => _selected = d),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                      ],
+                    ),
                   );
                   final dayList = dayEvents.isEmpty
                       ? StatePlaceholder(

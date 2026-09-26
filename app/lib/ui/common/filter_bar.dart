@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'layout.dart';
 
 /// Explicit applied labels avoid guessing values from controllers or widgets.
 class FilterBar extends StatelessWidget {
@@ -60,24 +61,27 @@ class FilterBar extends StatelessWidget {
             label: const Text('초기화'),
           );
     if (AppTheme.isWide(context)) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Wrap(
-              spacing: AppSpace.md,
-              runSpacing: AppSpace.md,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: children,
+      return Padding(
+        padding: fieldLabelInsets(context),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Wrap(
+                spacing: AppSpace.md,
+                runSpacing: AppSpace.md,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: children,
+              ),
             ),
-          ),
-          for (final child in trailing)
-            Padding(
-              padding: const EdgeInsets.only(left: AppSpace.md),
-              child: child,
-            ),
-          if (reset != null) reset,
-        ],
+            for (final child in trailing)
+              Padding(
+                padding: const EdgeInsets.only(left: AppSpace.md),
+                child: child,
+              ),
+            if (reset != null) reset,
+          ],
+        ),
       );
     }
     if (horizontalOnPhone) {
@@ -86,9 +90,7 @@ class FilterBar extends StatelessWidget {
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.only(
-              top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
-            ),
+            padding: fieldLabelInsets(context),
             child: Row(
               children: [
                 for (final child in children)
@@ -127,9 +129,7 @@ class FilterBar extends StatelessWidget {
                 ),
                 child: SingleChildScrollView(
                   // Leave room inside the scroll clip for floating labels.
-                  padding: EdgeInsets.only(
-                    top: MediaQuery.textScalerOf(context).scale(AppSpace.sm),
-                  ),
+                  padding: fieldLabelInsets(context),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
