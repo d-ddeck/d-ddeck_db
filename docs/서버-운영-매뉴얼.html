@@ -1,0 +1,674 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>d-ddeck 서버 운영 매뉴얼</title><style>
+:root { color-scheme: light; }
+* { box-sizing:border-box; }
+body { margin:0; color:#18283b; background:#eef2f7;
+  font-family:'Noto Sans CJK KR','Malgun Gothic',sans-serif; line-height:1.85; }
+main { max-width:1100px; margin:32px auto; padding:44px 56px; background:white;
+  box-shadow:0 8px 35px #1b2b4012; }
+h1 { font-size:34px; margin-top:0; color:#173960; }
+h2 { border-top:3px solid #345d8c; padding-top:22px; margin-top:60px; color:#173960; }
+h3 { margin-top:34px; color:#274d77; }
+a { color:#1b5fb3; text-underline-offset:3px; }
+img { display:block; width:100%; height:auto; border:1px solid #d8e0ea;
+ border-radius:8px; margin:24px 0 10px; }
+p:has(>img) { break-inside:avoid; break-after:avoid; }
+p:has(>em:only-child) { font-size:13px; color:#526376; margin-top:6px; }
+blockquote { margin:24px 0; padding:12px 20px; background:#edf3fb;
+ border-left:4px solid #496e9c; font-size:14px; }
+table { width:100%; border-collapse:collapse; font-size:14px; margin:20px 0; }
+th,td { text-align:left; vertical-align:top; padding:10px 12px; border:1px solid #d4deea; }
+th { background:#eaf0f8; }
+li { margin:5px 0; }
+code { background:#edf1f6; border-radius:3px; padding:2px 4px; }
+.toolbar { position:sticky; top:0; z-index:10; background:#173960; color:white;
+ padding:10px 24px; display:flex; justify-content:space-between; align-items:center; }
+.toolbar a { color:white; }
+button { cursor:pointer; padding:7px 18px; border:0; border-radius:5px; }
+@media(max-width:700px) { main { margin:0; padding:24px 18px; } table { font-size:12px; }
+th,td { padding:6px; } }
+@page { size:A4; margin:15mm 14mm;
+ @bottom-left { content:'d-ddeck 서버 운영 매뉴얼 · 1.0.13'; font-size:8pt; color:#526376; }
+ @bottom-right { content:counter(page) ' / ' counter(pages); font-size:8pt; color:#526376; }
+}
+@media print {
+ body { background:white; font-size:10pt; line-height:1.65; }
+ main { max-width:none; margin:0; padding:0; box-shadow:none; }
+ .toolbar { display:none; }
+ h1 { font-size:25pt; } h2 { break-before:page; margin-top:0; padding-top:10px; font-size:18pt; }
+ h3 { break-after:avoid; margin-top:18px; font-size:13pt; }
+ img { max-height:150mm; object-fit:contain; margin:12px 0 6px; }
+ table { font-size:8.5pt; } th,td { padding:6px 8px; }
+ tr, blockquote { break-inside:avoid; } thead { display:table-header-group; }
+ p { orphans:3; widows:3; } a { color:inherit; }
+}
+
+pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#edf1f6;
+ padding:12px; border-radius:5px; font-size:12px; line-height:1.6; }
+pre code { padding:0; background:none; }
+code { font-family:'Noto Sans Mono CJK KR',monospace; overflow-wrap:anywhere; }
+@media print { pre { font-size:8pt; break-inside:avoid; }
+h2 { break-before:auto; margin-top:24pt; } h2,h3 { break-after:avoid; }
+.toc { font-size:9pt; } }
+</style></head><body><div class="toolbar"><span>d-ddeck 서버 운영 매뉴얼 · 1.0.13</span><button onclick="window.print()">인쇄 / PDF 저장</button></div><main><h1 id="section-05557f37aa21">d-ddeck 서버 운영 매뉴얼</h1>
+<p>작성일: 2026-09-27 · 기준 버전: 서버/앱 1.0.13</p>
+<p>대상: 현재 Ubuntu 서버를 관리하는 운영자. 서버 실행, 중지, 백업, 업데이트, 복구, 클라이언트 배포와 장애 대응을 설명합니다. 일반 업무 화면은 <a href="사용자-가이드.md">사용자 가이드</a>를 참고하세요.</p>
+<p>이 문서는 현재 설치본을 조사한 결과를 기준으로 작성했습니다. 아래에서 <code>sudo</code> 비밀번호를 요청하면 Ubuntu 로그인 계정의 관리자 비밀번호를 터미널에 입력합니다. 입력 중 문자가 보이지 않는 것은 정상입니다. 앱 로그인 비밀번호와는 별개입니다.</p>
+<div class="toc">
+<ul>
+<li><a href="#section-05557f37aa21">d-ddeck 서버 운영 매뉴얼</a><ul>
+<li><a href="#section-a68c3c7c508b">1. 현재 운영 환경</a></li>
+<li><a href="#section-86bd4404e754">2. 자주 사용하는 명령</a></li>
+<li><a href="#section-16756ac3f404">3. 서버 시작·종료와 정상 확인</a><ul>
+<li><a href="#section-7c131a61fbcf">3.1 중지 상태에서 시작</a></li>
+<li><a href="#section-8e1211578cb6">3.2 부팅 시 자동 실행</a></li>
+<li><a href="#section-b27f6a9f7a32">3.3 서버 중지</a></li>
+</ul>
+</li>
+<li><a href="#section-773128a52723">4. 진행률을 보며 백업 후 재시작</a></li>
+<li><a href="#section-b87eb8631ff8">5. 백업 범위·보관과 전체 백업</a><ul>
+<li><a href="#section-7188e2cc5c67">5.1 일상 DB 백업</a></li>
+<li><a href="#section-e6c27a58b363">5.2 DB·첨부·설정의 전체 백업</a></li>
+</ul>
+</li>
+<li><a href="#section-32c7a667e1c8">6. 서버 업데이트와 DB 마이그레이션</a><ul>
+<li><a href="#section-e9ecb9fe3655">6.1 재시작과 업데이트의 차이</a></li>
+<li><a href="#section-5f5343e5f638">6.2 현재 바탕화면 설치본 업데이트 순서</a></li>
+</ul>
+</li>
+<li><a href="#section-84ee2fa24594">7. Windows·Android 앱 업데이트 배포</a></li>
+<li><a href="#section-7546fc84373a">8. 견적서·매장 정보 운영</a></li>
+<li><a href="#section-148246b37248">9. 장애 대응</a></li>
+<li><a href="#section-e8fe6c31e7d6">10. 백업 복구와 롤백</a><ul>
+<li><a href="#section-a638b9b48c2c">10.1 복구 전 준비</a></li>
+<li><a href="#section-4c1b753bc3f7">10.2 SQLite DB 복구 명령</a></li>
+<li><a href="#section-ba36d464e337">10.3 복구 후 확인</a></li>
+</ul>
+</li>
+<li><a href="#section-1a98c91d7242">11. 정기 운영 점검</a></li>
+<li><a href="#section-f2b5aee75a56">12. 다른 PC에 새 서버 설치할 때</a></li>
+<li><a href="#section-82d323f9096f">13. 운영 기록 양식과 참고 문서</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<h2 id="section-a68c3c7c508b">1. 현재 운영 환경</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>현재 값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>운영체제 / 실행 계정</td>
+<td>Ubuntu / <code>leemoon</code></td>
+</tr>
+<tr>
+<td>프로젝트</td>
+<td><code>/home/leemoon/바탕화면/d-ddeck_db</code></td>
+</tr>
+<tr>
+<td>서버 작업 폴더</td>
+<td><code>/home/leemoon/바탕화면/d-ddeck_db/backend</code></td>
+</tr>
+<tr>
+<td>서비스 이름</td>
+<td><code>ddeck.service</code></td>
+</tr>
+<tr>
+<td>서비스 설정</td>
+<td><code>/etc/systemd/system/ddeck.service</code></td>
+</tr>
+<tr>
+<td>Python 가상환경</td>
+<td><code>backend/.venv-linux</code></td>
+</tr>
+<tr>
+<td>서버 설정</td>
+<td><code>backend/.env</code></td>
+</tr>
+<tr>
+<td>DB</td>
+<td>SQLite, <code>backend/ddeck.db</code></td>
+</tr>
+<tr>
+<td>첨부파일</td>
+<td><code>backend/storage/</code></td>
+</tr>
+<tr>
+<td>사내 앱 접속 주소</td>
+<td><code>http://192.168.0.20:8000</code></td>
+</tr>
+<tr>
+<td>서버 자체 상태 확인</td>
+<td><code>http://127.0.0.1:8000/healthz</code></td>
+</tr>
+<tr>
+<td>검증용 서버</td>
+<td><code>127.0.0.1:18000</code>, 운영과 별도 DB</td>
+</tr>
+<tr>
+<td>조사 시 상태</td>
+<td>서비스 active, 부팅 자동 시작 enabled, 응답 버전 1.0.13</td>
+</tr>
+</tbody>
+</table>
+<p>이 설치본은 바탕화면 프로젝트에서 실행됩니다. <code>/opt/ddeck</code>에 설치하는 신규 서버 패키지와 경로가 다릅니다. <strong>현재 서버에는 <code>/opt/ddeck</code> 전용 <code>deploy/update.sh</code>, <code>deploy/backup.sh</code>를 그대로 실행하지 마세요.</strong> 새 PC의 표준 설치는 마지막 장을 참고하세요.</p>
+<p>휴대폰·Windows 앱의 서버 주소에는 <code>192.168.0.20</code>을 사용합니다. 다른 기기에서 <code>127.0.0.1</code>을 입력하면 그 기기 자신에게 접속하므로 서버에 연결되지 않습니다. IP가 변경됐다면 공유기의 DHCP 예약과 앱 주소를 함께 확인하세요.</p>
+<h2 id="section-86bd4404e754">2. 자주 사용하는 명령</h2>
+<table>
+<thead>
+<tr>
+<th>목적</th>
+<th>터미널 명령</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>중지된 서버 시작</td>
+<td><code>sudo systemctl start ddeck</code></td>
+</tr>
+<tr>
+<td>상태 확인</td>
+<td><code>systemctl status ddeck --no-pager -l</code></td>
+</tr>
+<tr>
+<td>백업 후 재시작</td>
+<td><code>ddeck-restart</code></td>
+</tr>
+<tr>
+<td>백업만 실행</td>
+<td><code>ddeck-restart --backup-only</code></td>
+</tr>
+<tr>
+<td>서버 중지</td>
+<td><code>sudo systemctl stop ddeck</code></td>
+</tr>
+<tr>
+<td>부팅 자동 시작 설정</td>
+<td><code>sudo systemctl enable ddeck</code></td>
+</tr>
+<tr>
+<td>자동 시작 여부 확인</td>
+<td><code>systemctl is-enabled ddeck</code></td>
+</tr>
+<tr>
+<td>최근 로그 50줄</td>
+<td><code>journalctl -u ddeck -n 50 --no-pager</code></td>
+</tr>
+<tr>
+<td>실시간 로그</td>
+<td><code>journalctl -u ddeck -f</code></td>
+</tr>
+<tr>
+<td>응답 / 버전 확인</td>
+<td><code>curl -fsS --max-time 5 http://127.0.0.1:8000/healthz</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>systemctl status</code> 화면이 페이지 형태로 열리면 <code>q</code>로 나옵니다. 실시간 로그는 <code>Ctrl+C</code>로 종료하며, 로그 보기 종료는 서버를 중지하지 않습니다.</p>
+<p><code>sudo systemctl restart ddeck</code> 자체에는 백업 기능이 없습니다. 일상 재시작에는 <code>ddeck-restart</code>를 사용하세요. <code>ddeck-restart</code>는 이번에 현재 PC에 추가한 명령이며, 1.0.13 배포 파일에 원래 포함된 명령은 아닙니다.</p>
+<h2 id="section-16756ac3f404">3. 서버 시작·종료와 정상 확인</h2>
+<h3 id="section-7c131a61fbcf">3.1 중지 상태에서 시작</h3>
+<pre><code class="language-bash">sudo systemctl start ddeck
+systemctl status ddeck --no-pager -l
+curl -fsS --max-time 5 http://127.0.0.1:8000/healthz
+</code></pre>
+<p>정상 기준은 <code>Active: active (running)</code>과 아래 JSON입니다. 시작 직후 아직 준비 중이면 잠시 후 curl을 다시 실행합니다.</p>
+<pre><code class="language-json">{&quot;status&quot;:&quot;ok&quot;,&quot;version&quot;:&quot;1.0.13&quot;}
+</code></pre>
+<p>그다음 같은 사내망의 앱에서 로그인하고 목록을 조회합니다. <code>/healthz</code>는 기본 응답 확인이므로 로그인·DB 조회까지 대신 검증하지 않습니다.</p>
+<h3 id="section-8e1211578cb6">3.2 부팅 시 자동 실행</h3>
+<p>현재는 이미 설정돼 있습니다. 새로 등록하거나 해제했을 때만 아래 명령을 사용합니다.</p>
+<pre><code class="language-bash">sudo systemctl enable ddeck
+systemctl is-enabled ddeck
+</code></pre>
+<p><code>enabled</code>면 부팅 자동 시작 대상입니다. <code>enable</code>만으로 지금 중지된 서버가 시작되는 것은 아니므로 필요하면 <code>start</code>도 실행합니다.</p>
+<h3 id="section-b27f6a9f7a32">3.3 서버 중지</h3>
+<pre><code class="language-bash">sudo systemctl stop ddeck
+systemctl is-active ddeck
+</code></pre>
+<p>정상 중지 시 <code>inactive</code>입니다. 중지 중에는 앱 로그인·저장·동기화와 서버 스케줄러가 작동하지 않습니다. 관리 작업 전에 사용자에게 시간을 안내하세요. 운영 서비스가 켜져 있는 동안 같은 DB로 별도 uvicorn 서버를 실행하지 않습니다.</p>
+<h2 id="section-773128a52723">4. 진행률을 보며 백업 후 재시작</h2>
+<pre><code class="language-bash">ddeck-restart
+</code></pre>
+<p>진행 예:</p>
+<pre><code class="language-text">DB 복사 [###############---------------]  50%
+DB 복사 [##############################] 100%
+백업 무결성 검사 중...
+백업 완료: /home/leemoon/.local/share/ddeck-backups/restarts/...
+서버 DB 구조 확인 중...
+백업 검증 완료. 서버 재시작 중...
+서버 정상 실행: 1.0.13
+</code></pre>
+<p>처리 순서는 서비스 경로 확인 → 관리자 인증 → SQLite 온라인 백업 → 무결성 검사 → DB 구조 검사 → 재시작 → 최대 30초 정상 응답 확인입니다.</p>
+<ul>
+<li>게이지는 실제 DB 페이지 복사 비율입니다. <code>100%</code> 뒤에도 무결성 검사가 남아 있습니다.</li>
+<li>DB가 작으면 게이지가 빠르게 완료됩니다.</li>
+<li>백업·설정 복사·DB 구조 검사 실패 시 재시작하지 않습니다.</li>
+<li>이 명령은 의존성 설치나 DB 마이그레이션을 자동 실행하지 않습니다.</li>
+<li><code>Ctrl+C</code>로 중단했다면 서비스 상태를 확인합니다. 이미 재시작 단계였다면 서비스 상태가 바뀌었을 수 있습니다.</li>
+<li>현재 SQLite 설치본과 서비스 이름 <code>ddeck</code>, 포트 <code>8000</code> 기준입니다.</li>
+</ul>
+<p>명령을 찾지 못할 때:</p>
+<pre><code class="language-bash">~/.local/bin/ddeck-restart
+</code></pre>
+<p>프로젝트에서 직접 실행할 수도 있습니다.</p>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db'
+./deploy/restart-with-backup.sh
+</code></pre>
+<h2 id="section-b87eb8631ff8">5. 백업 범위·보관과 전체 백업</h2>
+<h3 id="section-7188e2cc5c67">5.1 일상 DB 백업</h3>
+<pre><code class="language-bash">ddeck-restart --backup-only
+</code></pre>
+<p>서버를 재시작하지 않으며 관리자 인증도 요청하지 않습니다. 백업 위치:</p>
+<pre><code class="language-text">/home/leemoon/.local/share/ddeck-backups/restarts/
+  restart-날짜-시각/
+    ddeck.db
+    backend.env
+    manifest.json
+</code></pre>
+<p>DB에는 계정, 업무 기록, 매장 정보와 저장한 견적 PDF 등이 포함됩니다. <code>backend.env</code>에는 비밀 설정이 있으므로 백업 폴더 전체를 공개 저장소나 채팅에 올리지 않습니다. 폴더 권한은 0700, DB·설정 파일은 0600입니다.</p>
+<p><strong>업로드한 사진·일반 첨부파일은 <code>backend/storage</code>에 있으므로 위 DB 백업에 포함되지 않습니다.</strong> 온라인 백업 시점 이후의 변경도 해당 백업에는 포함되지 않습니다. 파일 백업까지 필요한 업데이트·복구 전에는 전체 백업을 수행하세요.</p>
+<p>백업은 매번 새 폴더에 저장하며 자동 삭제하지 않습니다. 정기적으로 용량과 보존본을 확인하고 외장 디스크나 승인된 NAS로 복사하세요. 같은 디스크의 백업만으로는 디스크 고장에 대비할 수 없습니다. 현재 자동 원격 전송이나 주기 실행이 설정됐다고 가정하지 마세요.</p>
+<h3 id="section-e6c27a58b363">5.2 DB·첨부·설정의 전체 백업</h3>
+<p>아래 블록은 <strong>현재 설치 경로와 DB 파일 기준</strong>입니다. 서버를 중지하고 백업합니다. 한 단계라도 실패하면 중단하며 서버는 중지 상태로 남습니다. 출력된 백업 폴더를 기록하세요. 완료 후에도 점검·업데이트를 이어갈 수 있도록 자동 시작하지 않습니다.</p>
+<pre><code class="language-bash">bash &lt;&lt;'BASH'
+set -euo pipefail
+umask 077
+cd '/home/leemoon/바탕화면/d-ddeck_db'
+sudo systemctl stop ddeck
+if systemctl is-active --quiet ddeck; then
+  echo '서버가 아직 실행 중입니다.' &gt;&amp;2
+  exit 1
+fi
+DDECK_SNAPSHOT=&quot;$(mktemp -d &quot;$HOME/ddeck-full-$(date +%Y%m%d-%H%M%S)-XXXXXX&quot;)&quot;
+backend/.venv-linux/bin/python deploy/sqlite_backup.py snapshot \
+  backend/ddeck.db &quot;$DDECK_SNAPSHOT/ddeck.db&quot;
+cp -a backend/.env &quot;$DDECK_SNAPSHOT/backend.env&quot;
+cp -a backend/storage &quot;$DDECK_SNAPSHOT/storage&quot;
+cp -a /etc/systemd/system/ddeck.service &quot;$DDECK_SNAPSHOT/ddeck.service&quot;
+git rev-parse HEAD &gt; &quot;$DDECK_SNAPSHOT/code-commit.txt&quot;
+backend/.venv-linux/bin/python -m pip freeze &gt; &quot;$DDECK_SNAPSHOT/python-packages.txt&quot;
+(cd &quot;$DDECK_SNAPSHOT&quot; &amp;&amp; sha256sum ddeck.db &gt; SHA256SUMS)
+printf '전체 백업 완료: %s\n서버는 중지 상태입니다.\n' &quot;$DDECK_SNAPSHOT&quot;
+BASH
+</code></pre>
+<p>추가 수동 서버나 외부 DB 기록 작업도 중지한 상태에서 실행합니다. <code>.env</code>의 DB·첨부 경로를 변경했다면 이 블록의 경로도 맞춰야 합니다. 단순 백업 목적이었다면 완료 후 <code>sudo systemctl start ddeck</code>으로 시작하고 <code>/healthz</code>를 확인합니다.</p>
+<h2 id="section-32c7a667e1c8">6. 서버 업데이트와 DB 마이그레이션</h2>
+<h3 id="section-e9ecb9fe3655">6.1 재시작과 업데이트의 차이</h3>
+<table>
+<thead>
+<tr>
+<th>작업</th>
+<th>하는 일</th>
+<th>하지 않는 일</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>systemctl restart</code></td>
+<td>현재 코드로 프로세스 재실행</td>
+<td>백업, 코드 다운로드, 의존성 설치, DB 변경</td>
+</tr>
+<tr>
+<td><code>ddeck-restart</code></td>
+<td>백업·검사 후 프로세스 재실행</td>
+<td>코드 다운로드, 의존성 설치, DB 변경</td>
+</tr>
+<tr>
+<td>서버 업데이트</td>
+<td>코드·의존성·DB 구조를 버전에 맞춤</td>
+<td>앱 설치 파일의 자동 배포는 별도</td>
+</tr>
+<tr>
+<td>앱 업데이트</td>
+<td>Windows·Android 앱을 교체</td>
+<td>서버 코드나 DB 구조 변경</td>
+</tr>
+</tbody>
+</table>
+<p>1.0.13은 업무 구분·견적 이력·연락 정보용 DB 변경이 필요합니다. 최종 리비전은 <code>d527a318fc40</code>입니다. DB가 이전 상태면 시작 전 검사에서 <code>Target database is not up to date</code>가 발생해 서비스가 시작되지 않습니다.</p>
+<h3 id="section-5f5343e5f638">6.2 현재 바탕화면 설치본 업데이트 순서</h3>
+<ol>
+<li>작업 시간을 안내하고 릴리즈 노트에서 DB 변경 여부를 확인합니다.</li>
+<li>위의 <strong>전체 백업</strong>을 완료합니다. 서버는 중지된 상태로 둡니다.</li>
+<li>프로젝트의 <code>git status --short</code>로 미커밋 작업을 확인합니다. 개인 수정·양식 파일을 삭제하거나 강제로 덮어쓰지 않습니다.</li>
+<li>승인된 릴리즈 코드를 반영합니다. 현재처럼 <code>master</code>로 운영하는 경우 아래 명령은 원격 기본 브랜치를 가져옵니다. <strong>릴리즈 이후 미배포 커밋이 있는지 확인한 경우에만</strong> 이 경로로 반영하고, 특정 버전 배포가 필요하면 운영 담당자가 그 버전의 체크아웃을 준비합니다.</li>
+</ol>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db'
+git status --short
+git fetch origin --tags
+git log -5 --oneline origin/master
+git pull --ff-only origin master
+</code></pre>
+<p>충돌·인증 실패가 있으면 해결 전 다음 단계를 진행하지 않습니다. <code>reset --hard</code>로 해결하지 마세요.</p>
+<ol>
+<li>의존성과 DB 구조를 갱신합니다. <strong>서비스 중지와 전체 백업이 완료된 뒤</strong> 한 블록으로 실행합니다. Python 작업에는 sudo를 붙이지 않습니다.</li>
+</ol>
+<pre><code class="language-bash">bash &lt;&lt;'BASH'
+set -euo pipefail
+cd '/home/leemoon/바탕화면/d-ddeck_db/backend'
+if systemctl is-active --quiet ddeck; then
+  echo '먼저 서버를 중지하고 전체 백업을 완료하세요.' &gt;&amp;2
+  exit 1
+fi
+.venv-linux/bin/python -m pip install -r requirements.txt
+env -u DEBUG -u DATABASE_URL -u ENVIRONMENT \
+  .venv-linux/bin/python -m alembic upgrade head
+env -u DEBUG -u DATABASE_URL -u ENVIRONMENT \
+  .venv-linux/bin/python -m alembic check
+BASH
+</code></pre>
+<p>성공 기준은 명령 종료 성공과 <code>No new upgrade operations detected.</code>입니다. 실패하면 서버를 중지 상태로 두고 로그를 확인합니다. 환경변수 제거 옵션은 터미널의 임시 설정 대신 서비스와 같은 <code>backend/.env</code>를 사용하기 위한 것입니다.</p>
+<ol>
+<li>서비스를 시작하고 DB 조회까지 확인합니다.</li>
+</ol>
+<pre><code class="language-bash">sudo systemctl reset-failed ddeck
+sudo systemctl start ddeck
+systemctl status ddeck --no-pager -l
+curl -fsS --max-time 5 http://127.0.0.1:8000/healthz
+</code></pre>
+<ol>
+<li>앱에서 로그인, 기존 대응 조회, 매장 조회, 견적 PDF 열기를 확인한 뒤 사용자에게 완료를 안내합니다.</li>
+</ol>
+<p>마이그레이션 리비전 숫자만 바꾸는 <code>alembic stamp</code>는 일반 업데이트 명령이 아닙니다. 시작 오류를 피하려고 임의로 사용하면 실제 테이블과 버전 기록이 달라질 수 있습니다. 오래된 DB의 최초 전환은 별도 검증 도구와 <a href="../deploy/README.md">기존 서버 등록 안내</a>를 따릅니다.</p>
+<h2 id="section-84ee2fa24594">7. Windows·Android 앱 업데이트 배포</h2>
+<p>GitHub 릴리즈 게시, 운영 서버 업데이트, 사내 앱 자동 업데이트 게시를 각각 구분합니다. 서버를 업데이트한 뒤 앱 업데이트 파일을 게시하세요.</p>
+<p>릴리즈 다운로드: <a href="https://github.com/kmeans12345-cell/d-ddeck_db/releases">GitHub Releases</a></p>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>용도</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ddeck-setup-버전.exe</code></td>
+<td>Windows 앱 설치</td>
+</tr>
+<tr>
+<td><code>ddeck-버전-arm64.apk</code></td>
+<td>Android 앱 설치</td>
+</tr>
+<tr>
+<td><code>ddeck-server-버전.run</code></td>
+<td><code>/opt/ddeck</code> 표준 서버 설치/갱신</td>
+</tr>
+<tr>
+<td><code>update-manifest.json</code></td>
+<td>앱 업데이트 파일 검증용 서명 정보</td>
+</tr>
+<tr>
+<td><code>SHA256SUMS</code></td>
+<td>배포 파일 체크섬</td>
+</tr>
+</tbody>
+</table>
+<p>현재 서버에 1.0.13 앱 업데이트 파일을 게시하려면, GitHub CLI가 인증된 설치 소유자 계정으로 다음을 실행합니다.</p>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db'
+bash deploy/sync_client_updates.sh v1.0.13
+</code></pre>
+<p>스크립트는 해당 릴리즈의 앱 파일을 내려받아 서명·크기·해시를 검증하고 서버의 첨부 저장소 아래 <code>client-updates</code>에 게시합니다. 이미 같은 파일이 게시돼 있으면 검증 후 종료합니다. <code>.env</code>와 GitHub 인증이 필요하며 sudo로 실행하지 않습니다.</p>
+<p>앱에서는 재실행 또는 설정의 업데이트 확인을 사용합니다. Android는 OS 설치 승인이 필요합니다. 기존과 다른 서명 키로 APK를 만들면 정상적인 덮어쓰기 업데이트가 불가능할 수 있으므로 운영 키를 유지합니다. 자세한 절차는 <a href="ANDROID_SIGNING.md">Android 서명 안내</a>를 참고하세요.</p>
+<h2 id="section-7546fc84373a">8. 견적서·매장 정보 운영</h2>
+<ul>
+<li>매장 상세 → 수정에서 담당자·연락처·주소를 관리합니다. 기존 수정 권한을 유지합니다.</li>
+<li>새 대응일지에서 매장을 선택하면 연락 정보가 자동 입력되고 건별로 수정할 수 있습니다.</li>
+<li>새 견적서에는 대응일지의 연락 정보가 먼저 들어가며, 빈 항목은 매장 정보로 보완합니다.</li>
+<li>매장 기본 정보를 바꿔도 과거 대응일지와 이미 저장된 견적 PDF는 바뀌지 않습니다.</li>
+<li>견적 수정은 새 버전을 만들고 이전 파일을 보존합니다. PDF 원본이 DB에 저장되므로 DB 용량도 증가합니다.</li>
+</ul>
+<p>회사 양식의 공급자·입금계좌·서명은 서버별로 설정합니다. 회사 원본·서명·계좌는 공개 배포 파일에 포함되지 않습니다. 먼저 실제 양식 파일 경로로 바꿔 검증합니다.</p>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db/backend'
+env -u DEBUG -u DATABASE_URL -u ENVIRONMENT \
+  .venv-linux/bin/python scripts/import_quotation_defaults.py '/실제/견적서.xlsx'
+</code></pre>
+<p>입력 파일과 대상 서버를 확인한 뒤 동일 명령 끝에 <code>--apply</code>를 붙여 저장합니다. 새 견적에 서명이 보이지 않으면 기본값 가져오기 여부와 공급자 회사명·대표자 이름 일치를 확인합니다. 기존 PDF는 설정 변경으로 갱신되지 않습니다.</p>
+<p><a href="QUOTATIONS_REVIEW.md">견적서 상세 설명</a> · <a href="STORE_CONTACTS_REVIEW.md">매장 연락 정보</a></p>
+<h2 id="section-148246b37248">9. 장애 대응</h2>
+<p>문제가 발생하면 재시작을 반복하기 전에 상태·로그·응답을 확인합니다.</p>
+<pre><code class="language-bash">systemctl status ddeck --no-pager -l
+journalctl -u ddeck -n 80 --no-pager
+curl -fsS --max-time 5 http://127.0.0.1:8000/healthz
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>증상 또는 로그</th>
+<th>확인할 원인</th>
+<th>조치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Target database is not up to date</code> / <code>exec-condition</code></td>
+<td>코드보다 오래된 DB 구조</td>
+<td>백업 후 의존성·마이그레이션·구조 검사, 시작</td>
+</tr>
+<tr>
+<td><code>ModuleNotFoundError</code></td>
+<td>새 의존성 미설치 또는 다른 가상환경</td>
+<td>등록된 ExecStart 경로 확인, 그 가상환경에 requirements 설치</td>
+</tr>
+<tr>
+<td><code>Start request repeated too quickly</code></td>
+<td>반복 실행 실패</td>
+<td>먼저 원인 수정, <code>reset-failed</code> 후 시작</td>
+</tr>
+<tr>
+<td><code>Connection refused</code></td>
+<td>해당 IP/포트에서 서버 미실행</td>
+<td>active 상태·로그·포트 점검</td>
+</tr>
+<tr>
+<td>서버 내부 curl은 성공, 다른 기기는 실패</td>
+<td>IP 변경, 다른 Wi-Fi/VPN, 방화벽</td>
+<td>사내망 주소와 네트워크 접근 확인</td>
+</tr>
+<tr>
+<td><code>Address already in use</code></td>
+<td>수동 서버 또는 다른 프로세스의 포트 사용</td>
+<td>PID/실행 경로 확인 후 중복 서버만 정상 종료</td>
+</tr>
+<tr>
+<td><code>no such table</code> / <code>no such column</code></td>
+<td>잘못된 DB 또는 마이그레이션 누락</td>
+<td>WorkingDirectory와 <code>.env</code>, 리비전 확인</td>
+</tr>
+<tr>
+<td><code>401</code> / 세션 만료</td>
+<td>로그인 세션 문제</td>
+<td>다시 로그인, 계정 상태·기기 시간 확인</td>
+</tr>
+<tr>
+<td>일부 기능만 <code>404</code> / not-found</td>
+<td>구버전 서버 또는 삭제된 건</td>
+<td>서버 버전·해당 기록 존재 확인</td>
+</tr>
+<tr>
+<td>백업 저장 실패</td>
+<td>디스크 부족, 권한, 경로 문제</td>
+<td>공간 확보·권한 확인 후 재실행</td>
+</tr>
+<tr>
+<td>DB 잠금 오류</td>
+<td>다른 기록 작업, 중복 서버</td>
+<td>관련 프로세스를 확인하고 작업 종료 후 재시도</td>
+</tr>
+</tbody>
+</table>
+<p>추가 진단 명령:</p>
+<pre><code class="language-bash">systemctl show ddeck -p WorkingDirectory -p ExecStart -p User
+ss -ltnp 'sport = :8000'
+hostname -I
+df -h &quot;$HOME&quot;
+sudo ufw status
+</code></pre>
+<p>IP·포트에 맞는 접근 정책을 확인한 뒤 네트워크를 수정합니다. 접속 오류 해결을 위해 방화벽 전체를 끄지 않습니다. <code>/docs</code>나 <code>/openapi.json</code>은 운영 설정에 따라 비활성화될 수 있으므로 상태 확인에는 <code>/healthz</code>를 사용합니다.</p>
+<p>로그 공유 시 비밀번호, 토큰, <code>.env</code> 내용, 고객 연락처 등은 제외합니다. 오류 발생 시각, 실행 명령, 서비스 상태, 마지막 오류 로그, 서버/앱 버전을 함께 남기면 원인 확인이 쉽습니다.</p>
+<h2 id="section-e8fe6c31e7d6">10. 백업 복구와 롤백</h2>
+<p>복구는 현재 데이터를 백업 시점으로 되돌립니다. 백업 이후 등록한 기록은 복구본에 없으므로 먼저 사용자와 복구 시점을 확인합니다. 운영 복구 전에 별도 시험 DB에서 검증하는 것이 원칙입니다.</p>
+<h3 id="section-a638b9b48c2c">10.1 복구 전 준비</h3>
+<ol>
+<li>서버와 수동 DB 기록 작업을 모두 중지합니다.</li>
+<li>현재 상태도 5장의 전체 백업으로 별도 보관합니다.</li>
+<li>복구할 백업의 날짜·원본 경로·무결성을 확인합니다. 일상 백업이면 <code>manifest.json</code>, 전체 백업이면 <code>SHA256SUMS</code>를 확인합니다.</li>
+<li>백업의 DB 리비전과 사용할 서버 코드가 호환되는지 확인합니다.</li>
+<li>첨부파일이 필요한 경우 같은 시점의 storage 백업도 준비합니다.</li>
+</ol>
+<p>복구 대상 파일을 먼저 검사합니다. 경로는 실제 파일로 바꿉니다.</p>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db'
+backend/.venv-linux/bin/python deploy/sqlite_backup.py validate \
+  '/실제/백업폴더/ddeck.db'
+</code></pre>
+<p>정상 검사는 출력 없이 성공 종료할 수 있습니다. 오류가 나오면 복구하지 않습니다.</p>
+<h3 id="section-4c1b753bc3f7">10.2 SQLite DB 복구 명령</h3>
+<p>아래는 <strong>서비스 중지, 현재 상태 보관, 복구 대상 확인을 마친 뒤</strong> 실행합니다. 운영 DB를 변경하는 명령입니다. <code>restore</code>는 검사된 임시 DB로 교체하고 이전 WAL/SHM 파일을 정리하므로 단순 파일 덮어쓰기 대신 사용합니다.</p>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db'
+backend/.venv-linux/bin/python deploy/sqlite_backup.py restore \
+  '/실제/백업폴더/ddeck.db' backend/ddeck.db
+</code></pre>
+<p>첨부파일 복구는 서버가 중지된 상태에서 기존 <code>backend/storage</code>를 별도 보관한 후 같은 시점의 백업본으로 교체합니다. 이름이 겹치는 파일을 무작정 합치면 삭제됐어야 할 파일이 남거나 DB와 파일이 어긋날 수 있습니다.</p>
+<p><code>.env</code>는 현재 서버를 유지하는 일반 DB 복구에서 자동 교체하지 않습니다. 서버 이전 등으로 복구할 때만 DB·첨부 경로와 비밀 설정을 검토하고 소유자와 0600 권한을 맞춥니다. SECRET_KEY가 바뀌면 재로그인이 필요할 수 있습니다.</p>
+<h3 id="section-ba36d464e337">10.3 복구 후 확인</h3>
+<pre><code class="language-bash">cd '/home/leemoon/바탕화면/d-ddeck_db/backend'
+env -u DEBUG -u DATABASE_URL -u ENVIRONMENT \
+  .venv-linux/bin/python -m alembic current
+env -u DEBUG -u DATABASE_URL -u ENVIRONMENT \
+  .venv-linux/bin/python -m alembic check
+</code></pre>
+<p>구조 검사 실패 시 그대로 시작하지 않습니다. 새 코드를 유지하며 과거 DB를 복구하는 경우 백업 복제본에서 마이그레이션을 검증한 뒤 적용합니다. 이전 버전으로 완전히 롤백한다면 그 버전의 코드·의존성·DB·첨부를 함께 맞춥니다.</p>
+<p>검증 후 시작하여 로그인, 주요 기록 건수, 최근 대응 내용, 사진·첨부 다운로드, 견적 PDF를 확인합니다. <strong>견적서 마이그레이션을 downgrade하면 견적 테이블과 PDF가 제거될 수 있으므로</strong> 단순 장애 해결용으로 downgrade하지 않습니다.</p>
+<h2 id="section-1a98c91d7242">11. 정기 운영 점검</h2>
+<table>
+<thead>
+<tr>
+<th>주기</th>
+<th>점검 항목</th>
+<th>정상 기준 / 기록</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>매일 또는 업무 시작 전</td>
+<td>서비스 상태, healthz, 앱 로그인·조회</td>
+<td>active, ok, 예상 버전, 주요 목록 정상</td>
+</tr>
+<tr>
+<td>업무 데이터 변경 후 / 운영 정책에 따라</td>
+<td>DB 백업, 중요 첨부 백업</td>
+<td>성공 로그와 백업 위치 기록</td>
+</tr>
+<tr>
+<td>매주</td>
+<td>디스크 여유, 백업 누락, 오류 로그</td>
+<td>용량 증가 추세와 반복 오류 확인</td>
+</tr>
+<tr>
+<td>매주</td>
+<td>외부 백업 보관 상태</td>
+<td>최근 검증본이 서버 외부에도 존재</td>
+</tr>
+<tr>
+<td>매월</td>
+<td>계정 승인·권한·퇴사자 세션</td>
+<td>불필요 계정/세션 정리</td>
+</tr>
+<tr>
+<td>분기 또는 큰 업데이트 전</td>
+<td>별도 환경 복구 연습</td>
+<td>DB·첨부·견적 PDF 복원 확인</td>
+</tr>
+<tr>
+<td>업데이트 직후</td>
+<td>버전·스키마·업무 동작</td>
+<td>로그인·대응·매장·견적 확인</td>
+</tr>
+</tbody>
+</table>
+<p>기본 실행 예:</p>
+<pre><code class="language-bash">systemctl is-active ddeck
+curl -fsS --max-time 5 http://127.0.0.1:8000/healthz
+df -h &quot;$HOME&quot;
+journalctl -u ddeck --since today -p warning --no-pager
+</code></pre>
+<p><code>deploy/monitor.py</code>는 표준 설치의 <code>backups/last_success.json</code>을 확인합니다. 현재 <code>ddeck-restart</code> 백업은 그 파일을 만들지 않으므로, 이 모니터를 그대로 실행하면 DB 백업이 있어도 <code>No verified backup</code>이 표시될 수 있습니다. 현재 환경에 자동 감시·원격 알림이 설치됐다고 가정하지 않습니다.</p>
+<p>자동 백업을 새로 구성할 때는 <code>--backup-only</code>처럼 관리자 인증이 없는 백업 전용 명령을 사용하고 로그·실패 알림·보관 용량 정책도 함께 구성합니다. 대화형 재시작 명령을 그대로 cron에 등록하지 않습니다.</p>
+<h2 id="section-f2b5aee75a56">12. 다른 PC에 새 서버 설치할 때</h2>
+<p>새 PC에 표준 설치하려면 <a href="../deploy/README.md">Ubuntu 설치 안내</a>를 따릅니다. 예를 들어 1.0.13 설치 파일을 내려받아 다음처럼 실행합니다.</p>
+<pre><code class="language-bash">chmod +x ddeck-server-1.0.13.run
+sudo ./ddeck-server-1.0.13.run
+</code></pre>
+<p>표준 설치는 <code>/opt/ddeck</code>, 전용 서비스 계정 <code>ddeck</code>을 사용하고, 기본 DB는 PostgreSQL입니다. 현재 바탕화면 SQLite 설치본과 백업·복구 명령이 다릅니다. 설치 옵션과 기존 서버 이전 절차를 확인한 뒤 실행합니다.</p>
+<table>
+<thead>
+<tr>
+<th>구분</th>
+<th>현재 설치본</th>
+<th>표준 설치본</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>경로</td>
+<td>사용자 바탕화면 프로젝트</td>
+<td><code>/opt/ddeck</code></td>
+</tr>
+<tr>
+<td>실행 사용자</td>
+<td><code>leemoon</code></td>
+<td><code>ddeck</code></td>
+</tr>
+<tr>
+<td>가상환경</td>
+<td><code>.venv-linux</code></td>
+<td><code>.venv</code></td>
+</tr>
+<tr>
+<td>DB</td>
+<td>SQLite</td>
+<td>기본 PostgreSQL, SQLite 옵션</td>
+</tr>
+<tr>
+<td>일상 백업</td>
+<td><code>ddeck-restart --backup-only</code></td>
+<td><code>sudo bash /opt/ddeck/deploy/backup.sh</code></td>
+</tr>
+<tr>
+<td>자동 백업 등록</td>
+<td>현재 별도 설정 필요</td>
+<td><code>backup.sh --install-cron</code></td>
+</tr>
+<tr>
+<td>업데이트</td>
+<td>이 문서 6장</td>
+<td>표준 설치 갱신 절차</td>
+</tr>
+</tbody>
+</table>
+<p>외부 접속이 필요하면 VPN 또는 HTTPS와 접속 제한 정책을 함께 구성합니다. 서버를 인터넷에 직접 노출하기 전에 <a href="../deploy/README-vpn.md">VPN 안내</a>를 확인하세요. 현재 사내 HTTP 주소만으로 외부망 접근이 된다고 가정하지 않습니다.</p>
+<h2 id="section-82d323f9096f">13. 운영 기록 양식과 참고 문서</h2>
+<p>작업할 때 아래 내용을 복사해 운영 일지에 남깁니다.</p>
+<pre><code class="language-text">작업 일시 / 담당자:
+작업 종류: 백업 / 재시작 / 업데이트 / 복구 / 설정 변경
+변경 전 서버·앱 버전:
+백업 위치 및 범위: DB / 설정 / 첨부 / 코드 정보
+실행한 명령:
+변경 후 서버 버전 / DB 리비전:
+확인: healthz / 로그인 / 대응·매장 조회 / 첨부 / 견적 PDF
+문제 및 후속 조치:
+업무 재개 시각:
+</code></pre>
+<ul>
+<li><a href="BACKUP_RESTART.md">백업 후 재시작 명령</a></li>
+<li><a href="사용자-가이드.md">사용자 가이드</a></li>
+<li><a href="releases/1.0.13.md">1.0.13 릴리즈 안내</a></li>
+<li><a href="QUOTATIONS_REVIEW.md">견적서 작성·보존 규칙</a></li>
+<li><a href="STORE_CONTACTS_REVIEW.md">매장 연락 정보 연동</a></li>
+<li><a href="../deploy/README.md">표준 설치·서비스 등록</a></li>
+<li><a href="../deploy/RESTORE_DRILL.md">백업·복구 연습</a></li>
+</ul>
+<p>위의 검토 문서에는 병합 전 시점의 상태 설명이 일부 남아 있습니다. 현재 릴리즈 상태는 1.0.13 릴리즈 안내와 이 운영 매뉴얼을 기준으로 확인하세요.</p></main></body></html>
