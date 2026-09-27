@@ -264,6 +264,7 @@ jobs:
       - name: 산출물 확인
         run: |
           cp docs/사용자-가이드.pdf "out/ddeck-user-guide-${{ needs.meta.outputs.version }}.pdf"
+          cp docs/서버-운영-매뉴얼.pdf "out/ddeck-server-manual-${{ needs.meta.outputs.version }}.pdf"
           cd out
           sha256sum *.exe *.apk *.run *.pdf update-manifest.json > SHA256SUMS
           ls -la
@@ -298,5 +299,6 @@ jobs:
             out/ddeck-*-arm64.apk
             out/ddeck-server-*.run
             out/ddeck-user-guide-*.pdf
+            out/ddeck-server-manual-*.pdf
             out/SHA256SUMS
             out/update-manifest.json
