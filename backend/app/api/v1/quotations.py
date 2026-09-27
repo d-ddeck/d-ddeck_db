@@ -160,7 +160,16 @@ def create(
     snapshot["signature_sha256"] = (
         hashlib.sha256(signature).hexdigest() if signature else None
     )
-    pdf = render(snapshot, signature=signature)
+    logo = None
+    configured_logo = settings_store.get(db, ModuleKey.SERVICE, "quotation_logo", {})
+    if (
+        isinstance(configured_logo, dict)
+        and configured_logo.get("company") == snapshot["supplier"]["company"]
+        and configured_logo.get("png_base64")
+    ):
+        logo = base64.b64decode(configured_logo["png_base64"], validate=True)
+    snapshot["logo_sha256"] = hashlib.sha256(logo).hexdigest() if logo else None
+    pdf = render(snapshot, signature=signature, logo=logo)
     row = QuotationRevision(
         id=identifier,
         ticket_id=ticket_id,

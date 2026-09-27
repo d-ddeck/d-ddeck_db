@@ -86,62 +86,92 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 emptyMessage: '아직 등록된 알림이 없습니다',
                 emptyIcon: Icons.notifications_none,
                 builder: (context, page, reload) => ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   itemCount: page.items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, i) {
                     final n = page.items[i];
-                    return ListTile(
-                      leading: Icon(
-                        _iconFor(n.type),
-                        color: n.isRead
-                            ? Theme.of(context).colorScheme.outline
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                      title: Text(
-                        n.title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: n.isRead
-                              ? FontWeight.w400
-                              : FontWeight.w700,
+                    final colors = Theme.of(context).colorScheme;
+                    return Card(
+                      key: ValueKey('notification-${n.id}'),
+                      margin: EdgeInsets.zero,
+                      elevation: 0,
+                      clipBehavior: Clip.antiAlias,
+                      color: n.isRead
+                          ? colors.surfaceContainerLow
+                          : colors.primaryContainer.withValues(alpha: 0.25),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: n.isRead
+                              ? colors.outlineVariant
+                              : colors.primary.withValues(alpha: 0.45),
                         ),
                       ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (n.body != null)
-                            Text(n.body!, style: const TextStyle(fontSize: 12)),
-                          Text(
-                            Fmt.relative(n.createdAt),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        leading: Icon(
+                          _iconFor(n.type),
+                          color: n.isRead
+                              ? Theme.of(context).colorScheme.outline
+                              : Theme.of(context).colorScheme.primary,
+                        ),
+                        title: Text(
+                          n.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: n.isRead
+                                ? FontWeight.w400
+                                : FontWeight.w700,
                           ),
-                        ],
-                      ),
-                      trailing: n.isRead
-                          ? null
-                          : Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
-                                shape: BoxShape.circle,
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (n.body != null)
+                              Text(
+                                n.body!,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${n.isRead ? "읽음" : "읽지 않음"} · ${Fmt.relative(n.createdAt)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
-                      onTap: () async {
-                        if (!n.isRead) {
-                          await runGuarded(context, () => repo.markRead(n.id));
-                          if (!context.mounted) return;
-                          _refresh();
-                        }
-                        if (context.mounted) {
-                          await runGuarded(context, () => _open(context, n));
-                        }
-                      },
+                          ],
+                        ),
+                        trailing: n.isRead
+                            ? null
+                            : Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                        onTap: () async {
+                          if (!n.isRead) {
+                            await runGuarded(
+                              context,
+                              () => repo.markRead(n.id),
+                            );
+                            if (!context.mounted) return;
+                            _refresh();
+                          }
+                          if (context.mounted) {
+                            await runGuarded(context, () => _open(context, n));
+                          }
+                        },
+                      ),
                     );
                   },
                 ),

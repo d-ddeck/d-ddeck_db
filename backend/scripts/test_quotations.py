@@ -9,6 +9,7 @@ import io
 import os
 import sys
 import tempfile
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -32,6 +33,7 @@ from pypdf import PdfReader
 
 from app.core.database import engine
 from app.main import app
+from scripts.import_quotation_defaults import extract_logo, extract_signature
 
 try:
     with TestClient(app) as c:
@@ -123,11 +125,42 @@ try:
         image_buffer = io.BytesIO()
         Image.new("RGB", (16, 8), "black").save(image_buffer, format="PNG")
         image_bytes = image_buffer.getvalue()
+        logo_buffer = io.BytesIO()
+        Image.new("RGB", (24, 24), "blue").save(logo_buffer, format="PNG")
+        logo_bytes = logo_buffer.getvalue()
+        workbook_buffer = io.BytesIO()
+        with zipfile.ZipFile(workbook_buffer, "w") as archive:
+            archive.writestr("xl/media/logo.png", logo_bytes)
+            archive.writestr("xl/media/signature.png", image_bytes)
+            archive.writestr(
+                "xl/drawings/_rels/drawing1.xml.rels",
+                '<Relationships><Relationship Id="logo" Target="../media/logo.png"/><Relationship Id="signature" Target="../media/signature.png"/></Relationships>',
+            )
+            anchors = "".join(
+                f'<x:oneCellAnchor><x:from><x:row>{row}</x:row></x:from><x:pic><x:blipFill><a:blip r:embed="{identifier}"/></x:blipFill></x:pic></x:oneCellAnchor>'
+                for row, identifier in [(0, "logo"), (29, "signature")]
+            )
+            archive.writestr(
+                "xl/drawings/drawing1.xml",
+                '<x:wsDr xmlns:x="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                + anchors
+                + "</x:wsDr>",
+            )
+        assert extract_logo(workbook_buffer.getvalue()) == logo_bytes
+        assert extract_signature(workbook_buffer.getvalue()) == image_bytes
         call(
             "PUT",
             "/admin/settings/SERVICE",
             {
                 "settings": [
+                    {
+                        "key": "quotation_logo",
+                        "value_type": "json",
+                        "value": {
+                            "company": payload["supplier"]["company"],
+                            "png_base64": base64.b64encode(logo_bytes).decode("ascii"),
+                        },
+                    },
                     {
                         "key": "quotation_signature",
                         "value_type": "json",
@@ -136,7 +169,7 @@ try:
                             "contact": payload["supplier"]["contact"],
                             "png_base64": base64.b64encode(image_bytes).decode("ascii"),
                         },
-                    }
+                    },
                 ]
             },
         )
@@ -153,7 +186,12 @@ try:
         pdf2 = c.get(
             "/api/v1" + path + "/" + v2["id"] + "/pdf", headers=headers
         ).content
-        assert len(PdfReader(io.BytesIO(pdf2)).pages[0].images) == 1
+        assert len(PdfReader(io.BytesIO(pdf2)).pages[0].images) == 2
+        assert v2["snapshot"]["logo_sha256"] == hashlib.sha256(logo_bytes).hexdigest()
+        assert (
+            "상기 견적서를 제출합니다."
+            in PdfReader(io.BytesIO(pdf2)).pages[0].extract_text()
+        )
         assert not PdfReader(io.BytesIO(pdf1.content)).pages[0].images
         assert (
             c.get("/api/v1" + path + "/" + v1["id"] + "/pdf", headers=headers).content
@@ -202,12 +240,21 @@ try:
         ]
         v3 = call("POST", path, many, 201)
         assert v3["snapshot"]["signature_sha256"] is None
+        assert v3["snapshot"]["logo_sha256"] == hashlib.sha256(logo_bytes).hexdigest()
         pdf3 = c.get(
             "/api/v1" + path + "/" + v3["id"] + "/pdf", headers=headers
         ).content
         reader = PdfReader(io.BytesIO(pdf3))
         assert len(reader.pages) > 1
         assert "항목 60" in "".join(p.extract_text() for p in reader.pages)
+
+        # Logo must not be applied to another supplier company.
+        unrelated = copy.deepcopy(payload)
+        unrelated["supplier"]["company"] = "다른 회사"
+        unrelated_quote = call(
+            "POST", f"/service/tickets/{t2['id']}/quotations", unrelated, 201
+        )
+        assert unrelated_quote["snapshot"]["logo_sha256"] is None
 
         # Two editors saving from the same base: exactly one new revision.
         def submit(_):

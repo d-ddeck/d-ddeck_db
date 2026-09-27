@@ -292,6 +292,14 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
         "견적서 서명 (양식에서 가져옴)",
         False,
     ),
+    (
+        ModuleKey.SERVICE,
+        "quotation_logo",
+        {},
+        "json",
+        "견적서 회사 로고 (양식에서 가져옴)",
+        False,
+    ),
     (ModuleKey.SERVICE, "default_due_days", 3, "int", "기본 처리 기한(일)", True),
     (
         ModuleKey.SERVICE,

@@ -29,8 +29,8 @@ from app.models.enums import ModuleKey
 from app.schemas.quotation import Party
 
 
-def extract_signature(workbook_bytes: bytes) -> bytes | None:
-    """Select the image anchored at the closing/signature rows, not the logo."""
+def extract_image(workbook_bytes: bytes, first_row: int, last_row: int) -> bytes | None:
+    """Select a validated PNG in the requested workbook row range."""
     ns = {
         "x": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
         "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -50,7 +50,11 @@ def extract_signature(workbook_bytes: bytes) -> bytes | None:
         for anchor in ET.fromstring(archive.read(drawing)):
             row = anchor.find("x:from/x:row", ns)
             blip = anchor.find("x:pic/x:blipFill/a:blip", ns)
-            if row is not None and 28 <= int(row.text) <= 31 and blip is not None:
+            if (
+                row is not None
+                and first_row <= int(row.text) <= last_row
+                and blip is not None
+            ):
                 target = relationships.get(blip.attrib.get("{" + ns["r"] + "}embed"))
                 if target:
                     path = (
@@ -59,22 +63,30 @@ def extract_signature(workbook_bytes: bytes) -> bytes | None:
                         else posixpath.normpath(posixpath.join("xl/drawings", target))
                     )
                     if not path.startswith("xl/media/"):
-                        raise ValueError("서명 이미지 경로를 확인하세요.")
+                        raise ValueError("양식 이미지 경로를 확인하세요.")
                     if archive.getinfo(path).file_size > 2 * 1024 * 1024:
-                        raise ValueError("서명 이미지는 2MB 이하만 지원합니다.")
+                        raise ValueError("양식 이미지는 2MB 이하만 지원합니다.")
                     data = archive.read(path)
                     with Image.open(io.BytesIO(data)) as image:
                         if image.format != "PNG" or max(image.size) > 4096:
                             raise ValueError(
-                                "서명 이미지는 4096px 이하 PNG여야 합니다."
+                                "양식 이미지는 4096px 이하 PNG여야 합니다."
                             )
                         image.verify()
                     candidates.append(data)
         if len(candidates) > 1:
             raise ValueError(
-                "서명 위치에 이미지가 여러 개 있어 자동 선택할 수 없습니다."
+                "선택 위치에 이미지가 여러 개 있어 자동 선택할 수 없습니다."
             )
         return candidates[0] if candidates else None
+
+
+def extract_signature(workbook_bytes: bytes) -> bytes | None:
+    return extract_image(workbook_bytes, 28, 31)
+
+
+def extract_logo(workbook_bytes: bytes) -> bytes | None:
+    return extract_image(workbook_bytes, 0, 3)
 
 
 def main():
@@ -84,6 +96,7 @@ def main():
     args = parser.parse_args()
     workbook_bytes = args.workbook.read_bytes()
     signature = extract_signature(workbook_bytes)
+    logo = extract_logo(workbook_bytes)
     workbook = load_workbook(io.BytesIO(workbook_bytes), data_only=True)
     sheet = workbook["견적서"]
     supplier = Party(
@@ -104,6 +117,7 @@ def main():
     print("Validated supplier fields:", ", ".join(k for k, v in supplier.items() if v))
     print("Bank account present:", bool(bank))
     print("Signature image present:", bool(signature))
+    print("Logo image present:", bool(logo))
     if not args.apply:
         print("No database changes. Use --apply to save these defaults.")
         return
@@ -111,6 +125,17 @@ def main():
         for key, value, kind, label in [
             ("quotation_supplier", supplier, "json", "견적서 기본 공급자 정보"),
             ("quotation_bank_account", bank, "string", "견적서 기본 입금계좌"),
+            (
+                "quotation_logo",
+                {
+                    "company": supplier["company"],
+                    "png_base64": base64.b64encode(logo).decode("ascii"),
+                }
+                if logo
+                else {},
+                "json",
+                "견적서 회사 로고 (양식에서 가져옴)",
+            ),
             (
                 "quotation_signature",
                 {

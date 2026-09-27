@@ -38,7 +38,9 @@ def font_name():
     return name
 
 
-def render(snapshot: dict, signature: bytes | None = None) -> bytes:
+def render(
+    snapshot: dict, signature: bytes | None = None, logo: bytes | None = None
+) -> bytes:
     buffer = BytesIO()
     font = font_name()
     style = ParagraphStyle(
@@ -69,7 +71,31 @@ def render(snapshot: dict, signature: bytes | None = None) -> bytes:
 
     money = lambda n: f"{int(n):,}"
     supplier, recipient = snapshot["supplier"], snapshot["recipient"]
-    story = [Paragraph("D.DDECK &nbsp; 견 적 서", title_style), Spacer(1, 16)]
+    if logo:
+        logo_image = Image(BytesIO(logo))
+        scale = min(58 / logo_image.imageWidth, 48 / logo_image.imageHeight)
+        logo_image.drawWidth = logo_image.imageWidth * scale
+        logo_image.drawHeight = logo_image.imageHeight * scale
+        logo_image.hAlign = "LEFT"
+        heading = Table(
+            [[logo_image, Paragraph("D.DDECK &nbsp; 견 적 서", title_style), ""]],
+            colWidths=[70, 375, 70],
+            hAlign="LEFT",
+        )
+        heading.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+    else:
+        heading = Paragraph("D.DDECK &nbsp; 견 적 서", title_style)
+    story = [heading, Spacer(1, 16)]
     story += [
         table(
             [
@@ -199,7 +225,10 @@ def render(snapshot: dict, signature: bytes | None = None) -> bytes:
         Spacer(1, 18),
         KeepTogether(
             [
-                Paragraph("상기와 같이 견적서를 제출합니다.", right_style),
+                Paragraph(
+                    "상기 견적서를 제출합니다.",
+                    ParagraphStyle("submission", parent=style, alignment=TA_CENTER),
+                ),
                 Spacer(1, 6),
                 closing,
             ]
