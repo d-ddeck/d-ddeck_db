@@ -44,3 +44,6 @@ dddeckservercode/
 
 # Local operational backups may contain credentials and business records
 /backups/
+
+# 회사 견적서 양식 원본과 압축 해제본 - 계좌·연락처가 들어 있다. 커밋 금지
+docs/*견적서 양식*
