@@ -42,7 +42,7 @@ def main():
     from app.models import Base
 
     engine = create_engine(url)
-    assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 31
+    assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 32
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM alembic_version")) == 1
     with patch.object(

@@ -47,6 +47,15 @@ def check_data(db: Path) -> None:
                 conn.execute(text("SELECT content FROM service_logs")).scalar_one()
                 == "기존 이력"
             )
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM service_tickets t LEFT JOIN service_ticket_numbers n "
+                        "ON n.ticket_no = t.ticket_no WHERE n.ticket_no IS NULL"
+                    )
+                ).scalar_one()
+                == 0
+            )
             assert not conn.execute(text("PRAGMA foreign_key_check")).all()
             assert conn.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
     finally:
@@ -59,9 +68,9 @@ def main() -> None:
         alembic(fresh, "upgrade", "head")
         alembic(fresh, "check")
         engine = create_engine(f"sqlite+pysqlite:///{fresh.as_posix()}")
-        assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 31
+        assert len(set(inspect(engine).get_table_names()) - {"alembic_version"}) == 32
         engine.dispose()
-        print("PASS: clean install, 31 tables, no model drift", flush=True)
+        print("PASS: clean install, 32 tables, no model drift", flush=True)
 
         production_env = {
             **os.environ,

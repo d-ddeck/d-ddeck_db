@@ -47,7 +47,8 @@ void main() {
       'rental_due_date': '2026-09-30',
       'rental_returned': false,
     });
-    expect(value.displayNo, '42');
+    expect(value.displayNo, ticket['ticket_no']);
+    expect(value.legacyNo, 42);
     expect(value.storeId, 'store');
     expect(value.storeName, '강남점');
     expect(value.brandName, '브랜드');
@@ -157,7 +158,8 @@ void main() {
       'notices': null,
       'legacy_no': 0,
     });
-    expect(value.displayNo, '0');
+    expect(value.displayNo, ticket['ticket_no']);
+    expect(value.legacyNo, 0);
     expect(value.causes, isEmpty);
     expect(value.responders, isEmpty);
     expect(value.notices, isEmpty);
@@ -287,7 +289,7 @@ void main() {
     expect(value.unreturnedRentals.single.serials, 'SN1, SN2');
     expect(value.unreturnedRentals.single.dueDate, DateTime(2026, 9, 24));
     expect(value.unreturnedRentals.single.dday, -1);
-    expect(value.recent.single.displayNo, '42');
+    expect(value.recent.single.displayNo, ticket['ticket_no']);
     expect(value.byYear.single.year, '2026');
     expect(value.byYear.single.count, 20);
     expect(RentalRow.fromJson({'dday': 0}).dday, 0);

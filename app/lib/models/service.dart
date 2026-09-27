@@ -283,7 +283,7 @@ class ServiceTicket {
   final List<String> notices;
   final StoreRef? store;
 
-  String get displayNo => legacyNo?.toString() ?? ticketNo;
+  String get displayNo => ticketNo;
 
   /// Display name regardless of whether the ticket points at a customer row.
   String get customerLabel => customer?.name ?? customerName ?? '거래처 미지정';

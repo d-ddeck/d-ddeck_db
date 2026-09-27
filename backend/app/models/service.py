@@ -48,11 +48,19 @@ class Customer(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class ServiceTicketNumber(Base):
+    """Issued numbers remain reserved even after a ticket changes work type."""
+
+    __tablename__ = "service_ticket_numbers"
+
+    ticket_no: Mapped[str] = mapped_column(String(80), primary_key=True)
+
+
 class ServiceTicket(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     __tablename__ = "service_tickets"
 
     ticket_no: Mapped[str] = mapped_column(
-        String(40), unique=True, index=True, nullable=False
+        String(80), unique=True, index=True, nullable=False
     )
     # 구 서버(CS_Record)의 기록 번호. Migrated tickets keep their old number as
     # ticket_no as well - the team refers to 건 by that number - and this column

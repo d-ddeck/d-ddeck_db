@@ -7,7 +7,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from uuid import uuid4
+from unittest.mock import patch
+from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -24,9 +25,13 @@ os.environ.update(
 )
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+from sqlalchemy import select
 
-from app.core.database import engine
+from app.api.v1 import service
+from app.core.database import SessionLocal, engine
 from app.main import app
+from app.models.admin import AuditLog
+from app.models.service import ServiceTicket, ServiceTicketNumber
 
 try:
     with TestClient(app) as client:
@@ -78,11 +83,14 @@ try:
 
         legacy = create()
         assert legacy["work_type_id"] is None and legacy["work_type"] is None
+        assert legacy["ticket_no"].startswith("AS-")
         tickets = {
             code: create(work_type_id=identifier) for code, identifier in types.items()
         }
         for code, ticket in tickets.items():
             assert ticket["work_type"]["code"] == code
+            assert ticket["ticket_no"].startswith(code + "-")
+            assert ticket["ticket_no"].endswith("-0002" if code == "AS" else "-0001")
             query = f"work_type_id={types[code]}"
             assert call("GET", "/service/tickets?" + query)["total"] == 1
             assert call("GET", "/service/stats/summary?" + query)["total"] == 1
@@ -105,12 +113,29 @@ try:
         ticket_path = "/service/tickets/" + tickets["CS"]["id"]
         changed = call("PATCH", ticket_path, {"work_type_id": types["PO"]})
         assert changed["work_type"]["code"] == "PO"
-        assert changed["ticket_no"] == tickets["CS"]["ticket_no"]
+        assert changed["ticket_no"].startswith("PO-")
+        assert changed["ticket_no"].endswith("-0002")
+        assert changed["ticket_no"] != tickets["CS"]["ticket_no"]
+        assert (
+            call("PATCH", ticket_path, {"work_type_id": types["PO"]})["ticket_no"]
+            == changed["ticket_no"]
+        )
+        assert (
+            call("PATCH", ticket_path, {"title": "동일 번호 유지"})["ticket_no"]
+            == changed["ticket_no"]
+        )
+        assert any(
+            tickets["CS"]["ticket_no"] in (log["content"] or "")
+            and changed["ticket_no"] in (log["content"] or "")
+            for log in changed["logs"]
+        )
         assert (
             call("PATCH", ticket_path, {"title": "구매로 변경"})["work_type_id"]
             == types["PO"]
         )
-        assert call("PATCH", ticket_path, {"work_type_id": None})["work_type"] is None
+        cleared = call("PATCH", ticket_path, {"work_type_id": None})
+        assert cleared["work_type"] is None
+        assert cleared["ticket_no"].startswith("AS-")
         assert call("GET", "/service/tickets?missing=work_type")["total"] == 2
         item_path = "/admin/codes/items/" + custom["id"]
         call("PATCH", item_path, {"name": "현장 설치", "is_active": False})
@@ -150,6 +175,93 @@ try:
         workbook = load_workbook(io.BytesIO(r.content))
         assert "업무 구분" in workbook.sheetnames
         assert list(workbook["업무 구분"].values)[1][:2] == ("구매", 1)
+        # Reissued numbers remain reserved in each work type sequence.
+        assert create(work_type_id=types["CS"])["ticket_no"].endswith("-0002")
+        assert create(work_type_id=types["PO"])["ticket_no"].endswith("-0003")
+        call(
+            "PUT",
+            "/admin/settings/SERVICE",
+            {
+                "settings": [
+                    {
+                        "key": "ticket_prefix",
+                        "value": "DEFAULT",
+                        "value_type": "string",
+                        "label": "접수번호 접두어",
+                        "is_public": True,
+                    }
+                ]
+            },
+        )
+        assert create()["ticket_no"].startswith("DEFAULT-")
+        assert create(work_type_id=types["AS"])["ticket_no"].startswith("AS-")
+        # Custom codes may include SQL LIKE wildcards or use all 60 characters.
+        for code in ("XAY", "X_Y", "X%Y", "LONG" * 15):
+            item = call(
+                "POST",
+                f"/admin/codes/{group['id']}/items",
+                {"code": code, "name": code},
+                201,
+            )
+            first = create(work_type_id=item["id"])
+            second = create(work_type_id=item["id"])
+            assert first["ticket_no"].startswith(code + "-")
+            assert first["ticket_no"].endswith("-0001")
+            assert second["ticket_no"].endswith("-0002")
+        # Imported records keep their legacy ID, but display/export the new number.
+        with SessionLocal() as db:
+            imported = db.get(ServiceTicket, UUID(legacy["id"]))
+            imported.legacy_no = 42
+            imported.ticket_no = "42"
+            db.commit()
+        legacy_path = "/service/tickets/" + legacy["id"]
+        converted = call("PATCH", legacy_path, {"work_type_id": types["PO"]})
+        assert converted["ticket_no"].startswith("PO-")
+        assert converted["legacy_no"] == 42 and converted["id"] == legacy["id"]
+        with SessionLocal() as db:
+            assert db.get(ServiceTicketNumber, "42") is not None
+            audits = db.scalars(
+                select(AuditLog).where(AuditLog.entity_id == legacy["id"])
+            )
+            assert any(
+                (row.changes or {}).get("ticket_no") == ["42", converted["ticket_no"]]
+                for row in audits
+            )
+        exported = client.get("/api/v1/service/tickets/export.xlsx", headers=headers)
+        exported_rows = list(load_workbook(io.BytesIO(exported.content)).active.values)
+        assert any(row[0] == converted["ticket_no"] for row in exported_rows[1:])
+
+        # A uniqueness collision must roll back only the savepoint, then retry.
+        original_allocator = service._next_ticket_no
+
+        def collide_once(db, attempt=0, *, prefix=None):
+            if attempt == 0:
+                return tickets["PO"]["ticket_no"]
+            return original_allocator(db, attempt, prefix=prefix)
+
+        with patch.object(service, "_next_ticket_no", side_effect=collide_once):
+            retried = call("PATCH", legacy_path, {"work_type_id": types["CS"]})
+        assert retried["ticket_no"].startswith("CS-")
+        assert retried["work_type_id"] == types["CS"]
+        with patch.object(
+            service, "_next_ticket_no", return_value=tickets["PO"]["ticket_no"]
+        ):
+            call("PATCH", legacy_path, {"work_type_id": types["PO"]}, 409)
+        unchanged = call("GET", legacy_path)
+        assert unchanged["ticket_no"] == retried["ticket_no"]
+        assert unchanged["work_type_id"] == types["CS"]
+        # Validation after allocation must roll back the number and work type too.
+        with SessionLocal() as db:
+            reserved = set(db.scalars(select(ServiceTicketNumber.ticket_no)))
+        call(
+            "PATCH", legacy_path, {"work_type_id": types["PO"], "is_rental": True}, 400
+        )
+        assert call("GET", legacy_path)["ticket_no"] == retried["ticket_no"]
+        with SessionLocal() as db:
+            assert set(db.scalars(select(ServiceTicketNumber.ticket_no))) == reserved
+        print(
+            "PASS: renumbering, audit/export, reserved numbers, collision retry and rollback"
+        )
         call("DELETE", "/admin/codes/items/" + types["AS"])
         print(
             "PASS: defaults/custom codes, validation, legacy null, edit/history, filters/statistics and Excel"

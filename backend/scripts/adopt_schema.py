@@ -14,7 +14,7 @@ from pathlib import Path
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import Index, MetaData, create_engine, text
+from sqlalchemy import Index, MetaData, String, create_engine, text
 from sqlalchemy.schema import CreateIndex
 
 from alembic import command
@@ -31,8 +31,18 @@ SERIAL_INDEXES = {"uq_assets_category_serial_live", "uq_assets_serial_no_categor
 def metadata_at_baseline(revision="2cca8909675d"):
     metadata = MetaData()
     for table in Base.metadata.sorted_tables:
-        if revision == "c43194e8a260" or table.name != "quotation_revisions":
+        if table.name == "service_ticket_numbers":
+            continue
+        if (
+            revision in {"c43194e8a260", "d527a318fc40", "e628b429ad51"}
+            or table.name != "quotation_revisions"
+        ):
             table.to_metadata(metadata)
+    if revision == "e628b429ad51":
+        return metadata
+    metadata.tables["service_tickets"].c.ticket_no.type = String(40)
+    if revision == "d527a318fc40":
+        return metadata
     for name, columns in {
         "stores": ["contact_name", "contact_phone", "address"],
         "service_tickets": ["contact_name"],
@@ -126,6 +136,8 @@ def main() -> None:
                 differences = [("missing_or_changed_serial_indexes",)]
             if differences:
                 for baseline in (
+                    "e628b429ad51",
+                    "d527a318fc40",
                     "c43194e8a260",
                     "b9a381e076cf",
                     "ecdd8d8aea3c",

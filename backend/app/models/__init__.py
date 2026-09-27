@@ -24,6 +24,7 @@ from app.models.service import (
     ServicePart,
     ServiceTicket,
     ServiceTicketCause,
+    ServiceTicketNumber,
     ServiceTicketResponder,
 )
 from app.models.store import Store, StoreSet
@@ -57,6 +58,7 @@ __all__ = [
     "ServicePart",
     "ServiceTicket",
     "ServiceTicketCause",
+    "ServiceTicketNumber",
     "ServiceTicketResponder",
     "Store",
     "StoreSet",

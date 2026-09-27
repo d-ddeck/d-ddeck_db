@@ -42,6 +42,7 @@ from app.models.service import (
     ServicePart,
     ServiceTicket,
     ServiceTicketCause,
+    ServiceTicketNumber,
     ServiceTicketResponder,
 )
 from app.models.store import Store
@@ -446,7 +447,7 @@ def export_tickets(
     def rows():
         for t in tickets:
             e = extras[t.id]
-            line = [t.legacy_no or t.ticket_no, e["brand_name"], e["store_name"]]
+            line = [t.ticket_no, e["brand_name"], e["store_name"]]
             for i in range(n_cause):
                 if i < len(e["causes"]):
                     c = e["causes"][i]
@@ -665,7 +666,7 @@ def create_ticket(
     )
     ticket_rules.validate_rental(db, ticket)
 
-    _insert_with_ticket_no(db, ticket)
+    _save_with_ticket_no(db, ticket)
     if causes is not None:
         ticket_rules.set_causes(db, ticket, causes, is_new=True)
     else:
@@ -736,6 +737,9 @@ def update_ticket(
     previous_serials = ticket.rental_serials if ticket.is_rental else None
     data = payload.model_dump(exclude_unset=True, exclude={"causes", "responder_ids"})
     before = {k: getattr(ticket, k) for k in data}
+    work_type_changed = (
+        "work_type_id" in data and data["work_type_id"] != ticket.work_type_id
+    )
 
     if "store_id" in data:
         store = ticket_rules.resolve_store(db, data["store_id"])
@@ -756,7 +760,7 @@ def update_ticket(
         if store is not None and "customer_name" not in data and follows_store:
             data["customer_name"] = store.name
     # An inactive/removed historical type may be kept, but never newly assigned.
-    if "work_type_id" in data and data["work_type_id"] != ticket.work_type_id:
+    if work_type_changed:
         ticket_rules.check_code(
             db, data["work_type_id"], "SERVICE_WORK_TYPE", "업무 구분"
         )
@@ -787,6 +791,18 @@ def update_ticket(
         ticket_rules.sync_head_cause(db, ticket)
     if payload.responder_ids is not None:
         ticket_rules.apply_responders(db, ticket, payload.responder_ids, is_new=False)
+
+    if work_type_changed:
+        before["ticket_no"] = ticket.ticket_no
+        _save_with_ticket_no(db, ticket)
+        data["ticket_no"] = ticket.ticket_no
+        db.add(
+            ServiceLog(
+                ticket_id=ticket.id,
+                author_id=user.id,
+                content=f"업무 구분 변경으로 접수번호 재발급: {before['ticket_no']} → {ticket.ticket_no}",
+            )
+        )
 
     notices: list[str] = []
     if RENTAL_KEYS & set(data) or ("store_id" in data and ticket.is_rental):
@@ -1354,36 +1370,57 @@ def _load(db: Session, ticket_id: uuid.UUID) -> ServiceTicket:
     return ticket
 
 
-def _next_ticket_no(db: Session, attempt: int = 0) -> str:
-    """AS-YYYYMM-0001, restarting the sequence each month."""
-    prefix = settings_store.get(db, ModuleKey.SERVICE, "ticket_prefix", "AS") or "AS"
+def _next_ticket_no(db: Session, attempt: int = 0, *, prefix: str | None = None) -> str:
+    """WORK_TYPE-YYYYMM-0001, restarting per prefix and month."""
+    if prefix is None:
+        prefix = (
+            settings_store.get(db, ModuleKey.SERVICE, "ticket_prefix", "AS") or "AS"
+        )
     stamp = now_utc().astimezone(stats.LOCAL_TZ).strftime("%Y%m")
-    like = f"{prefix}-{stamp}-%"
-    count = (
-        db.scalar(
-            select(func.count(ServiceTicket.id)).where(
-                ServiceTicket.ticket_no.like(like)
+    number_prefix = f"{prefix}-{stamp}-"
+    # Include imported tickets and reserved previous numbers. Row counts cannot
+    # allocate safely once renumbering leaves gaps in a prefix's sequence.
+    numbers = db.scalars(
+        select(ServiceTicket.ticket_no)
+        .where(ServiceTicket.ticket_no.startswith(number_prefix, autoescape=True))
+        .union(
+            select(ServiceTicketNumber.ticket_no).where(
+                ServiceTicketNumber.ticket_no.startswith(number_prefix, autoescape=True)
             )
         )
-        or 0
     )
-    return f"{prefix}-{stamp}-{count + 1 + attempt:04d}"
+    last = max(
+        (
+            int(suffix)
+            for number in numbers
+            if (suffix := number[len(number_prefix) :]).isascii() and suffix.isdigit()
+        ),
+        default=0,
+    )
+    return f"{prefix}-{stamp}-{last + 1 + attempt:04d}"
 
 
-def _insert_with_ticket_no(
-    db: Session, ticket: ServiceTicket, retries: int = 5
-) -> None:
-    """Counting rows races under concurrent inserts, so the unique index on
-    ticket_no is the real guard and we retry with the next number on collision.
-
-    The savepoint is what makes the retry possible: without it the failed INSERT
-    would poison the whole transaction.
-    """
-    for attempt in range(retries):
-        ticket.ticket_no = _next_ticket_no(db, attempt)
+def _save_with_ticket_no(db: Session, ticket: ServiceTicket, retries: int = 5) -> None:
+    """Issue a number for creation or editing, retrying concurrent collisions."""
+    if ticket.ticket_no and db.get(ServiceTicketNumber, ticket.ticket_no) is None:
+        # Also reserve old numbers from imports that bypassed this allocator.
         try:
             with db.begin_nested():
-                db.add(ticket)  # add() is a no-op when it is already pending
+                db.add(ServiceTicketNumber(ticket_no=ticket.ticket_no))
+                db.flush()
+        except IntegrityError:
+            pass
+    work_type = db.get(CodeItem, ticket.work_type_id) if ticket.work_type_id else None
+    prefix = work_type.code if work_type is not None else None
+    for attempt in range(retries):
+        number = _next_ticket_no(db, attempt, prefix=prefix)
+        try:
+            with db.begin_nested():
+                # Assign inside the savepoint: begin_nested flushes pending
+                # changes before opening it, including updates to existing rows.
+                ticket.ticket_no = number
+                db.add(ServiceTicketNumber(ticket_no=number))
+                db.add(ticket)
                 db.flush()
             return
         except IntegrityError:
