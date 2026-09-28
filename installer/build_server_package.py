@@ -28,7 +28,7 @@ INCLUDE = ["backend", "deploy"]
 
 # 개발 PC의 가상환경은 운영 패키지에서 제외한다.
 EXCLUDE_DIRS = {".venv", ".venv-linux", "__pycache__", ".git", ".ruff_cache", "storage", "backups"}
-EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".db", ".db-wal", ".db-shm", ".log"}
+EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".db", ".db-wal", ".db-shm", ".log", ".pid"}
 # .env 는 서버마다 다르고 비밀키가 들어 있다. 절대 패키지에 넣지 않는다.
 EXCLUDE_NAMES = {".env", ".DS_Store", "seed_demo.py", "smoke_test.py",
                  "smoke_test_legacy.py", "smoke_test_review.py", "smoke_test_priority2.py", "test_migrations.py", "test_sqlite_backup.py", "test_update.py"}

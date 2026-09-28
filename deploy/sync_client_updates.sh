@@ -43,5 +43,5 @@ then
   exit 0
 fi
 gh release download "$TAG" --repo kmeans12345-cell/d-ddeck_db --dir "$BUNDLE_DIR" \
-  --pattern 'ddeck-setup-*.exe' --pattern 'ddeck-*-arm64.apk' 
+  --pattern 'ddeck-setup-*.exe' --pattern 'ddeck-*-arm64.apk'
 DEBUG=false "$PY" "$SCRIPT_DIR/publish_client_update.py" --bundle "$BUNDLE_DIR"

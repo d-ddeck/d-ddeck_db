@@ -2,7 +2,7 @@
 
 사내 대응 기록·재고·매장·게시판·캘린더·근무일지를 관리합니다. 클라이언트는 `app/`의 Flutter Windows·Android 앱이며, 권장 서버는 Ubuntu의 FastAPI 서비스입니다. Linux 데스크톱 앱은 개발용 빌드 대상입니다.
 
-현재 소스 버전은 **1.0.15**입니다. [릴리즈 다운로드](https://github.com/kmeans12345-cell/d-ddeck_db/releases/tag/v1.0.15)와 [업데이트 안내](docs/releases/1.0.15.md)를 확인하세요.
+현재 소스 버전은 **1.0.16**입니다. [릴리즈 다운로드](https://github.com/kmeans12345-cell/d-ddeck_db/releases/tag/v1.0.16)와 [업데이트 안내](docs/releases/1.0.16.md)를 확인하세요.
 
 실제 화면 캡처와 업무별 사용 순서는 [사용자 가이드](docs/사용자-가이드.md)를 참고하세요. [브라우저용 HTML](docs/사용자-가이드.html)과 [인쇄용 PDF](docs/사용자-가이드.pdf)도 제공합니다.
 

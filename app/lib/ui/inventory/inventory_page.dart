@@ -5,6 +5,7 @@ import '../../state/auth_state.dart';
 import 'asset_tickets_section.dart';
 import '../common/attachment_section.dart';
 import 'asset_edit_page.dart';
+import 'asset_mobile_list.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -594,6 +595,11 @@ class InventoryListTabState extends State<InventoryListTab> {
                               },
                               child: const Text('검색 초기화'),
                             ),
+                          )
+                        : Theme.of(context).platform == TargetPlatform.android
+                        ? AssetMobileList(
+                            assets: assets,
+                            onTap: (asset) => _detail(asset, reload),
                           )
                         : ListView(
                             padding: EdgeInsets.zero,

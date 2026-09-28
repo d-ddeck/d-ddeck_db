@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import ClassVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 from app.models.enums import ServiceChannel, ServicePriority, ServiceStatus
 from app.schemas.common import CodeItemBrief, ORMModel, PatchModel, UserBrief
@@ -241,6 +241,13 @@ class ServiceTicketOut(ORMModel):
     id: uuid.UUID
     ticket_no: str
     legacy_no: int | None = None
+
+    @field_serializer("legacy_no")
+    def display_legacy_no(self, value: int | None) -> int | None:
+        # Older Windows/Android clients prefer legacy_no over ticket_no.
+        # Retain the original in the DB, but stop overriding a reissued number.
+        return value if value is not None and self.ticket_no == str(value) else None
+
     title: str
     customer_id: uuid.UUID | None = None
     customer_name: str | None = None

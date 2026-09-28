@@ -215,10 +215,19 @@ try:
             imported.ticket_no = "42"
             db.commit()
         legacy_path = "/service/tickets/" + legacy["id"]
+        assert call("GET", legacy_path)["legacy_no"] == 42
         converted = call("PATCH", legacy_path, {"work_type_id": types["PO"]})
         assert converted["ticket_no"].startswith("PO-")
-        assert converted["legacy_no"] == 42 and converted["id"] == legacy["id"]
+        assert converted["legacy_no"] is None and converted["id"] == legacy["id"]
+        listed = call("GET", "/service/tickets?q=" + converted["ticket_no"])
+        assert listed["items"][0]["legacy_no"] is None
+        assert listed["items"][0]["ticket_no"] == converted["ticket_no"]
+        assert f"접수번호 재발급: 42 → {converted['ticket_no']}" in converted["notices"]
+        saved_again = call("PATCH", legacy_path, {"work_type_id": types["PO"]})
+        assert saved_again["ticket_no"] == converted["ticket_no"]
+        assert not any("접수번호 재발급" in notice for notice in saved_again["notices"])
         with SessionLocal() as db:
+            assert db.get(ServiceTicket, UUID(legacy["id"])).legacy_no == 42
             assert db.get(ServiceTicketNumber, "42") is not None
             audits = db.scalars(
                 select(AuditLog).where(AuditLog.entity_id == legacy["id"])
@@ -234,10 +243,10 @@ try:
         # A uniqueness collision must roll back only the savepoint, then retry.
         original_allocator = service._next_ticket_no
 
-        def collide_once(db, attempt=0, *, prefix=None):
+        def collide_once(db, attempt=0, *, received_at, prefix=None):
             if attempt == 0:
                 return tickets["PO"]["ticket_no"]
-            return original_allocator(db, attempt, prefix=prefix)
+            return original_allocator(db, attempt, received_at=received_at, prefix=prefix)
 
         with patch.object(service, "_next_ticket_no", side_effect=collide_once):
             retried = call("PATCH", legacy_path, {"work_type_id": types["CS"]})
@@ -259,6 +268,29 @@ try:
         assert call("GET", legacy_path)["ticket_no"] == retried["ticket_no"]
         with SessionLocal() as db:
             assert set(db.scalars(select(ServiceTicketNumber.ticket_no))) == reserved
+        historical = create(work_type_id=types["AS"], received_at="2020-01-31T15:00:00Z")
+        assert historical["ticket_no"] == "AS-202002-0001"
+        historical_path = "/service/tickets/" + historical["id"]
+        changed = call("PATCH", historical_path, {"work_type_id": types["PO"]})
+        assert changed["ticket_no"] == "PO-202002-0001"
+        same_month = call("PATCH", historical_path, {"received_at": "2020-02-15T00:00:00Z"})
+        assert same_month["ticket_no"] == changed["ticket_no"]
+        new_month = call("PATCH", historical_path, {"received_at": "2020-01-31T14:59:59Z"})
+        assert new_month["ticket_no"] == "PO-202001-0001"
+        restored_month = call("PATCH", historical_path, {"received_at": "2020-02-01T00:00:00Z"})
+        assert restored_month["ticket_no"] == "PO-202002-0002"
+        both = call("PATCH", historical_path, {"work_type_id": types["CS"], "received_at": "2019-12-31T15:00:00Z"})
+        assert both["ticket_no"] == "CS-202001-0001"
+        with SessionLocal() as db:
+            imported = db.get(ServiceTicket, UUID(historical["id"]))
+            imported.legacy_no, imported.ticket_no = 987654, "987654"
+            db.commit()
+        imported_result = call("PATCH", historical_path, {"work_type_id": types["AS"]})
+        assert imported_result["ticket_no"] == "AS-202001-0001"
+        assert imported_result["legacy_no"] is None
+        with SessionLocal() as db:
+            assert db.get(ServiceTicket, UUID(historical["id"])).legacy_no == 987654
+        print("PASS: occurrence month, KST boundary, month edits and imported renumbering")
         print(
             "PASS: renumbering, audit/export, reserved numbers, collision retry and rollback"
         )

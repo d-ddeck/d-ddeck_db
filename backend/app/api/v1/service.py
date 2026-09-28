@@ -776,6 +776,12 @@ def update_ticket(
             raise AppError("INVALID_RECEIVED_AT", "접수일은 비울 수 없습니다.")
         _check_completion_date(data["received_at"], ticket.completed_at)
 
+    occurrence_month_changed = (
+        "received_at" in data
+        and _ticket_month(data["received_at"]) != _ticket_month(ticket.received_at)
+    )
+    reissue_number = work_type_changed or occurrence_month_changed
+
     previous_assignee = ticket.assignee_id
     for field, value in data.items():
         setattr(ticket, field, value)
@@ -792,15 +798,21 @@ def update_ticket(
     if payload.responder_ids is not None:
         ticket_rules.apply_responders(db, ticket, payload.responder_ids, is_new=False)
 
-    if work_type_changed:
+    if reissue_number:
         before["ticket_no"] = ticket.ticket_no
         _save_with_ticket_no(db, ticket)
         data["ticket_no"] = ticket.ticket_no
+        changed_fields = []
+        if work_type_changed:
+            changed_fields.append("업무 구분")
+        if occurrence_month_changed:
+            changed_fields.append("발생월")
+        reason = " 및 ".join(changed_fields)
         db.add(
             ServiceLog(
                 ticket_id=ticket.id,
                 author_id=user.id,
-                content=f"업무 구분 변경으로 접수번호 재발급: {before['ticket_no']} → {ticket.ticket_no}",
+                content=f"{reason} 변경으로 접수번호 재발급: {before['ticket_no']} → {ticket.ticket_no}",
             )
         )
 
@@ -828,7 +840,11 @@ def update_ticket(
     )
     db.commit()
     out = _detail(db, ticket_id)
-    out.notices = notices + (
+    out.notices = (
+        [f"접수번호 재발급: {before['ticket_no']} → {ticket.ticket_no}"]
+        if reissue_number
+        else []
+    ) + notices + (
         ["폐점 매장에 등록된 대응 기록입니다."]
         if ticket.store_id and db.get(Store, ticket.store_id).is_closed
         else []
@@ -1370,13 +1386,22 @@ def _load(db: Session, ticket_id: uuid.UUID) -> ServiceTicket:
     return ticket
 
 
-def _next_ticket_no(db: Session, attempt: int = 0, *, prefix: str | None = None) -> str:
-    """WORK_TYPE-YYYYMM-0001, restarting per prefix and month."""
+def _ticket_month(received_at: datetime) -> str:
+    # SQLite may return naive UTC values; never interpret them as host local time.
+    if received_at.tzinfo is None:
+        received_at = received_at.replace(tzinfo=timezone.utc)
+    return received_at.astimezone(stats.LOCAL_TZ).strftime("%Y%m")
+
+
+def _next_ticket_no(
+    db: Session, attempt: int = 0, *, received_at: datetime, prefix: str | None = None
+) -> str:
+    """WORK_TYPE-YYYYMM-0001, using the occurrence month in Korea."""
     if prefix is None:
         prefix = (
             settings_store.get(db, ModuleKey.SERVICE, "ticket_prefix", "AS") or "AS"
         )
-    stamp = now_utc().astimezone(stats.LOCAL_TZ).strftime("%Y%m")
+    stamp = _ticket_month(received_at)
     number_prefix = f"{prefix}-{stamp}-"
     # Include imported tickets and reserved previous numbers. Row counts cannot
     # allocate safely once renumbering leaves gaps in a prefix's sequence.
@@ -1413,7 +1438,7 @@ def _save_with_ticket_no(db: Session, ticket: ServiceTicket, retries: int = 5) -
     work_type = db.get(CodeItem, ticket.work_type_id) if ticket.work_type_id else None
     prefix = work_type.code if work_type is not None else None
     for attempt in range(retries):
-        number = _next_ticket_no(db, attempt, prefix=prefix)
+        number = _next_ticket_no(db, attempt, received_at=ticket.received_at, prefix=prefix)
         try:
             with db.begin_nested():
                 # Assign inside the savepoint: begin_nested flushes pending
