@@ -50,6 +50,17 @@ class AuthRepository {
     return AuthSession.fromJson(asMap(res));
   }
 
+  Future<AuthSession> localAdminLogin(String secret) async =>
+      AuthSession.fromJson(
+        asMap(
+          await _api.post(
+            '/auth/local-admin',
+            skipAuth: true,
+            body: {'secret': secret},
+          ),
+        ),
+      );
+
   Future<void> logout(String refreshToken) =>
       _api.post('/auth/logout', body: {'refresh_token': refreshToken});
 

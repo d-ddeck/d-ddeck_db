@@ -1,4 +1,5 @@
 import 'package:ddeck_app/core/api_client.dart';
+import 'package:ddeck_app/core/local_admin_credentials.dart';
 import 'package:ddeck_app/core/api_exception.dart';
 import 'package:ddeck_app/core/token_store.dart';
 import 'package:ddeck_app/data/auth_repository.dart';
@@ -40,6 +41,7 @@ void main() {
     api = ApiClient(tokenStore: store);
     authRepo = _FakeAuthRepository();
     state = AuthState(
+      localAdminLoader: () async => null,
       api: api,
       tokenStore: store,
       authRepo: authRepo,
@@ -197,6 +199,65 @@ void main() {
     });
   });
 
+  test('서버 PC 최초 실행은 저장 세션 없이 로컬 관리자 인증을 사용한다', () async {
+    state.dispose();
+    disk.clear();
+    var localCalls = 0;
+    authRepo.onLocal = (secret) async {
+      localCalls++;
+      expect(secret, 'local-proof');
+      expect(api.serverUrl, 'http://127.0.0.1:8000');
+      return AuthSession(
+        accessToken: 'A-local',
+        refreshToken: 'R-local',
+        user: UserProfile.fromJson({
+          'id': 'admin',
+          'email': 'admin@example.com',
+          'full_name': 'Admin',
+          'role': 'SUPERADMIN',
+          'status': 'APPROVED',
+        }),
+      );
+    };
+    state = AuthState(
+      api: api,
+      tokenStore: store,
+      authRepo: authRepo,
+      calendarRepo: _FakeCalendarRepository(),
+      alarms: _FakeAlarmService(),
+      localAdminLoader: () async =>
+          const LocalAdminCredentials('http://127.0.0.1:8000', 'local-proof'),
+    );
+    await state.bootstrap();
+    expect(localCalls, 1);
+    expect(state.phase, AuthPhase.ready);
+    expect(state.user?.id, 'admin');
+    expect(disk['refresh_token'], isNull);
+  });
+
+  test('로컬 인증정보는 외부 주소 또는 사용자정보가 있는 URL을 거부한다', () {
+    final secret = 'x' * 64;
+    for (final url in [
+      'http://example.com',
+      'http://127.0.0.1.evil.test',
+      'http://admin@localhost',
+      'http://localhost/other',
+      'http://localhost?x=1',
+    ]) {
+      expect(
+        LocalAdminCredentials.parse({'server_url': url, 'secret': secret}),
+        isNull,
+      );
+    }
+    expect(
+      LocalAdminCredentials.parse({
+        'server_url': 'http://127.0.0.1:8000',
+        'secret': secret,
+      }),
+      isNotNull,
+    );
+  });
+
   group('ApiException.isConnectivityProblem', () {
     test('응답 없음·5xx·봉투 아닌 응답은 연결 문제', () {
       expect(error('NETWORK_ERROR').isConnectivityProblem, isTrue);
@@ -231,6 +292,10 @@ void main() {
 class _FakeAuthRepository implements AuthRepository {
   Future<UserProfile> Function()? onMe;
   Future<AuthSession> Function()? onLogin;
+  Future<AuthSession> Function(String)? onLocal;
+
+  @override
+  Future<AuthSession> localAdminLogin(String secret) => onLocal!(secret);
 
   @override
   Future<UserProfile> me() => onMe!();

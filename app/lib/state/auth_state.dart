@@ -6,6 +6,7 @@ import '../core/api_client.dart';
 import '../core/api_exception.dart';
 import '../core/config.dart';
 import '../core/token_store.dart';
+import '../core/local_admin_credentials.dart';
 import '../data/auth_repository.dart';
 import '../data/calendar_repository.dart';
 import '../models/user.dart';
@@ -35,6 +36,7 @@ class AuthState extends ChangeNotifier {
     required this.authRepo,
     required this.calendarRepo,
     required this.alarms,
+    this.localAdminLoader = LocalAdminCredentials.load,
   }) {
     // Fires when a refresh fails or an admin suspends the account mid-session.
     alarms.onStopped = syncAlarms;
@@ -55,6 +57,7 @@ class AuthState extends ChangeNotifier {
   final AuthRepository authRepo;
   final CalendarRepository calendarRepo;
   final AlarmService alarms;
+  final Future<LocalAdminCredentials?> Function() localAdminLoader;
   final _push = PushService();
 
   AuthPhase _phase = AuthPhase.loading;
@@ -84,6 +87,31 @@ class AuthState extends ChangeNotifier {
   /// silently signs back in. Runs once at startup.
   Future<void> bootstrap() async {
     await api.restoreServerUrl();
+    final local = await localAdminLoader();
+    if (local != null) {
+      // Provisioned only on the server PC. Never send its secret to a saved
+      // remote server address, nor fall back to another saved account.
+      await api.setServerUrl(local.serverUrl, persist: false);
+      try {
+        final session = await authRepo.localAdminLogin(local.secret);
+        await tokenStore.saveSession(
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          remember: false,
+          email: 'admin',
+        );
+        _adopt(session.user);
+      } on ApiException catch (e) {
+        _notice = e.isConnectivityProblem
+            ? connectivityNotice
+            : '서버 PC 자동 로그인 설정이 만료되었거나 해제되었습니다. 관리자에게 확인하세요.';
+        _set(AuthPhase.loggedOut);
+      } catch (_) {
+        _notice = '서버 PC 자동 로그인을 완료하지 못했습니다.';
+        _set(AuthPhase.loggedOut);
+      }
+      return;
+    }
     final refresh = await tokenStore.readRefreshToken();
     if (refresh == null || refresh.isEmpty) {
       _set(AuthPhase.loggedOut);

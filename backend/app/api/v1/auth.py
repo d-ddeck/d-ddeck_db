@@ -38,6 +38,7 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     DeviceOut,
     DeviceRegister,
+    LocalAdminLoginRequest,
     LoginRequest,
     RefreshRequest,
     SessionOut,
@@ -286,6 +287,30 @@ def _issue_tokens(
         expires_at=access_exp,
         user=UserProfile.model_validate(user),
     )
+
+
+@router.post("/local-admin", response_model=TokenPair)
+def local_admin_login(
+    payload: LocalAdminLoginRequest, request: Request, db: DbSession, client: Client
+) -> TokenPair:
+    from app.services.local_admin import authenticate
+
+    auth_limit(client.ip, "local-admin", "login", 20)
+    user = authenticate(db, request, payload.secret)
+    user.last_login_at = now_utc()
+    pair = _issue_tokens(db, user, client, device_name="서버 PC 자동 로그인")
+    audit.record(
+        db,
+        action=AuditAction.LOGIN,
+        actor=user,
+        module=ModuleKey.AUTH,
+        entity_type="user",
+        entity_id=user.id,
+        summary="서버 PC 자동 로그인",
+        client=client,
+    )
+    db.commit()
+    return pair
 
 
 # ------------------------------------------------------------------ refresh

@@ -103,6 +103,7 @@ jobs:
           python scripts/test_service_work_types.py
           python scripts/test_quotations.py
           python scripts/test_drive_backup.py
+          python scripts/test_local_admin.py
           python scripts/test_store_contacts.py
           python scripts/smoke_test.py
           python scripts/smoke_test_legacy.py

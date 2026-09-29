@@ -172,3 +172,7 @@ class SessionOut(ORMModel):
 
 
 TokenPair.model_rebuild()
+
+
+class LocalAdminLoginRequest(BaseModel):
+    secret: str = Field(min_length=32, max_length=200)
