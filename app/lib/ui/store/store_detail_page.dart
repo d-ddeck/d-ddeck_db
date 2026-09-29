@@ -239,12 +239,12 @@ class _StoreBody extends StatelessWidget {
       ),
       const SizedBox(height: AppSpace.md),
       SectionCard(
-        title: '대응 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)',
+        title: '서비스 이력 (미종결 ${Fmt.number(store.openTicketCount)}건)',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (store.recentTickets.isEmpty)
-              const EmptyState(message: '아직 등록된 대응 이력이 없습니다'),
+              const EmptyState(message: '아직 등록된 서비스 이력이 없습니다'),
             for (final ticket in store.recentTickets)
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -325,7 +325,7 @@ class _StoreBody extends StatelessWidget {
             tabs: [
               Tab(text: '기본 정보'),
               Tab(text: '장비'),
-              Tab(text: '대응·렌탈'),
+              Tab(text: '서비스·렌탈'),
               Tab(text: '사진·첨부'),
             ],
           ),

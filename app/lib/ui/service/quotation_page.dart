@@ -440,7 +440,7 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    '회사 양식 기준 · 부가세 10% · 원 단위 반올림\n저장하면 대응 건에 PDF와 작성 내용이 함께 보관됩니다.',
+                    '회사 양식 기준 · 부가세 10% · 원 단위 반올림\n저장하면 서비스 건에 PDF와 작성 내용이 함께 보관됩니다.',
                   ),
                   const SizedBox(height: 16),
                   Wrap(

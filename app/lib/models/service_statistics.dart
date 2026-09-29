@@ -118,7 +118,7 @@ enum StatAxis {
   fault('fault', '과실'),
   store('store', '매장'),
   brand('brand', '브랜드'),
-  responder('responder', '대응인원'),
+  responder('responder', '서비스인원'),
   assignee('assignee', '담당자'),
   status('status', '상태'),
   priority('priority', '우선순위'),

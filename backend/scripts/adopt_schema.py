@@ -38,6 +38,11 @@ def metadata_at_baseline(revision="2cca8909675d"):
             or table.name != "quotation_revisions"
         ):
             table.to_metadata(metadata)
+    # These fields were introduced after all supported legacy baselines.
+    metadata.tables["boards"]._columns.remove(metadata.tables["boards"].c.icon)
+    if "quotation_revisions" in metadata.tables:
+        table = metadata.tables["quotation_revisions"]
+        table._columns.remove(table.c.deleted_at)
     if revision == "e628b429ad51":
         return metadata
     metadata.tables["service_tickets"].c.ticket_no.type = String(40)

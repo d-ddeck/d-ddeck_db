@@ -160,7 +160,7 @@ class StoreTabState extends State<StoreTab> {
         _query.isEmpty &&
         !_includeClosed &&
         !_includeInactive) {
-      return PageBody(
+      return PageBody.workspace(
         child: AsyncView<List<BrandSummary>>(
           key: ValueKey('brands:$_revision'),
           load: () => guardedLoad(context, repo.brands),
@@ -181,7 +181,7 @@ class StoreTabState extends State<StoreTab> {
       );
     }
 
-    return PageBody(
+    return PageBody.workspace(
       child: Column(
         children: [
           _buildSearch(),
@@ -300,10 +300,10 @@ class StoreTabState extends State<StoreTab> {
                 'name': '매장명',
                 'open_date': '개점일',
                 'created_at': '등록일',
-                'ticket_count': '대응 건수',
+                'ticket_count': '서비스 건수',
                 'asset_count': '설치 장비',
                 'open_ticket_count': '미종결 건수',
-                'last_ticket_at': '최근 대응일',
+                'last_ticket_at': '최근 서비스일',
               }.entries)
                 DropdownMenuItem(value: item.key, child: Text(item.value)),
             ],
@@ -383,7 +383,7 @@ class _BrandGrid extends StatelessWidget {
           if (brands.isEmpty) const EmptyState(message: '아직 등록된 매장이 없습니다'),
           const SizedBox(height: 16),
           SectionCard(
-            title: '최근 대응 매장',
+            title: '최근 서비스 매장',
             child: AsyncView<List<Store>>(
               load: () async => (await context.read<StoreRepository>().list(
                 sort: 'last_ticket_at',
@@ -394,7 +394,7 @@ class _BrandGrid extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  if (stores.isEmpty) const Text('매장을 등록하면 최근 대응 순서로 표시됩니다.'),
+                  if (stores.isEmpty) const Text('매장을 등록하면 최근 서비스 순서로 표시됩니다.'),
                   for (final store in stores)
                     ActionChip(
                       label: Text(
@@ -547,7 +547,7 @@ class _StoreList extends StatelessWidget {
               ],
             ),
             subtitle: Text(
-              '설치 ${Fmt.number(store.assetCount)}대 · 대응 ${store.ticketCount}건 · 미종결 ${Fmt.number(store.openTicketCount)}건\n개점 ${Fmt.date(store.openDate)} · 최근 대응 ${Fmt.date(store.lastTicketAt)}${store.isActive ? '' : ' · 비활성'}',
+              '설치 ${Fmt.number(store.assetCount)}대 · 서비스 ${store.ticketCount}건 · 미종결 ${Fmt.number(store.openTicketCount)}건\n개점 ${Fmt.date(store.openDate)} · 최근 서비스 ${Fmt.date(store.lastTicketAt)}${store.isActive ? '' : ' · 비활성'}',
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {

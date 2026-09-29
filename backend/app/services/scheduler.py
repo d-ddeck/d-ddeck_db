@@ -139,6 +139,12 @@ def start() -> BackgroundScheduler | None:
         max_instances=1,
         coalesce=True,
     )
+    from app.services.drive_backup import tick as drive_backup_tick
+
+    _scheduler.add_job(
+        drive_backup_tick, "interval", seconds=30, id="drive_backup",
+        max_instances=1, coalesce=True,
+    )
     _scheduler.start()
     log.info("scheduler started (every %ds)", settings.REMINDER_SCAN_SECONDS)
     return _scheduler

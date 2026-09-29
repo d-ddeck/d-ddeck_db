@@ -18,7 +18,7 @@ class _AssetTicketsSectionState extends State<AssetTicketsSection> {
   int _page = 1;
   @override
   Widget build(BuildContext context) => SectionCard(
-    title: '관련 대응 기록',
+    title: '관련 서비스 기록',
     child: AsyncView<PagedList<ServiceTicket>>(
       key: ValueKey(_page),
       load: () async => PagedList.fromJson(

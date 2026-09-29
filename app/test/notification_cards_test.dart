@@ -19,7 +19,7 @@ class NotificationApi extends FakeApi {
       {
         'id': 'new',
         'type': 'SERVICE_ASSIGNED',
-        'title': '새 서비스 대응 담당자로 지정되었습니다',
+        'title': '새 서비스 서비스 담당자로 지정되었습니다',
         'body': '매장 장비 점검 요청입니다. 방문 일정과 담당자 연락처를 확인해 주세요.',
         'is_read': read,
         'created_at': '2026-09-27T00:00:00Z',
@@ -94,7 +94,7 @@ void main() {
               greaterThanOrEqualTo(12),
             );
             expect(find.textContaining('읽지 않음 ·'), findsOneWidget);
-            await tester.tap(find.text('새 서비스 대응 담당자로 지정되었습니다'));
+            await tester.tap(find.text('새 서비스 서비스 담당자로 지정되었습니다'));
             await tester.pumpAndSettle();
             expect(api.read, isTrue);
             expect(find.textContaining('읽지 않음 ·'), findsNothing);

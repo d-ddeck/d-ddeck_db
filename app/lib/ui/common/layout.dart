@@ -94,6 +94,15 @@ class PageBody extends StatelessWidget {
     this.padding,
     this.maxWidth = 1200,
   });
+
+  /// Dense outer spacing for dashboards and data lists, keeping form defaults.
+  const PageBody.workspace({super.key, required this.child})
+    : padding = const EdgeInsets.symmetric(
+        horizontal: AppSpace.lg,
+        vertical: AppSpace.sm,
+      ),
+      maxWidth = double.infinity;
+
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final double maxWidth;
@@ -196,5 +205,28 @@ class FormSection extends StatelessWidget {
       const SizedBox(height: AppSpace.sm),
       FormFields(children: children),
     ],
+  );
+}
+
+/// One-line navigation with a full-size touch target.
+class WorkspaceTab extends StatelessWidget implements PreferredSizeWidget {
+  const WorkspaceTab({super.key, required this.text, required this.icon});
+  final String text;
+  final Widget icon;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(48);
+
+  @override
+  Widget build(BuildContext context) => Tab(
+    height: 48,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        icon,
+        const SizedBox(width: AppSpace.sm),
+        Text(text),
+      ],
+    ),
   );
 }

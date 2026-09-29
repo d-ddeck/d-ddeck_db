@@ -19,7 +19,7 @@ import 'package:ddeck_app/ui/theme.dart';
 
 const types = [
   {'id': 'as', 'code': 'AS', 'name': '수리/점검'},
-  {'id': 'cs', 'code': 'CS', 'name': '고객 대응'},
+  {'id': 'cs', 'code': 'CS', 'name': '고객 서비스'},
   {'id': 'po', 'code': 'PO', 'name': '구매'},
   {'id': 'custom', 'code': 'INSTALL', 'name': '설치 지원'},
 ];

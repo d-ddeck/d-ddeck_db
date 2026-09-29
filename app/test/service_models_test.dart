@@ -174,7 +174,7 @@ void main() {
     );
   });
 
-  test('크로스탭은 원인 수와 중복 제거한 대응 건수를 구분한다', () {
+  test('크로스탭은 원인 수와 중복 제거한 서비스 건수를 구분한다', () {
     final value = Crosstab.fromJson({
       'rows_axis': 'brand',
       'cols_axis': 'category',

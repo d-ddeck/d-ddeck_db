@@ -52,9 +52,9 @@ class CalendarMonthData {
       );
     }
     final first = DateTime(month.year, month.month);
-    final start = calendarDayAfter(first, 1 - first.weekday);
+    final start = calendarDayAfter(first, -(first.weekday % 7));
     final count =
-        ((first.weekday - 1 + DateTime(month.year, month.month + 1, 0).day) / 7)
+        ((first.weekday % 7 + DateTime(month.year, month.month + 1, 0).day) / 7)
             .ceil();
     final sorted = List<CalendarEvent>.of(events)
       ..sort((a, b) {
@@ -137,4 +137,34 @@ class CalendarMonthData {
     }
     return color;
   }
+}
+
+/// Resizes one boundary while preserving local clock times and exclusive ends.
+DateTimeRange? resizedCalendarRange(
+  CalendarEvent event,
+  DateTime day, {
+  required bool start,
+}) {
+  final original = start ? event.startsAt : event.endsAt;
+  final midnightEnd =
+      !start &&
+      original.hour == 0 &&
+      original.minute == 0 &&
+      original.second == 0 &&
+      original.millisecond == 0 &&
+      original.microsecond == 0;
+  final boundary = DateTime(
+    day.year,
+    day.month,
+    day.day + (midnightEnd ? 1 : 0),
+    original.hour,
+    original.minute,
+    original.second,
+    original.millisecond,
+    original.microsecond,
+  );
+  final first = start ? boundary : event.startsAt;
+  final last = start ? event.endsAt : boundary;
+  if (!last.isAfter(first)) return null;
+  return DateTimeRange(start: first, end: last);
 }

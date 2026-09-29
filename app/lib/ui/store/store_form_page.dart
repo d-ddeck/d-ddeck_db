@@ -136,7 +136,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                   children: [
                     Text('설치 장비 ${store.movableCount}대가 옮겨집니다'),
                     if (store.rentalCount > 0)
-                      Text('렌탈 중 ${store.rentalCount}대는 대응 기록에서 회수 처리'),
+                      Text('렌탈 중 ${store.rentalCount}대는 서비스 기록에서 회수 처리'),
                     RadioGroup<String>(
                       groupValue: recoverId ?? '',
                       onChanged: (v) =>

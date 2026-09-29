@@ -181,6 +181,7 @@ class _HomeShellState extends State<HomeShell> {
         child: FocusTraversalGroup(
           child: Scaffold(
             appBar: AppBar(
+              toolbarHeight: 48,
               automaticallyImplyLeading: false,
               title: _sectionIsMain[index]
                   ? Text(destinations[index].label)
@@ -415,7 +416,7 @@ class _HomeShellState extends State<HomeShell> {
       page: DashboardPage(),
     ),
     const _Destination(
-      label: '대응',
+      label: '서비스',
       icon: Icons.build_outlined,
       selectedIcon: Icons.build,
       page: ServicePage(),

@@ -92,9 +92,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('대응 목록은 넓은 화면 열 정렬, 좁은 화면 카드와 긴 제목 툴팁', (tester) async {
+  testWidgets('서비스 목록은 넓은 화면 열 정렬, 좁은 화면 카드와 긴 제목 툴팁', (tester) async {
     addTearDown(tester.view.reset);
-    const title = '아주 긴 발생 내용으로 표시 범위를 넘더라도 전체 내용을 확인할 수 있는 대응 기록';
+    const title = '아주 긴 발생 내용으로 표시 범위를 넘더라도 전체 내용을 확인할 수 있는 서비스 기록';
     final ticket = ServiceTicket.fromJson({
       'id': 'ticket',
       'ticket_no': 'AS-202609-0001',

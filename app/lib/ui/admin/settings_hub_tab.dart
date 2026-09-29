@@ -27,6 +27,24 @@ class _SettingsHubTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        if (context.watch<AuthState>().isAdmin)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Card(
+              child: ListTile(
+                leading: const Icon(Icons.backup_outlined),
+                title: const Text('Google Drive 자동 백업'),
+                subtitle: const Text(
+                  '자동 백업 시간 · 연결 계정 변경 · 즉시 백업',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DriveBackupPage()),
+                ),
+              ),
+            ),
+          ),
         for (final module in SettingsModule.values)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

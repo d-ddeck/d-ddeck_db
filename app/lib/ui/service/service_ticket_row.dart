@@ -91,7 +91,7 @@ class ServiceTicketRow extends StatelessWidget {
             ],
           ),
         _text(t == null ? '발생일' : Fmt.date(t.receivedAt.toLocal())),
-        _text(t == null ? '대응일' : Fmt.date(t.completedAt?.toLocal())),
+        _text(t == null ? '서비스일' : Fmt.date(t.completedAt?.toLocal())),
         Align(alignment: Alignment.centerLeft, child: status),
       ];
       return Material(

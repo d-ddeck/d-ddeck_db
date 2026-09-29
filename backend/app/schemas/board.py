@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import BoardType, PostStatus, Role
 from app.schemas.common import ORMModel, PatchModel, UserBrief
 
+BoardIcon = Literal["auto", "notice", "chat", "question", "folder", "calendar", "equipment", "store", "document", "task", "idea", "photo", "team"]
+
 
 class BoardCreate(BaseModel):
+    icon: BoardIcon = "auto"
     code: str = Field(min_length=1, max_length=60)
     name: str = Field(min_length=1, max_length=120)
     type: BoardType = BoardType.FREE
@@ -28,7 +31,9 @@ class BoardCreate(BaseModel):
 
 
 class BoardUpdate(PatchModel):
+    icon: BoardIcon | None = None
     non_nullable: ClassVar[set[str]] = {
+        "icon",
         "write_role",
         "read_role",
         "allow_comment",
@@ -57,6 +62,7 @@ class BoardUpdate(PatchModel):
 
 
 class BoardOut(ORMModel):
+    icon: str = "auto"
     id: uuid.UUID
     code: str
     name: str

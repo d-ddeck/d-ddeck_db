@@ -2,7 +2,6 @@ import '../../models/user.dart' show Department;
 import '../../services/filter_memory.dart';
 import 'calendar_range_selection.dart';
 import '../../data/auth_repository.dart';
-import '../../models/common.dart' show UserBrief;
 import 'calendar_month_data.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -38,6 +37,8 @@ class _CalendarPageState extends State<CalendarPage> {
   final _viewKey = GlobalKey<AsyncViewState<CalendarMonthData>>();
 
   final _calendarHeaderKey = GlobalKey();
+  final _monthGridKey = GlobalKey();
+  bool _resizing = false;
   double _calendarHeaderHeight = 0;
 
   void _measureCalendarHeader() {
@@ -53,8 +54,8 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _selected = DateTime.now();
   final Map<int, List<Holiday>> _holidays = {};
-  bool _mineOnly = false, _monthList = false;
-  String? _categoryId, _participantId;
+  bool _monthList = false;
+  String? _categoryId;
 
   String? _filterKey;
   bool _filtersReady = false;
@@ -69,10 +70,8 @@ class _CalendarPageState extends State<CalendarPage> {
       final saved = await FilterMemory.load(_filterKey!);
       if (!mounted) return;
       setState(() {
-        _mineOnly = saved['mine'] == true;
         _monthList = saved['list'] == true;
         _categoryId = saved['category'] as String?;
-        _participantId = saved['participant'] as String?;
         _filtersReady = true;
       });
       _refresh();
@@ -91,10 +90,8 @@ class _CalendarPageState extends State<CalendarPage> {
   void _refresh() {
     if (_filtersReady && _filterKey != null) {
       FilterMemory.save(_filterKey!, {
-        'mine': _mineOnly,
         'list': _monthList,
         'category': _categoryId,
-        'participant': _participantId,
       });
     }
     _viewKey.currentState?.reload();
@@ -112,6 +109,31 @@ class _CalendarPageState extends State<CalendarPage> {
       ),
     );
     if (mounted && created == true) _refresh();
+  }
+
+  Future<void> _resizeEvent(
+    CalendarEvent event,
+    bool start,
+    DateTime date,
+  ) async {
+    if (_resizing) return;
+    final range = resizedCalendarRange(event, date, start: start);
+    if (range == null) {
+      AppSnack.show(context, '시작일은 종료일보다 늦을 수 없습니다.');
+      return;
+    }
+    if (range.start == event.startsAt && range.end == event.endsAt) return;
+    setState(() => _resizing = true);
+    final saved = await runGuarded(
+      context,
+      () => context.read<CalendarRepository>().updateEvent(event.id, {
+        'starts_at': range.start.toUtc().toIso8601String(),
+        'ends_at': range.end.toUtc().toIso8601String(),
+      }),
+    );
+    if (!mounted) return;
+    setState(() => _resizing = false);
+    if (saved) _refresh();
   }
 
   Future<void> _createCalendar() async {
@@ -261,20 +283,9 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget build(BuildContext context) {
     final repo = context.read<CalendarRepository>();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('캘린더'),
-        actions: [
-          FilledButton.icon(
-            onPressed: () => _createEvent(_selected),
-            icon: const Icon(Icons.add),
-            label: const Text('일정 등록'),
-          ),
-        ],
-      ),
       body: SafeArea(
         top: false,
-        child: PageBody(
-          maxWidth: double.infinity,
+        child: PageBody.workspace(
           child: AsyncView<CalendarMonthData>(
             key: _viewKey,
             load: () async {
@@ -285,9 +296,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   repo.events(
                     from: _windowStart,
                     to: _windowEnd,
-                    mineOnly: _mineOnly,
                     categoryId: _categoryId,
-                    participantId: _participantId,
                   ),
                   context
                       .read<AdminRepository>()
@@ -375,22 +384,6 @@ class _CalendarPageState extends State<CalendarPage> {
                               spacing: 8,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                FilterChip(
-                                  label: const Text('내 일정'),
-                                  selected: _mineOnly,
-                                  onSelected: (value) {
-                                    setState(() => _mineOnly = value);
-                                    _refresh();
-                                  },
-                                ),
-                                FilterChip(
-                                  label: const Text('월 전체 목록'),
-                                  selected: _monthList,
-                                  onSelected: (value) => setState(() {
-                                    _monthList = value;
-                                    _refresh();
-                                  }),
-                                ),
                                 DropdownButton<String>(
                                   value: _categoryId,
                                   hint: const Text('모든 분류'),
@@ -409,59 +402,6 @@ class _CalendarPageState extends State<CalendarPage> {
                                     setState(() => _categoryId = value);
                                     _refresh();
                                   },
-                                ),
-                                SizedBox(
-                                  width: 180,
-                                  child: Autocomplete<UserBrief>(
-                                    displayStringForOption: (person) =>
-                                        person.fullName,
-                                    optionsBuilder: (value) async =>
-                                        (await context
-                                                .read<AuthRepository>()
-                                                .directory(query: value.text))
-                                            .items,
-                                    fieldViewBuilder:
-                                        (c, controller, focus, submit) =>
-                                            TextField(
-                                              controller: controller,
-                                              focusNode: focus,
-                                              decoration: InputDecoration(
-                                                labelText: '참석자 검색',
-                                                suffixIcon: IconButton(
-                                                  tooltip: '참석자 조건 지우기',
-                                                  icon: const Icon(Icons.clear),
-                                                  onPressed: () {
-                                                    controller.clear();
-                                                    setState(
-                                                      () =>
-                                                          _participantId = null,
-                                                    );
-                                                    _refresh();
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                    onSelected: (person) {
-                                      setState(
-                                        () => _participantId = person.id,
-                                      );
-                                      _refresh();
-                                    },
-                                  ),
-                                ),
-                                TextButton.icon(
-                                  onPressed: () async {
-                                    final range = await showDateRangePicker(
-                                      context: context,
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (range != null && mounted) {
-                                      _createEvent(range.start, range.end);
-                                    }
-                                  },
-                                  icon: const Icon(Icons.date_range),
-                                  label: const Text('기간 일정'),
                                 ),
                                 TextButton.icon(
                                   onPressed: _createCalendar,
@@ -491,9 +431,39 @@ class _CalendarPageState extends State<CalendarPage> {
                               (MediaQuery.textScalerOf(context).scale(11) + 6)
                                   .clamp(22.0, double.infinity),
                           weeks: data.weeks.length,
-                          enabled: desktop,
+                          enabled: false,
                           onSelected: (start, end) => _createEvent(start, end),
                           child: _MonthGrid(
+                            key: _monthGridKey,
+                            canResize: !_resizing,
+                            onResize: _resizeEvent,
+                            dateAt: (global) {
+                              final box =
+                                  _monthGridKey.currentContext
+                                          ?.findRenderObject()
+                                      as RenderBox?;
+                              if (box == null) return null;
+                              final point = box.globalToLocal(global);
+                              final weekdayHeight =
+                                  (MediaQuery.textScalerOf(context).scale(11) +
+                                          6)
+                                      .clamp(22.0, double.infinity);
+                              final col =
+                                  ((point.dx - AppSpace.xs) /
+                                          ((box.size.width - 2 * AppSpace.xs) /
+                                              7))
+                                      .floor();
+                              final row =
+                                  ((point.dy - weekdayHeight) / rowHeight)
+                                      .floor();
+                              if (col < 0 ||
+                                  col > 6 ||
+                                  row < 0 ||
+                                  row >= data.weeks.length) {
+                                return null;
+                              }
+                              return data.weeks[row].days[col];
+                            },
                             month: _month,
                             selected: _selected,
                             data: data,
@@ -538,14 +508,18 @@ class _CalendarPageState extends State<CalendarPage> {
                           spacing: 8,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
+                            FilterChip(
+                              label: const Text('월 전체 목록'),
+                              selected: _monthList,
+                              onSelected: (value) => setState(() {
+                                _monthList = value;
+                                _refresh();
+                              }),
+                            ),
+
                             Text(
                               '${_monthList ? '${_month.year}년 ${_month.month}월' : Fmt.date(_selected)} · ${dayEvents.length}개 일정',
                               style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            TextButton.icon(
-                              onPressed: () => _createEvent(_selected),
-                              icon: const Icon(Icons.add),
-                              label: const Text('일정 등록'),
                             ),
                           ],
                         ),
@@ -628,6 +602,10 @@ class _MonthHeader extends StatelessWidget {
 
 class _MonthGrid extends StatelessWidget {
   const _MonthGrid({
+    super.key,
+    required this.onResize,
+    required this.dateAt,
+    required this.canResize,
     required this.month,
     required this.selected,
     required this.data,
@@ -639,6 +617,9 @@ class _MonthGrid extends StatelessWidget {
     required this.onChanged,
   });
 
+  final void Function(CalendarEvent, bool, DateTime) onResize;
+  final DateTime? Function(Offset) dateAt;
+  final bool canResize;
   final DateTime month, selected;
   final CalendarMonthData data;
   final double rowHeight;
@@ -680,13 +661,13 @@ class _MonthGrid extends StatelessWidget {
             child: Row(
               children: [
                 for (final (i, label) in [
+                  '일',
                   '월',
                   '화',
                   '수',
                   '목',
                   '금',
                   '토',
-                  '일',
                 ].indexed)
                   Expanded(
                     child: Center(
@@ -695,9 +676,9 @@ class _MonthGrid extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: i == 5
+                          color: i == 6
                               ? AppColors.info(context)
-                              : i == 6
+                              : i == 0
                               ? AppColors.danger(context)
                               : scheme.outline,
                         ),
@@ -744,7 +725,15 @@ class _MonthGrid extends StatelessWidget {
                             top: headerHeight + segment.lane * laneHeight,
                             height: laneHeight - 2,
                             child: _EventBar(
+                              key: ValueKey(
+                                '${segment.event.id}:${week.days.first}',
+                              ),
                               segment: segment,
+                              dateAt: dateAt,
+                              onResize: (start, date) =>
+                                  onResize(segment.event, start, date),
+                              canResize: canResize,
+
                               fontSize: fontSize,
                               color: data.colorFor(
                                 segment.event,
@@ -800,14 +789,21 @@ class _MonthGrid extends StatelessWidget {
   }
 }
 
-class _EventBar extends StatelessWidget {
+class _EventBar extends StatefulWidget {
   const _EventBar({
+    super.key,
+    required this.dateAt,
+    required this.onResize,
+    required this.canResize,
     required this.segment,
     required this.color,
     required this.fontSize,
     required this.onTap,
     required this.onLongPress,
   });
+  final DateTime? Function(Offset) dateAt;
+  final void Function(bool, DateTime) onResize;
+  final bool canResize;
   final CalendarWeekSegment segment;
   final Color color;
   final double fontSize;
@@ -815,8 +811,50 @@ class _EventBar extends StatelessWidget {
   final ValueChanged<double> onLongPress;
 
   @override
+  State<_EventBar> createState() => _EventBarState();
+}
+
+class _EventBarState extends State<_EventBar> {
+  bool selected = false;
+  DateTime? preview;
+  CalendarWeekSegment get segment => widget.segment;
+  double get fontSize => widget.fontSize;
+  Color get color => widget.color;
+  VoidCallback get onTap => widget.onTap;
+  ValueChanged<double> get onLongPress => widget.onLongPress;
+
+  Widget handle(bool start) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onPanStart: (details) =>
+        setState(() => preview = widget.dateAt(details.globalPosition)),
+    onPanUpdate: (details) =>
+        setState(() => preview = widget.dateAt(details.globalPosition)),
+    onPanCancel: () => setState(() => preview = null),
+    onPanEnd: (_) {
+      final date = preview;
+      setState(() => preview = null);
+      if (date != null) widget.onResize(start, date);
+    },
+    child: Tooltip(
+      message: start ? '시작일 드래그' : '종료일 드래그',
+      child: const SizedBox(
+        width: 16,
+        child: Center(child: Icon(Icons.drag_handle, size: 16)),
+      ),
+    ),
+  );
+
+  @override
   Widget build(BuildContext context) {
     final event = segment.event;
+    final auth = context.read<AuthState>();
+    final userId = auth.user?.id;
+    final editable =
+        widget.canResize &&
+        userId != null &&
+        (auth.isManager ||
+            event.createdById == userId ||
+            event.participants.any((p) => p.userId == userId && p.isOrganizer));
     final lastDay = calendarDateOnly(
       event.endsAt.subtract(const Duration(microseconds: 1)),
     );
@@ -838,25 +876,33 @@ class _EventBar extends StatelessWidget {
       left: Radius.circular(segment.continuesLeft ? 0 : 6),
       right: Radius.circular(segment.continuesRight ? 0 : 6),
     );
-    return Semantics(
+    final bar = Semantics(
       button: true,
       label: title,
       child: Tooltip(
-        message: title,
+        message: preview == null
+            ? '$title${editable ? ' · 선택 후 양끝을 드래그해 기간 변경' : ''}'
+            : Fmt.date(preview!),
         child: GestureDetector(
           onLongPressStart: (details) => onLongPress(details.localPosition.dx),
           child: Material(
             color: background,
             borderRadius: radius,
             child: InkWell(
-              onTap: onTap,
+              onTap: () {
+                if (editable && !selected) {
+                  setState(() => selected = true);
+                } else {
+                  onTap();
+                }
+              },
               borderRadius: radius,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 3),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    title,
+                    preview == null ? title : Fmt.date(preview!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -874,6 +920,22 @@ class _EventBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+    if (!selected || !editable) return bar;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary,
+          width: 2,
+        ),
+      ),
+      child: Row(
+        children: [
+          if (!segment.continuesLeft) handle(true),
+          Expanded(child: bar),
+          if (!segment.continuesRight) handle(false),
+        ],
       ),
     );
   }

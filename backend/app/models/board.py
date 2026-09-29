@@ -28,6 +28,7 @@ class Board(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     type: Mapped[BoardType] = mapped_column(
         enum_type(BoardType), default=BoardType.FREE, nullable=False
     )
+    icon: Mapped[str] = mapped_column(String(32), default="auto", server_default="auto", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
 
     # --- fields the 게시판 설정창 edits ---

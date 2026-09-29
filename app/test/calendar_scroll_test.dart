@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/gestures.dart';
 import 'package:ddeck_app/data/admin_repository.dart';
 import 'package:ddeck_app/data/auth_repository.dart';
@@ -62,7 +63,108 @@ class _Directory implements AuthRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _ResizeAuth extends _Auth {
+  @override
+  UserProfile get user => const UserProfile(
+    id: 'owner',
+    email: 'test@example.test',
+    fullName: '테스트',
+    role: Role.manager,
+    status: UserStatus.approved,
+  );
+  @override
+  bool get isManager => true;
+  @override
+  String get serverUrl => 'http://test';
+}
+
+class _ResizeCalendar extends _Calendar {
+  Map<String, dynamic>? changes;
+  CalendarEvent get sampleEvent {
+    final now = DateTime.now();
+    return CalendarEvent(
+      id: 'resize',
+      calendarId: 'c',
+      title: '기간 변경 테스트',
+      startsAt: DateTime(now.year, now.month, 15, 9),
+      endsAt: DateTime(now.year, now.month, 15, 18),
+      status: EventStatus.scheduled,
+      createdById: 'owner',
+    );
+  }
+
+  @override
+  Future<List<CalendarEvent>> events({
+    required DateTime from,
+    required DateTime to,
+    String? calendarId,
+    bool mineOnly = false,
+    String? categoryId,
+    String? participantId,
+  }) async => [sampleEvent];
+  @override
+  Future<CalendarEvent> updateEvent(
+    String id,
+    Map<String, dynamic> changes,
+  ) async {
+    this.changes = changes;
+    return sampleEvent;
+  }
+}
+
 void main() {
+  testWidgets('selected event end handle changes the saved period', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = _ResizeAuth();
+    final repo = _ResizeCalendar();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthState>.value(value: auth),
+          Provider<CalendarRepository>.value(value: repo),
+          Provider<AdminRepository>.value(value: _Admin()),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const CalendarPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final grid = find.byType(CalendarRangeSelection);
+    expect(tester.widget<CalendarRangeSelection>(grid).enabled, isFalse);
+    expect(find.text('일정 등록'), findsNothing);
+    expect(find.text('내 일정'), findsNothing);
+    final bar = find
+        .descendant(of: grid, matching: find.textContaining('기간 변경 테스트'))
+        .first;
+    await tester.tap(bar);
+    await tester.pumpAndSettle();
+    final handle = find.byTooltip('종료일 드래그');
+    expect(handle, findsOneWidget);
+    final destination = tester.getCenter(
+      find.descendant(of: grid, matching: find.text('17')),
+    );
+    final origin = tester.getCenter(handle);
+    await tester.dragFrom(
+      origin,
+      destination - origin,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    final now = DateTime.now();
+    expect(
+      repo.changes?['ends_at'],
+      DateTime(now.year, now.month, 17, 18).toUtc().toIso8601String(),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
   for (final width in [1000.0, 1440.0]) {
     for (final scale in [1.0, 1.5, 2.0]) {
       for (final dark in [false, true]) {
@@ -102,31 +204,9 @@ void main() {
                 ),
               );
               await tester.pumpAndSettle();
-              final field = find.widgetWithText(TextField, '참석자 검색');
-              for (final filled in [false, true]) {
-                if (filled) {
-                  await tester.tap(field);
-                  await tester.enterText(field, '홍길동');
-                  await tester.pumpAndSettle();
-                }
-                final label = find.text('참석자 검색');
-                for (final scroll
-                    in find
-                        .ancestor(
-                          of: label,
-                          matching: find.byType(SingleChildScrollView),
-                        )
-                        .evaluate()) {
-                  expect(
-                    tester.getTopLeft(label).dy,
-                    greaterThanOrEqualTo(
-                      tester.getTopLeft(find.byWidget(scroll.widget)).dy,
-                    ),
-                    reason: 'floating label clips at scroll top',
-                  );
-                }
-                expect(tester.takeException(), isNull);
-              }
+              expect(find.text('참석자 검색'), findsNothing);
+              expect(find.text('기간 일정'), findsNothing);
+              expect(tester.takeException(), isNull);
               await tester.pumpWidget(const SizedBox());
               auth.dispose();
             },

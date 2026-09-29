@@ -6,6 +6,29 @@ class AdminRepository {
   AdminRepository(this._api);
   final ApiClient _api;
 
+  Future<Map<String, dynamic>> driveBackup() async =>
+      asMap(await _api.get('/admin/drive-backup'));
+  Future<void> configureDriveBackup(Map<String, dynamic> values) async {
+    await _api.put('/admin/drive-backup/config', body: values);
+  }
+
+  Future<String> connectDriveBackup() async =>
+      asString(asMap(await _api.post('/admin/drive-backup/connect'))['url']);
+  Future<void> disconnectDriveBackup() async {
+    await _api.delete('/admin/drive-backup/connection');
+  }
+
+  Future<void> scheduleDriveBackup(bool enabled, int hour) async {
+    await _api.put(
+      '/admin/drive-backup/schedule',
+      body: {'enabled': enabled, 'hour': hour},
+    );
+  }
+
+  Future<void> runDriveBackup() async {
+    await _api.post('/admin/drive-backup/run');
+  }
+
   /// Everything one settings screen needs: the key/value rows plus the
   /// classification lists that belong to the same module.
   Future<ModuleSettings> settings(SettingsModule module) async =>

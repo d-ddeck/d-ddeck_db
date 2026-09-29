@@ -30,6 +30,17 @@ class BackupTests(unittest.TestCase):
             db.execute("INSERT INTO sample VALUES ('retained')")
         (self.root / "storage/item.txt").write_text("attachment")
 
+    def test_cloud_data_only_excludes_secrets_and_keeps_full_backups(self):
+        full = bundle.backup(self.root, remote="", keep=1)
+        cloud = bundle.backup(self.root, remote="", keep=1, data_only=True)
+        with zipfile.ZipFile(cloud) as z:
+            self.assertNotIn(".env", z.namelist())
+            self.assertFalse(any(n.startswith("operations/") for n in z.namelist()))
+            self.assertIn("ddeck.db", z.namelist())
+            self.assertIn("storage/item.txt", z.namelist())
+        self.assertTrue(full.exists())
+        bundle.extract_bundle(cloud, self.root / "cloud-restore")
+
     def test_roundtrip_and_retention(self):
         for _ in range(3):
             archive = bundle.backup(self.root, remote="", keep=2)

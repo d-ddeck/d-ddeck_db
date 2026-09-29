@@ -7,6 +7,7 @@ from app.api.v1 import (
     auth,
     board,
     calendar,
+    drive_backup,
     files,
     inventory,
     quotations,
@@ -31,3 +32,5 @@ api_router.include_router(admin.router)  # 관리기능 (설정/코드/감사/�
 api_router.include_router(files.router)  # 공통 첨부파일
 
 api_router.include_router(updates.router)  # 서명된 클라이언트 업데이트
+
+api_router.include_router(drive_backup.router)

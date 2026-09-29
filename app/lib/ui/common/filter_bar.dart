@@ -68,8 +68,8 @@ class FilterBar extends StatelessWidget {
           children: [
             Expanded(
               child: Wrap(
-                spacing: AppSpace.md,
-                runSpacing: AppSpace.md,
+                spacing: AppSpace.sm,
+                runSpacing: AppSpace.sm,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: children,
               ),
@@ -103,11 +103,11 @@ class FilterBar extends StatelessWidget {
             ),
           ),
           if (trailing.isNotEmpty) ...[
-            const SizedBox(height: AppSpace.md),
+            const SizedBox(height: AppSpace.sm),
             Wrap(
               alignment: WrapAlignment.end,
-              spacing: AppSpace.md,
-              runSpacing: AppSpace.md,
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [...trailing, if (reset != null) reset],
             ),

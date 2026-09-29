@@ -196,11 +196,33 @@ class EquipmentPageState extends State<EquipmentPage>
         controller: _tabs,
         child: Column(
           children: [
-            AppBar(
-              primary: false,
-              automaticallyImplyLeading: false,
-              titleSpacing: AppSpace.lg,
-              actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _tabs,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    tabs: const [
+                      WorkspaceTab(
+                        icon: Icon(Icons.dashboard_outlined),
+                        text: '현황',
+                      ),
+                      WorkspaceTab(
+                        icon: Icon(Icons.store_outlined),
+                        text: '매장',
+                      ),
+                      WorkspaceTab(
+                        icon: Icon(Icons.inventory_2_outlined),
+                        text: '장비 목록',
+                      ),
+                      WorkspaceTab(
+                        icon: Icon(Icons.place_outlined),
+                        text: '위치',
+                      ),
+                    ],
+                  ),
+                ),
                 PopupMenuButton<String>(
                   tooltip: '더보기',
                   icon: const Icon(Icons.more_vert),
@@ -219,17 +241,7 @@ class EquipmentPageState extends State<EquipmentPage>
                     const PopupMenuItem(value: 'refresh', child: Text('새로고침')),
                   ],
                 ),
-                const SizedBox(width: AppSpace.lg),
-              ],
-            ),
-            TabBar(
-              controller: _tabs,
-              isScrollable: true,
-              tabs: const [
-                Tab(icon: Icon(Icons.dashboard_outlined), text: '현황'),
-                Tab(icon: Icon(Icons.store_outlined), text: '매장'),
-                Tab(icon: Icon(Icons.inventory_2_outlined), text: '장비 목록'),
-                Tab(icon: Icon(Icons.place_outlined), text: '위치'),
+                const SizedBox(width: AppSpace.sm),
               ],
             ),
             if (_tabs.index == EquipmentTab.overview.index)
@@ -323,13 +335,7 @@ class _EquipmentSummary extends StatelessWidget {
       );
       return (overview, openStores.total);
     },
-    builder: (context, data, reload) => PageBody(
-      padding: EdgeInsets.fromLTRB(
-        AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg,
-        AppSpace.lg,
-        AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg,
-        0,
-      ),
+    builder: (context, data, reload) => PageBody.workspace(
       child: LayoutBuilder(
         builder: (context, constraints) => Wrap(
           spacing: AppSpace.sm,
@@ -365,7 +371,7 @@ class _EquipmentSummary extends StatelessWidget {
                   label: item.$1,
                   value: '${Fmt.number(item.$2)}${item.$4}',
                   iconWidget: item.$3,
-                  compact: !AppTheme.isWide(context),
+                  compact: true,
                 ),
               ),
           ],

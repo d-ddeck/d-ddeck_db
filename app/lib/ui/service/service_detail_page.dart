@@ -136,72 +136,6 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
               t,
               Column(
                 children: [
-                  Material(
-                    color: Theme.of(context).colorScheme.surfaceContainerLow,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            '${t.displayNo} · ${t.status.label}',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              spacing: 8,
-                              children: [
-                                if (t.status.isOpen)
-                                  FilledButton.icon(
-                                    onPressed: () => _changeStatus(
-                                      t,
-                                      ServiceStatus.completed,
-                                      reload,
-                                    ),
-                                    icon: const Icon(Icons.check),
-                                    label: const Text('종결 처리'),
-                                  ),
-                                if (t.status == ServiceStatus.completed)
-                                  OutlinedButton(
-                                    onPressed: () => _changeStatus(
-                                      t,
-                                      ServiceStatus.inProgress,
-                                      reload,
-                                    ),
-                                    child: const Text('다시 열기'),
-                                  ),
-                                for (final next in t.status.nextOptions.where(
-                                  (s) =>
-                                      s != ServiceStatus.completed &&
-                                      t.status != ServiceStatus.completed,
-                                ))
-                                  OutlinedButton.icon(
-                                    onPressed: () =>
-                                        _changeStatus(t, next, reload),
-                                    icon: Icon(
-                                      Icons.arrow_forward,
-                                      size: 15,
-                                      color: next.color,
-                                    ),
-                                    label: Text('${next.label}(으)로'),
-                                  ),
-                                OutlinedButton.icon(
-                                  onPressed: () => _addLog(t.id, reload),
-                                  icon: const Icon(
-                                    Icons.note_add_outlined,
-                                    size: 15,
-                                  ),
-                                  label: const Text('작업 기록'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Expanded(
                     child: ListView(
                       padding: EdgeInsets.zero,
@@ -322,7 +256,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                           ),
                         ),
                         SectionCard(
-                          title: '대응인원',
+                          title: '서비스인원',
                           child: Wrap(
                             runSpacing: 12,
                             spacing: 8,
@@ -548,6 +482,72 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                       ],
                     ),
                   ),
+                  Material(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            '${t.displayNo} · ${t.status.label}',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              spacing: 8,
+                              children: [
+                                if (t.status.isOpen)
+                                  FilledButton.icon(
+                                    onPressed: () => _changeStatus(
+                                      t,
+                                      ServiceStatus.completed,
+                                      reload,
+                                    ),
+                                    icon: const Icon(Icons.check),
+                                    label: const Text('종결 처리'),
+                                  ),
+                                if (t.status == ServiceStatus.completed)
+                                  OutlinedButton(
+                                    onPressed: () => _changeStatus(
+                                      t,
+                                      ServiceStatus.inProgress,
+                                      reload,
+                                    ),
+                                    child: const Text('다시 열기'),
+                                  ),
+                                for (final next in t.status.nextOptions.where(
+                                  (s) =>
+                                      s != ServiceStatus.completed &&
+                                      t.status != ServiceStatus.completed,
+                                ))
+                                  OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _changeStatus(t, next, reload),
+                                    icon: Icon(
+                                      Icons.arrow_forward,
+                                      size: 15,
+                                      color: next.color,
+                                    ),
+                                    label: Text('${next.label}(으)로'),
+                                  ),
+                                OutlinedButton.icon(
+                                  onPressed: () => _addLog(t.id, reload),
+                                  icon: const Icon(
+                                    Icons.note_add_outlined,
+                                    size: 15,
+                                  ),
+                                  label: const Text('작업 기록 추가'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
@@ -799,19 +799,19 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                       TextFormField(
                         controller: resultController,
                         maxLines: 4,
-                        decoration: const InputDecoration(labelText: '대응 내용 *'),
+                        decoration: const InputDecoration(labelText: '서비스 내용 *'),
                         validator: (v) => v == null || v.trim().isEmpty
-                            ? '대응 내용을 입력해 주세요.'
+                            ? '서비스 내용을 입력해 주세요.'
                             : null,
                       ),
                       const SizedBox(height: 12),
                       FormField<bool>(
                         validator: (_) =>
-                            responderIds.isEmpty ? '대응인원을 선택해 주세요.' : null,
+                            responderIds.isEmpty ? '서비스인원을 선택해 주세요.' : null,
                         builder: (field) => Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('대응인원 *'),
+                            const Text('서비스인원 *'),
                             const FormGap(),
                             Wrap(
                               spacing: 8,
@@ -844,7 +844,7 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                         alignment: Alignment.centerLeft,
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.calendar_today),
-                          label: Text('대응일: ${Fmt.date(completedAt)}'),
+                          label: Text('서비스일: ${Fmt.date(completedAt)}'),
                           onPressed: () async {
                             final date = await pickDate(
                               ctx,

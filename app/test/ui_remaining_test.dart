@@ -74,7 +74,7 @@ void main() {
     await state.load();
     expect(state.compact, isFalse);
   });
-  testWidgets('390px·200% 글자에서 대응 카드와 첨부 동작 접근', (tester) async {
+  testWidgets('390px·200% 글자에서 서비스 카드와 첨부 동작 접근', (tester) async {
     tester.view.physicalSize = const Size(390, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -82,7 +82,7 @@ void main() {
     final ticket = ServiceTicket.fromJson({
       'id': 't',
       'ticket_no': 'AS-202609-0001',
-      'title': '긴 발생 내용과 부가 설명을 포함한 대응 기록',
+      'title': '긴 발생 내용과 부가 설명을 포함한 서비스 기록',
       'status': 'RECEIVED',
     });
     for (final dark in [false, true]) {
@@ -98,7 +98,7 @@ void main() {
           ),
           home: Scaffold(
             appBar: AppBar(
-              title: const Text('대응 접수'),
+              title: const Text('서비스 접수'),
               actions: [SaveAttachmentButton(onPressed: () => pressed = true)],
             ),
             body: ListView(

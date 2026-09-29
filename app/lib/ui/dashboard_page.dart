@@ -91,7 +91,7 @@ class DashboardPage extends StatelessWidget {
 
         return ListView(
           children: [
-            PageBody(
+            PageBody.workspace(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -191,11 +191,11 @@ class DashboardPage extends StatelessWidget {
                         ),
 
                         SectionCard(
-                          title: '기한 우선 대응 · 최대 5건',
+                          title: '기한 우선 서비스 · 최대 5건',
                           child: Column(
                             children: [
                               if (data.urgent.items.isEmpty)
-                                const _EmptyRow(text: '처리할 미종결 대응이 없습니다.'),
+                                const _EmptyRow(text: '처리할 미종결 서비스이 없습니다.'),
                               for (final ticket in data.urgent.items)
                                 ListTile(
                                   title: Text(
@@ -351,7 +351,7 @@ class DashboardPage extends StatelessWidget {
                     child: Column(
                       children: [
                         if (data.service.recent.isEmpty)
-                          const _EmptyRow(text: '아직 등록된 대응 기록이 없습니다'),
+                          const _EmptyRow(text: '아직 등록된 서비스 기록이 없습니다'),
                         for (final t in data.service.recent.take(3))
                           _TicketRow(ticket: t, onChanged: reload),
                       ],

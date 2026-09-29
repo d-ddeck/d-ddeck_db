@@ -90,7 +90,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   bool _defaultsLoaded = false;
   bool _storeContactDefaultsLoaded = false;
   final _sectionKeys = {
-    for (final name in ['매장', '발생', '원인', '대응', '렌탈', '기타']) name: GlobalKey(),
+    for (final name in ['매장', '발생', '원인', '서비스', '렌탈', '기타']) name: GlobalKey(),
   };
   Set<FormFieldState<Object?>> _invalidFields = {};
   ServicePriority _priority = ServicePriority.normal;
@@ -179,7 +179,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     final stores = context.read<StoreRepository>();
     final service = context.read<ServiceRepository>();
     final auth = context.read<AuthRepository>();
-    final userName = context.read<AuthState>().user?.fullName;
+    final userId = context.read<AuthState>().user?.id;
     const groups = [
       'SERVICE_WORK_TYPE',
       'SERVICE_CATEGORY',
@@ -236,7 +236,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             ?.id;
         _responders.addAll(
           (codes['SERVICE_RESPONDER'] ?? [])
-              .where((c) => c.isActive && c.name == userName)
+              .where((c) => c.isActive && c.extra['user_id'] == userId)
               .map((c) => c.id),
         );
       }
@@ -451,7 +451,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     },
     child: Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? '대응 기록 수정' : '대응 기록 접수'),
+        title: Text(_isEdit ? '서비스 기록 수정' : '서비스 기록 접수'),
         actions: [
           SaveAttachmentButton(
             onPressed: _busy || _storesLoading
@@ -704,10 +704,10 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                             ),
                             const FormGap(),
                             FormSection(
-                              key: _sectionKeys['대응'],
-                              title: '대응',
+                              key: _sectionKeys['서비스'],
+                              title: '서비스',
                               children: [
-                                const Text('대응인원'),
+                                const Text('서비스인원'),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: AppSpace.md,
@@ -1013,7 +1013,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
         !await ConfirmDialog.show(
           context,
           title: '폐점 매장',
-          message: '${closed.name}은(는) 폐점 매장입니다. 대응 기록을 저장하시겠습니까?',
+          message: '${closed.name}은(는) 폐점 매장입니다. 서비스 기록을 저장하시겠습니까?',
           confirmLabel: '저장',
         )) {
       return;

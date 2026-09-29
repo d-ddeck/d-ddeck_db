@@ -17,6 +17,7 @@ import '../theme.dart';
 import 'accounts_tab.dart';
 import 'departments_page.dart';
 import 'settings_page.dart';
+import 'drive_backup_page.dart';
 
 part 'approval_tab.dart';
 part 'settings_hub_tab.dart';
@@ -30,49 +31,55 @@ class AdminPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAdmin = context.watch<AuthState>().isAdmin;
-    return PageBody(
+    return PageBody.workspace(
       child: DefaultTabController(
         key: ValueKey(isAdmin),
         length: isAdmin ? 5 : 4,
         child: SectionMainReporter(
           child: Column(
             children: [
-              if (isAdmin)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const DepartmentsPage(),
-                      ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TabBar(
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      tabs: [
+                        const WorkspaceTab(
+                          text: '가입 승인',
+                          icon: Icon(Icons.how_to_reg, size: 18),
+                        ),
+                        if (isAdmin)
+                          const WorkspaceTab(
+                            text: '계정 관리',
+                            icon: Icon(Icons.people_outline, size: 18),
+                          ),
+                        const WorkspaceTab(
+                          text: '기능 설정',
+                          icon: Icon(Icons.tune, size: 18),
+                        ),
+                        const WorkspaceTab(
+                          text: '감사 로그',
+                          icon: Icon(Icons.receipt_long, size: 18),
+                        ),
+                        const WorkspaceTab(
+                          text: '서버 상태',
+                          icon: Icon(Icons.monitor_heart, size: 18),
+                        ),
+                      ],
                     ),
-                    icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text("부서 관리"),
-                  ),
-                ),
-              TabBar(
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                tabs: [
-                  const Tab(
-                    text: '가입 승인',
-                    icon: Icon(Icons.how_to_reg, size: 18),
                   ),
                   if (isAdmin)
-                    const Tab(
-                      text: '계정 관리',
-                      icon: Icon(Icons.people_outline, size: 18),
+                    IconButton(
+                      tooltip: '부서 관리',
+                      icon: const Icon(Icons.account_tree_outlined),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const DepartmentsPage(),
+                        ),
+                      ),
                     ),
-                  const Tab(text: '기능 설정', icon: Icon(Icons.tune, size: 18)),
-                  const Tab(
-                    text: '감사 로그',
-                    icon: Icon(Icons.receipt_long, size: 18),
-                  ),
-                  const Tab(
-                    text: '서버 상태',
-                    icon: Icon(Icons.monitor_heart, size: 18),
-                  ),
                 ],
               ),
               Expanded(

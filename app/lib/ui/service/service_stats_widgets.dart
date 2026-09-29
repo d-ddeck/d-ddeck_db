@@ -331,7 +331,7 @@ class _BucketRow extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '원인 ${bucket.count}개'
-              '${bucket.ticketCount == null ? '' : ' · 대응 ${bucket.ticketCount}건'}',
+              '${bucket.ticketCount == null ? '' : ' · 서비스 ${bucket.ticketCount}건'}',
               textAlign: TextAlign.right,
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),

@@ -42,7 +42,7 @@ class _AuditTabState extends State<_AuditTab> {
                 const DropdownMenuItem(value: null, child: Text('모든 모듈')),
                 for (final entry in {
                   'AUTH': '로그인',
-                  'SERVICE': '대응',
+                  'SERVICE': '서비스',
                   'INVENTORY': '재고',
                   'STORE': '매장',
                   'BOARD': '게시판',

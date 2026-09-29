@@ -185,6 +185,13 @@ def list_code_groups(
 @router.get("/codes/{group_code}", response_model=CodeGroupOut)
 def get_code_group(group_code: str, db: DbSession, _: CurrentUser) -> CodeGroupOut:
     group = _load_group_by_code(db, group_code)
+    if group_code == "SERVICE_RESPONDER":
+        from app.services.service_responders import selectable
+
+        items = selectable(db, group)
+        out = _group_out(group)
+        out.items = [_item_out(item, group) for item in items]
+        return out
     return _group_out(group)
 
 

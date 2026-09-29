@@ -183,7 +183,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
         ],
       ),
       body: SingleChildScrollView(
-        child: PageBody(
+        child: PageBody.workspace(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -204,7 +204,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
                   _load(refreshLookups: true);
                 },
               ),
-              const FormGap(),
+              const SizedBox(height: AppSpace.sm),
               FilterBar(
                 appliedFilters: [
                   if (_year != null) '$_year년',
@@ -267,7 +267,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
                   ),
                 ],
               ),
-              const FormGap(),
+              const SizedBox(height: AppSpace.sm),
               if (_lookups?.draft != null)
                 Card(
                   color: Theme.of(context).colorScheme.secondaryContainer,
@@ -284,7 +284,7 @@ class _WorkLogPageState extends State<WorkLogPage> {
                     onTap: () => _open(),
                   ),
                 ),
-              if (_lookups?.draft != null) const FormGap(),
+              if (_lookups?.draft != null) const SizedBox(height: AppSpace.sm),
               if (_loading) const LinearProgressIndicator(),
               if (_error != null)
                 ErrorState(

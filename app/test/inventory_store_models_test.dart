@@ -325,7 +325,7 @@ void main() {
     );
   });
 
-  test('교차표는 원인 합계와 중복 제거 대응 수 및 희소 셀을 구분한다', () {
+  test('교차표는 원인 합계와 중복 제거 서비스 수 및 희소 셀을 구분한다', () {
     final table = Crosstab.fromJson({
       'rows_axis': 'store',
       'cols_axis': 'year',

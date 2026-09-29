@@ -20,6 +20,30 @@ enum BoardType {
   );
 }
 
+enum BoardIcon {
+  auto('auto', '유형 기본', Icons.auto_awesome),
+  notice('notice', '공지', Icons.campaign),
+  chat('chat', '대화', Icons.forum),
+  question('question', '질문', Icons.help_outline),
+  folder('folder', '자료실', Icons.folder_open),
+  calendar('calendar', '일정', Icons.calendar_month),
+  equipment('equipment', '장비', Icons.precision_manufacturing_outlined),
+  store('store', '매장', Icons.store_outlined),
+  document('document', '문서', Icons.description_outlined),
+  task('task', '업무', Icons.assignment_outlined),
+  idea('idea', '아이디어', Icons.lightbulb_outline),
+  photo('photo', '사진', Icons.photo_library_outlined),
+  team('team', '팀', Icons.groups_outlined);
+
+  const BoardIcon(this.value, this.label, this.icon);
+  final String value, label;
+  final IconData icon;
+  static BoardIcon parse(String? value) => BoardIcon.values.firstWhere(
+    (item) => item.value == value,
+    orElse: () => BoardIcon.auto,
+  );
+}
+
 /// A board row IS that board's settings record, so the UI reads its own rules
 /// straight off this object: whether to show the write button, the comment box,
 /// the attachment button and the secret-post checkbox.
@@ -32,6 +56,7 @@ class Board {
     required this.readRole,
     required this.writeRole,
     this.description,
+    this.icon = BoardIcon.auto,
     this.allowComment = true,
     this.allowAttachment = true,
     this.allowSecret = false,
@@ -45,6 +70,8 @@ class Board {
   final String code;
   final String name;
   final BoardType type;
+  final BoardIcon icon;
+  IconData get displayIcon => icon == BoardIcon.auto ? type.icon : icon.icon;
   final Role readRole;
   final Role writeRole;
   final String? description;
@@ -63,6 +90,7 @@ class Board {
     code: asString(j['code']),
     name: asString(j['name']),
     type: BoardType.parse(j['type'] as String?),
+    icon: BoardIcon.parse(j['icon'] as String?),
     readRole: Role.parse(j['read_role'] as String?),
     writeRole: Role.parse(j['write_role'] as String?),
     description: j['description'] as String?,

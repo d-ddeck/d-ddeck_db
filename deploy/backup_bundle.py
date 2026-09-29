@@ -166,7 +166,7 @@ def extract_bundle(archive, target):
                 raise ValueError("Backup database integrity failure")
 
 
-def backup(root, *, remote=None, keep=7):
+def backup(root, *, remote=None, keep=7, data_only=False):
     root = Path(root).resolve()
     values = config(root)
     folder = root / "backups"
@@ -250,47 +250,48 @@ def backup(root, *, remote=None, keep=7):
                 shutil.copytree(storage, work / "storage")
             else:
                 (work / "storage").mkdir()
-            shutil.copy2(root / "backend/.env", work / ".env")
-            for source in [
-                Path("/etc/systemd/system/ddeck.service"),
-                Path("/etc/cron.d/ddeck-backup"),
-                Path("/etc/systemd/system/ddeck.service.d/https.conf"),
-                Path("/etc/nginx/conf.d/ddeck.conf"),
-                root / "deploy/windows-service.ps1",
-            ]:
-                if source.is_file():
-                    (work / "operations").mkdir(exist_ok=True)
-                    shutil.copy2(source, work / "operations" / source.name)
-            if os.name == "nt":
-                for name in ("d-ddeck DB Server", "d-ddeck 백업"):
-                    result = subprocess.run(
-                        [
-                            "powershell.exe",
-                            "-NoProfile",
-                            "-Command",
-                            f"[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); $ErrorActionPreference='Stop'; Get-ScheduledTask -TaskName '{name}' -ErrorAction SilentlyContinue | Export-ScheduledTask",
-                        ],
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        timeout=30,
-                    )
-                    (work / "operations").mkdir(exist_ok=True)
-                    (
-                        work
-                        / "operations"
-                        / (
-                            "server-task.xml"
-                            if name == "d-ddeck DB Server"
-                            else "backup-task.xml"
+            if not data_only:
+                shutil.copy2(root / "backend/.env", work / ".env")
+                for source in [
+                    Path("/etc/systemd/system/ddeck.service"),
+                    Path("/etc/cron.d/ddeck-backup"),
+                    Path("/etc/systemd/system/ddeck.service.d/https.conf"),
+                    Path("/etc/nginx/conf.d/ddeck.conf"),
+                    root / "deploy/windows-service.ps1",
+                ]:
+                    if source.is_file():
+                        (work / "operations").mkdir(exist_ok=True)
+                        shutil.copy2(source, work / "operations" / source.name)
+                if os.name == "nt":
+                    for name in ("d-ddeck DB Server", "d-ddeck 백업"):
+                        result = subprocess.run(
+                            [
+                                "powershell.exe",
+                                "-NoProfile",
+                                "-Command",
+                                f"[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); $ErrorActionPreference='Stop'; Get-ScheduledTask -TaskName '{name}' -ErrorAction SilentlyContinue | Export-ScheduledTask",
+                            ],
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            timeout=30,
                         )
-                    ).write_text(
-                        result.stdout.replace(
-                            'encoding="UTF-16"', 'encoding="UTF-8"'
-                        ).replace('encoding="utf-16"', 'encoding="utf-8"'),
-                        encoding="utf-8",
-                    )
+                        (work / "operations").mkdir(exist_ok=True)
+                        (
+                            work
+                            / "operations"
+                            / (
+                                "server-task.xml"
+                                if name == "d-ddeck DB Server"
+                                else "backup-task.xml"
+                            )
+                        ).write_text(
+                            result.stdout.replace(
+                                'encoding="UTF-16"', 'encoding="UTF-8"'
+                            ).replace('encoding="utf-16"', 'encoding="utf-8"'),
+                            encoding="utf-8",
+                        )
             manifest = {
                 "format": 1,
                 "database": "sqlite" if db_path else "postgresql",
@@ -304,7 +305,8 @@ def backup(root, *, remote=None, keep=7):
             }
             atomic_json(work / "manifest.json", manifest)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-            archive = folder / f"ddeck_{stamp}.zip"
+            prefix = "drive_" if data_only else "ddeck_"
+            archive = folder / f"{prefix}{stamp}.zip"
             temporary_zip = archive.with_suffix(".zip.tmp")
             with zipfile.ZipFile(temporary_zip, "w", zipfile.ZIP_DEFLATED) as z:
                 for path in work.rglob("*"):
@@ -374,7 +376,7 @@ def backup(root, *, remote=None, keep=7):
                     capture_output=True,
                     timeout=60,
                 )
-        for old in sorted(folder.glob("ddeck_*.zip"), reverse=True)[max(1, keep) :]:
+        for old in sorted(folder.glob(f"{prefix}*.zip"), reverse=True)[max(1, keep) :]:
             old.unlink()
         state.update(
             status="ok",
@@ -415,6 +417,7 @@ def main():
     parser.add_argument("--storage-path", action="store_true")
     parser.add_argument("--restore-postgres", type=Path)
     parser.add_argument("--local-only", action="store_true")
+    parser.add_argument("--data-only", action="store_true")
     parser.add_argument("--keep", type=int, default=7)
     args = parser.parse_args()
     if args.storage_path:
@@ -431,7 +434,14 @@ def main():
             parser.error("--destination is required")
         extract_bundle(args.extract, args.destination)
     else:
-        print(backup(args.root, keep=args.keep, remote="" if args.local_only else None))
+        print(
+            backup(
+                args.root,
+                keep=args.keep,
+                remote="" if args.local_only else None,
+                data_only=args.data_only,
+            )
+        )
 
 
 if __name__ == "__main__":

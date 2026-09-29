@@ -835,6 +835,22 @@ with TestClient(app) as c:
         list(boards),
     )
     check("공지 게시판 쓰기권한 ADMIN", boards["NOTICE"]["write_role"] == "ADMIN")
+    check("기존 게시판 기본 아이콘", all(b["icon"] == "auto" for b in boards.values()))
+    r = c.post("/api/v1/board/boards", headers=bearer(admin_token),
+               json={"code": "ICON_TEST", "name": "아이콘 검증", "icon": "equipment"})
+    check("아이콘 선택 게시판 생성", r.status_code == 201 and r.json()["icon"] == "equipment", r.text)
+    icon_board_id = r.json()["id"]
+    r = c.patch(f"/api/v1/board/boards/{icon_board_id}", headers=bearer(admin_token), json={"icon": "calendar"})
+    check("게시판 아이콘 변경", r.status_code == 200 and r.json()["icon"] == "calendar", r.text)
+    r = c.get("/api/v1/board/boards", headers=bearer(user_token))
+    check("아이콘 저장 조회", any(b["id"] == icon_board_id and b["icon"] == "calendar" for b in r.json()))
+    for icon in ["unknown", None]:
+        r = c.patch(f"/api/v1/board/boards/{icon_board_id}", headers=bearer(admin_token), json={"icon": icon})
+        check("잘못된 아이콘 차단", r.status_code == 422, r.text)
+    r = c.patch(f"/api/v1/board/boards/{icon_board_id}", headers=bearer(user_token), json={"icon": "chat"})
+    check("일반 사용자 아이콘 설정 차단", r.status_code == 403, r.text)
+    c.delete(f"/api/v1/board/boards/{icon_board_id}", headers=bearer(admin_token))
+
 
     r = c.post(
         f"/api/v1/board/boards/{boards['NOTICE']['id']}/posts",

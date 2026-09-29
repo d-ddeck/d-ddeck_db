@@ -38,7 +38,7 @@ class InventoryOverviewTab extends StatelessWidget {
   Widget build(BuildContext context) => AsyncView<InventoryOverview>(
     load: () =>
         guardedLoad(context, context.read<InventoryRepository>().overview),
-    builder: (context, data, reload) => PageBody(
+    builder: (context, data, reload) => PageBody.workspace(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -475,13 +475,7 @@ class InventoryListTabState extends State<InventoryListTab> {
           ? const LoadingState()
           : ErrorState(message: '검색 조건을 불러오지 못했습니다', onRetry: _loadChoices);
     }
-    return PageBody(
-      padding: EdgeInsets.fromLTRB(
-        AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg,
-        AppSpace.lg,
-        AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg,
-        AppSpace.lg,
-      ),
+    return PageBody.workspace(
       child: Column(
         children: [
           Padding(
@@ -926,7 +920,7 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
                               cell: (m) => Text(m.reason ?? '-'),
                             ),
                             TableColumn(
-                              label: '연결 대응',
+                              label: '연결 서비스',
                               cell: (m) =>
                                   m.referenceType == 'service_ticket' &&
                                       m.referenceId != null
@@ -939,7 +933,7 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
                                           ),
                                         ),
                                       ),
-                                      child: const Text('대응 열기'),
+                                      child: const Text('서비스 열기'),
                                     )
                                   : const Text('-'),
                             ),

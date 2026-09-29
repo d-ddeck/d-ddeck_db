@@ -351,14 +351,14 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                             if (_axis.isMultiValue) ...[
                               Text(
                                 '원인 ${data.grouped.totalCauses ?? '-'}개 / '
-                                '대응 ${data.grouped.total}건 · 원인 미입력 ${data.grouped.ticketsWithoutCause}건',
+                                '서비스 ${data.grouped.total}건 · 원인 미입력 ${data.grouped.ticketsWithoutCause}건',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '한 대응에 여러 원인이 포함될 수 있으며, 차트와 비율은 전체 원인 수 기준입니다.',
+                                '한 서비스에 여러 원인이 포함될 수 있으며, 차트와 비율은 전체 원인 수 기준입니다.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Theme.of(context)
@@ -530,7 +530,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '원인 수 기준 · 대응 건수는 괄호 · 원인 미입력 ${data.ticketsWithoutCause}건',
+            '원인 수 기준 · 서비스 건수는 괄호 · 원인 미입력 ${data.ticketsWithoutCause}건',
             style: const TextStyle(fontSize: 12),
           ),
           const FormGap(),
@@ -554,7 +554,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                   for (final c in data.cols)
                     DataColumn(label: Text(c.label), numeric: true),
                 const DataColumn(label: Text('원인 수'), numeric: true),
-                const DataColumn(label: Text('대응 건수'), numeric: true),
+                const DataColumn(label: Text('서비스 건수'), numeric: true),
                 const DataColumn(label: Text('비율%'), numeric: true),
               ],
               rows: [
@@ -679,14 +679,14 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
   List<Widget> _storeTables(StoreYears data) => [
     const SizedBox(height: AppSpace.md),
     Text('운영 매장 · 전체 브랜드 기준 · 총 ${data.totalStores} / 폐점 ${data.closedStores}'),
-    const Text('개점일이 없으면 첫 대응·장비 설치일로 추정합니다.', style: TextStyle(fontSize: 12)),
+    const Text('개점일이 없으면 첫 서비스·장비 설치일로 추정합니다.', style: TextStyle(fontSize: 12)),
     if (data.unknownOpen.isNotEmpty)
       Text('개점 연도 미상: ${data.unknownOpen.join(', ')}'),
     const SizedBox(height: AppSpace.md),
     _ChartCard(
       title: '연도별 운영 매장',
       trailing: _storeExport('연도별 운영 매장', [
-        ['연도', '운영', '개점', '폐점', '연말 운영', '대응 매장', '대응 건수', '매장당 건수'],
+        ['연도', '운영', '개점', '폐점', '연말 운영', '서비스 매장', '서비스 건수', '매장당 건수'],
         for (final r in data.rows)
           [
             r.year,
@@ -707,8 +707,8 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
             '개점',
             '폐점',
             '연말 운영',
-            '대응 매장',
-            '대응 건수',
+            '서비스 매장',
+            '서비스 건수',
             '매장당 건수',
           ])
             DataColumn(label: Text(h)),

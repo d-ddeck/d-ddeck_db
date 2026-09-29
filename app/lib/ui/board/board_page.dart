@@ -37,36 +37,40 @@ class BoardPage extends StatelessWidget {
         child: SectionMainReporter(
           child: Column(
             children: [
-              if (context.watch<AuthState>().isAdmin)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    icon: const Icon(Icons.settings),
-                    label: const Text('게시판 관리'),
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const BoardSettingsPage(),
-                        ),
-                      );
-                      if (context.mounted) reload();
-                    },
-                  ),
-                ),
               if (boards.isEmpty)
                 const Expanded(child: Center(child: Text('접근 가능한 게시판이 없습니다.'))),
-              if (boards.isNotEmpty)
-                TabBar(
-                  isScrollable: boards.length > 3,
-                  tabAlignment: boards.length > 3
-                      ? TabAlignment.start
-                      : TabAlignment.fill,
-                  tabs: [
-                    for (final b in boards)
-                      Tab(text: b.name, icon: Icon(b.type.icon, size: 18)),
-                  ],
-                ),
+              Row(
+                children: [
+                  if (boards.isNotEmpty)
+                    Expanded(
+                      child: TabBar(
+                        isScrollable: true,
+                        tabAlignment: TabAlignment.start,
+                        tabs: [
+                          for (final b in boards)
+                            WorkspaceTab(
+                              text: b.name,
+                              icon: Icon(b.displayIcon, size: 18),
+                            ),
+                        ],
+                      ),
+                    ),
+                  if (context.watch<AuthState>().isAdmin)
+                    IconButton(
+                      tooltip: '게시판 관리',
+                      icon: const Icon(Icons.settings),
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const BoardSettingsPage(),
+                          ),
+                        );
+                        if (context.mounted) reload();
+                      },
+                    ),
+                ],
+              ),
               if (boards.isNotEmpty)
                 Expanded(
                   child: TabBarView(
@@ -144,223 +148,252 @@ class _PostListTabState extends State<_PostListTab> {
     final auth = context.watch<AuthState>();
     final canWrite = widget.board.canWrite(auth.role);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.board.name),
-        actions: [
-          if (canWrite)
-            FilledButton.icon(
-              onPressed: () async {
-                final created = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => PostFormPage(board: widget.board),
-                  ),
-                );
-                if (created == true) _refresh();
-              },
-              icon: const Icon(Icons.edit),
-              label: const Text('글쓰기'),
+    void resetSearch() {
+      setState(() {
+        _query = null;
+        _search.clear();
+      });
+      _refresh();
+    }
+
+    Future<void> writePost() async {
+      final created = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => PostFormPage(board: widget.board)),
+      );
+      if (created == true && mounted) _refresh();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 600;
+        return Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            title: Text(
+              widget.board.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-        ],
-      ),
-      body: PageBody(
-        child: Column(
-          children: [
-            FilterBar(
-              appliedFilters: [if (_query != null) '검색: $_query'],
-              onReset: () {
-                setState(() {
-                  _query = null;
-                  _search.clear();
-                });
-                _refresh();
-              },
+            actions: [
+              SizedBox(
+                width: (constraints.maxWidth * 0.4).clamp(100.0, 360.0),
+                child: TextField(
+                  controller: _search,
+                  decoration: const InputDecoration(
+                    hintText: '제목 / 내용 검색',
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search, size: 20),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (v) {
+                    setState(() => _query = v.trim().isEmpty ? null : v.trim());
+                    _refresh();
+                  },
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              if (compact)
+                IconButton(
+                  tooltip: '초기화',
+                  onPressed: resetSearch,
+                  icon: const Icon(Icons.refresh),
+                )
+              else
+                TextButton.icon(
+                  onPressed: resetSearch,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('초기화'),
+                ),
+              const SizedBox(width: AppSpace.sm),
+            ],
+          ),
+          body: PageBody.workspace(
+            child: Column(
               children: [
-                SizedBox(
-                  width: 360,
-                  child: TextField(
-                    controller: _search,
-                    decoration: const InputDecoration(
-                      hintText: '제목 / 내용 검색',
-                      prefixIcon: Icon(Icons.search, size: 20),
+                const Divider(height: 1),
+                Expanded(
+                  child: AsyncView<PagedList<Post>>(
+                    key: _viewKey,
+                    load: () => repo.posts(
+                      widget.board.id,
+                      query: _query,
+                      page: _page,
+                      size: widget.board.pageSize,
                     ),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (v) => setState(() {
-                      _query = v.trim().isEmpty ? null : v.trim();
-                      _refresh();
-                    }),
+
+                    emptyMessage: _query == null
+                        ? '아직 등록된 게시글이 없습니다'
+                        : '검색 조건에 맞는 게시글이 없습니다',
+                    emptyIcon: Icons.article_outlined,
+                    builder: (context, page, reload) => Column(
+                      children: [
+                        if (page.items.isEmpty)
+                          Expanded(
+                            child: EmptyState(
+                              message: _query == null
+                                  ? (canWrite
+                                        ? '첫 게시글을 작성해 보세요.'
+                                        : '아직 글이 없습니다. 이 게시판은 읽기 전용입니다.')
+                                  : '검색 결과가 없습니다.',
+                              action: _query == null
+                                  ? null
+                                  : TextButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _query = null;
+                                          _search.clear();
+                                        });
+                                        _refresh();
+                                      },
+                                      child: const Text('검색 초기화'),
+                                    ),
+                            ),
+                          ),
+                        if (page.items.isNotEmpty)
+                          Expanded(
+                            child: ListView.separated(
+                              padding: EdgeInsets.only(bottom: canWrite ? 72 : 0),
+                              itemCount: page.items.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, i) {
+                                final post = page.items[i];
+                                return ListTile(
+                                  minTileHeight: 84,
+                                  leading: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        post.isPinned
+                                            ? Icons.push_pin
+                                            : Icons.article_outlined,
+                                      ),
+                                      if (!_read.contains(post.id))
+                                        const Text(
+                                          '안 읽음',
+                                          style: TextStyle(fontSize: 11),
+                                        ),
+                                    ],
+                                  ),
+                                  onTap: () => Navigator.of(context)
+                                      .push(
+                                        MaterialPageRoute(
+                                          builder: (_) => PostDetailPage(
+                                            postId: post.id,
+                                            board: widget.board,
+                                            onViewed: () => _markRead(post.id),
+                                          ),
+                                        ),
+                                      )
+                                      .then((_) {
+                                        reload();
+                                      }),
+                                  title: Row(
+                                    children: [
+                                      if (post.isPinned) ...[
+                                        const Icon(Icons.push_pin, size: 13),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      if (post.isSecret) ...[
+                                        const Icon(
+                                          Icons.lock_outline,
+                                          size: 13,
+                                        ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          post.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: post.isPinned
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      if (post.commentCount > 0) ...[
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '[${post.commentCount}]',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 3),
+                                    child: Text(
+                                      '${post.author?.fullName ?? '-'} · '
+                                      '${Fmt.relative(post.createdAt)} · 조회 ${Fmt.number(post.viewCount)} · 첨부 ${post.attachmentCount}개${post.isPinned ? ' · 공지' : ''}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              tooltip: '이전 페이지',
+                              onPressed: _page <= 1
+                                  ? null
+                                  : () {
+                                      setState(() => _page--);
+                                      reload();
+                                    },
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                            Text(
+                              '$_page / ${page.pages == 0 ? 1 : page.pages} · ${page.total}건',
+                            ),
+                            IconButton(
+                              tooltip: '다음 페이지',
+                              onPressed: !page.hasMore
+                                  ? null
+                                  : () {
+                                      setState(() => _page++);
+                                      reload();
+                                    },
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-            const Divider(height: 1),
-            Expanded(
-              child: AsyncView<PagedList<Post>>(
-                key: _viewKey,
-                load: () => repo.posts(
-                  widget.board.id,
-                  query: _query,
-                  page: _page,
-                  size: widget.board.pageSize,
-                ),
+          ),
 
-                emptyMessage: _query == null
-                    ? '아직 등록된 게시글이 없습니다'
-                    : '검색 조건에 맞는 게시글이 없습니다',
-                emptyIcon: Icons.article_outlined,
-                builder: (context, page, reload) => Column(
-                  children: [
-                    if (page.items.isEmpty)
-                      Expanded(
-                        child: EmptyState(
-                          message: _query == null
-                              ? (canWrite
-                                    ? '첫 게시글을 작성해 보세요.'
-                                    : '아직 글이 없습니다. 이 게시판은 읽기 전용입니다.')
-                              : '검색 결과가 없습니다.',
-                          action: _query == null
-                              ? null
-                              : TextButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _query = null;
-                                      _search.clear();
-                                    });
-                                    _refresh();
-                                  },
-                                  child: const Text('검색 초기화'),
-                                ),
-                        ),
-                      ),
-                    if (page.items.isNotEmpty)
-                      Expanded(
-                        child: ListView.separated(
-                          itemCount: page.items.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, i) {
-                            final post = page.items[i];
-                            return ListTile(
-                              minTileHeight: 84,
-                              leading: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    post.isPinned
-                                        ? Icons.push_pin
-                                        : Icons.article_outlined,
-                                  ),
-                                  if (!_read.contains(post.id))
-                                    const Text(
-                                      '안 읽음',
-                                      style: TextStyle(fontSize: 11),
-                                    ),
-                                ],
-                              ),
-                              onTap: () => Navigator.of(context)
-                                  .push(
-                                    MaterialPageRoute(
-                                      builder: (_) => PostDetailPage(
-                                        postId: post.id,
-                                        board: widget.board,
-                                        onViewed: () => _markRead(post.id),
-                                      ),
-                                    ),
-                                  )
-                                  .then((_) {
-                                    reload();
-                                  }),
-                              title: Row(
-                                children: [
-                                  if (post.isPinned) ...[
-                                    const Icon(Icons.push_pin, size: 13),
-                                    const SizedBox(width: 4),
-                                  ],
-                                  if (post.isSecret) ...[
-                                    const Icon(Icons.lock_outline, size: 13),
-                                    const SizedBox(width: 4),
-                                  ],
-                                  Expanded(
-                                    child: Text(
-                                      post.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: post.isPinned
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  if (post.commentCount > 0) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '[${post.commentCount}]',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 3),
-                                child: Text(
-                                  '${post.author?.fullName ?? '-'} · '
-                                  '${Fmt.relative(post.createdAt)} · 조회 ${Fmt.number(post.viewCount)} · 첨부 ${post.attachmentCount}개${post.isPinned ? ' · 공지' : ''}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          tooltip: '이전 페이지',
-                          onPressed: _page <= 1
-                              ? null
-                              : () {
-                                  setState(() => _page--);
-                                  reload();
-                                },
-                          icon: const Icon(Icons.chevron_left),
-                        ),
-                        Text(
-                          '$_page / ${page.pages == 0 ? 1 : page.pages} · ${page.total}건',
-                        ),
-                        IconButton(
-                          tooltip: '다음 페이지',
-                          onPressed: !page.hasMore
-                              ? null
-                              : () {
-                                  setState(() => _page++);
-                                  reload();
-                                },
-                          icon: const Icon(Icons.chevron_right),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      // The write button only appears when the board's write_role allows it.
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: canWrite
+              ? FloatingActionButton.extended(
+                  heroTag: 'write-${widget.board.id}',
+                  tooltip: '글쓰기',
+                  onPressed: writePost,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('+'),
+                )
+              : null,
+        );
+      },
     );
   }
 }

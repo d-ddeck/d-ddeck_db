@@ -15,6 +15,7 @@ class BoardSettingsPage extends StatefulWidget {
 class _BoardSettingsPageState extends State<BoardSettingsPage> {
   final _view = GlobalKey<AsyncViewState<List<Board>>>();
   Future<void> _edit([Board? board]) async {
+    var selectedIcon = board?.icon ?? BoardIcon.auto;
     var name = board?.name ?? '', code = board?.code ?? '';
     var comment = board?.allowComment ?? true,
         attachment = board?.allowAttachment ?? true;
@@ -54,6 +55,23 @@ class _BoardSettingsPageState extends State<BoardSettingsPage> {
                       DropdownMenuItem(value: v, child: Text(v.label)),
                   ],
                   onChanged: (v) => change(() => type = v!),
+                ),
+                const Text('게시판 아이콘'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final option in BoardIcon.values)
+                      ChoiceChip(
+                        avatar: Icon(
+                          option == BoardIcon.auto ? type.icon : option.icon,
+                          size: 20,
+                        ),
+                        label: Text(option.label),
+                        selected: selectedIcon == option,
+                        onSelected: (_) => change(() => selectedIcon = option),
+                      ),
+                  ],
                 ),
                 for (final field in [(true, '읽기 권한'), (false, '쓰기 권한')])
                   DropdownButtonFormField<Role>(
@@ -132,6 +150,7 @@ class _BoardSettingsPageState extends State<BoardSettingsPage> {
     final data = {
       'name': name.trim(),
       'type': type.value,
+      'icon': selectedIcon.value,
       'read_role': read.value,
       'write_role': write.value,
       'allow_comment': comment,
@@ -170,6 +189,7 @@ class _BoardSettingsPageState extends State<BoardSettingsPage> {
           children: [
             for (final board in boards)
               ListTile(
+                leading: Icon(board.displayIcon),
                 title: Text(board.name),
                 subtitle: Text(
                   '${board.type.label} · ${board.isActive ? '사용' : '사용 안 함'}',

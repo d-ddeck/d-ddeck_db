@@ -60,7 +60,7 @@ class _LocationPageState extends State<LocationPage> {
     final admin = context.watch<AuthState>().isAdmin;
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('위치 관리')),
-      body: PageBody(
+      body: PageBody.workspace(
         child: AsyncView<List<StorageLocation>>(
           key: _key,
           load: () =>
