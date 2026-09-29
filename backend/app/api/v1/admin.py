@@ -637,35 +637,20 @@ def backup_status(_: AdminUser):
 
 @router.post("/backup", status_code=202)
 def request_backup(db: DbSession, user: AdminUser, client: Client):
-    import json
-
-    if not env.SCHEDULER_ENABLED:
-        raise AppError(
-            "SCHEDULER_DISABLED", "백업 작업 실행기가 비활성화되어 있습니다.", 503
-        )
-    folder = operations.backup_root() / "backups"
-    folder.mkdir(parents=True, exist_ok=True)
-    if (folder / ".backup.lock").exists() or (folder / "request.running").exists():
-        raise AppError("BACKUP_RUNNING", "백업이 이미 실행 중입니다.", 409)
-    try:
-        with (folder / "request.json").open("x") as stream:
-            json.dump(
-                {"requested_at": now_utc().isoformat(), "user_id": str(user.id)}, stream
-            )
-    except FileExistsError:
-        raise AppError("BACKUP_REQUESTED", "이미 백업을 요청했습니다.", 409) from None
+    from app.services.drive_backup import request_backup as request_google_backup
+    request_google_backup()
     audit.record(
         db,
         action=AuditAction.CREATE,
         actor=user,
         module=ModuleKey.SYSTEM,
         entity_type="backup",
-        summary="수동 백업 요청",
+        summary="Google 드라이브 백업 요청",
         client=client,
     )
     db.commit()
     return {
-        "message": "백업을 요청했습니다. 서버 상태 화면을 새로고침해 결과를 확인하세요."
+        "message": "Google 백업을 요청했습니다. Google 백업 페이지에서 결과를 확인하세요."
     }
 
 

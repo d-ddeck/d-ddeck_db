@@ -50,10 +50,9 @@ class _HealthTab extends StatelessWidget {
                       '디스크 여유',
                       '${(health.diskFreeBytes / 1073741824).toStringAsFixed(1)} GB',
                     ),
-                    _kv('최근 백업', '${health.backup['last_success_at'] ?? '없음'}'),
                     _kv(
-                      '원격 백업 검증',
-                      health.backup['remote_verified'] == true ? '완료' : '미완료',
+                      '최근 Google 백업',
+                      '${health.backup['last_success_at'] ?? '없음'}',
                     ),
                     if (health.backup['overdue'] == true ||
                         health.backup['failed'] == true)
@@ -62,20 +61,12 @@ class _HealthTab extends StatelessWidget {
                         style: TextStyle(color: Colors.red),
                       ),
                     FilledButton.tonal(
-                      onPressed:
-                          health.backup['state'] == 'running' ||
-                              health.backup['requested'] == true
-                          ? null
-                          : () async {
-                              final ok = await runGuarded(
-                                context,
-                                repo.requestBackup,
-                                successMessage:
-                                    '백업을 요청했습니다. 잠시 후 새로고침해 상태를 확인하세요.',
-                              );
-                              if (ok) reload();
-                            },
-                      child: const Text('지금 백업'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DriveBackupPage(),
+                        ),
+                      ),
+                      child: const Text('Google 백업 관리'),
                     ),
                     _kv('환경', health.environment),
                     _kv('데이터베이스', health.database),

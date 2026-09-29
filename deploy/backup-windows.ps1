@@ -59,23 +59,8 @@ if ($DatabaseUrl -match '^postgres' -and -not (Get-Command pg_dump -ErrorAction 
 
 # ------------------------------------------------------------------ 자동 백업 등록
 if ($InstallTask) {
-  $me = Join-Path $AppRoot 'deploy\backup-windows.ps1'
-  if (-not (Test-Path $me)) { Die '설치 폴더에 백업 스크립트가 없습니다. 설치 프로그램을 갱신하세요.' }
-  if (Get-ScheduledTask -TaskName $BackupTask -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $BackupTask -Confirm:$false
-  }
-  $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$me`" -Quiet"
-  $trigger = New-ScheduledTaskTrigger -Daily -At 3am
-  $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-  Register-ScheduledTask -TaskName $BackupTask -Action $action -Trigger $trigger `
-    -Principal $principal -Description 'd-ddeck 데이터 백업' | Out-Null
-  Write-Host ""
-  Write-Host "[OK] 매일 새벽 3시 자동 백업 등록" -ForegroundColor Green
-  Write-Host "  보관: $BackupDir ($KeepDays 일)"
-  Write-Host ""
-  Write-Host "  권장: 이 폴더를 NAS 나 외장 디스크로도 복사하세요." -ForegroundColor Yellow
-  Write-Host "  이 PC 의 디스크가 고장나면 백업도 같이 사라집니다." -ForegroundColor Yellow
+  Unregister-ScheduledTask -TaskName $BackupTask -Confirm:$false -ErrorAction SilentlyContinue
+  Write-Host '별도 로컬 백업 예약을 해제했습니다. 앱의 Google 백업 페이지에서 자동 백업을 설정하세요.'
   exit 0
 }
 
@@ -144,6 +129,6 @@ if ($Restore) {
 }
 
 # Shared portable ZIP format (also reads previous tar.gz bundles on restore).
-$bundle = Join-Path $PSScriptRoot 'backup_bundle.py'
+$bundle = Join-Path $PSScriptRoot 'cloud_backup.py'
 & $VenvPy $bundle --root $AppRoot
-if ($LASTEXITCODE -ne 0) { Die '백업 실패. backups/status.json과 LAST_FAILED를 확인하세요.' }
+if ($LASTEXITCODE -ne 0) { Die 'Google 백업 실패. 연결과 계정 권한을 확인하세요.' }

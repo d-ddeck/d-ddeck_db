@@ -93,8 +93,35 @@ class OperationsTests(unittest.TestCase):
             (root / "custom-storage/photo").write_text("old photo")
             unit = root / "service.unit"
             unit.write_text("old unit")
-            backup_bundle.backup(root, remote="")
-            snapshot = update_snapshot.prepare(root, unit)
+            archive = backup_bundle.backup(root, data_only=True)
+            data_name = "drive_20260929_000000_000000.zip"
+            cloud = {data_name: archive.read_bytes()}
+            archive.unlink()
+            private = root / "backups/.drive-private"
+            private.mkdir()
+            (private / "last_cloud_backup.json").write_text(
+                json.dumps({"name": data_name, "target": "test:backup"})
+            )
+
+            def upload(root, path):
+                cloud[path.name] = path.read_bytes()
+                return {"name": path.name, "target": "test:backup"}
+
+            def download(root, metadata, destination):
+                destination.write_bytes(cloud[metadata["name"]])
+
+            with (
+                patch.object(
+                    update_snapshot.cloud_backup, "upload_archive", side_effect=upload
+                ),
+                patch.object(
+                    update_snapshot.cloud_backup,
+                    "download_archive",
+                    side_effect=download,
+                ),
+            ):
+                snapshot = update_snapshot.prepare(root, unit)
+            self.assertEqual([p.name for p in snapshot.iterdir()], ["snapshot.json"])
             (root / "backend/version.txt").write_text("broken code")
             (root / "custom-storage/photo").write_text("broken photo")
             unit.write_text("broken unit")
@@ -103,6 +130,11 @@ class OperationsTests(unittest.TestCase):
             with (
                 patch.object(update_snapshot.subprocess, "run") as execute,
                 patch.object(update_snapshot, "verify_running") as health,
+                patch.object(
+                    update_snapshot.cloud_backup,
+                    "download_archive",
+                    side_effect=download,
+                ),
             ):
                 update_snapshot.recover(root, snapshot)
             health.assert_called_once_with(8000)
@@ -120,7 +152,7 @@ class OperationsTests(unittest.TestCase):
                 execute.call_args_list[-1].args[0], ["systemctl", "start", "ddeck"]
             )
             self.assertTrue(
-                json.loads((snapshot / "snapshot.json").read_text())["archive"]
+                json.loads((snapshot / "snapshot.json").read_text())["cloud"]
             )
 
 

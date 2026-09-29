@@ -166,13 +166,19 @@ def extract_bundle(archive, target):
                 raise ValueError("Backup database integrity failure")
 
 
-def backup(root, *, remote=None, keep=7, data_only=False):
+def backup(root, *, keep=7, data_only=False, temporary=False, work_dir=None):
     root = Path(root).resolve()
     values = config(root)
-    folder = root / "backups"
+    base = root / "backups"
+    base.mkdir(parents=True, exist_ok=True)
+    folder = (
+        (Path(work_dir) if work_dir is not None else base / ".drive-private/uploads")
+        if temporary
+        else base
+    )
     folder.mkdir(parents=True, exist_ok=True)
     folder.chmod(0o700)
-    lock = folder / ".backup.lock"
+    lock = base / ".backup.lock"
     # Exclusive lock file is also understood by the app's manual request path.
     try:
         descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -183,6 +189,7 @@ def backup(root, *, remote=None, keep=7, data_only=False):
     os.close(descriptor)
     state = {"started_at": datetime.now(timezone.utc).isoformat(), "status": "running"}
     temporary_zip = None
+    archive = None
     try:
         atomic_json(folder / "status.json", state)
         url = values.get("DATABASE_URL", "sqlite:///./ddeck.db")
@@ -196,8 +203,8 @@ def backup(root, *, remote=None, keep=7, data_only=False):
         needed += db_path.stat().st_size if db_path else 0
         if shutil.disk_usage(folder).free < needed * 3 + 128 * 1024 * 1024:
             raise RuntimeError("백업을 위한 디스크 여유 공간이 부족합니다.")
-        with tempfile.TemporaryDirectory(prefix=".bundle-", dir=folder) as temporary:
-            work = Path(temporary)
+        with tempfile.TemporaryDirectory(prefix=".bundle-", dir=folder) as staging_dir:
+            work = Path(staging_dir)
             if db_path:
                 if not db_path.is_file():
                     raise FileNotFoundError("SQLite source missing")
@@ -315,67 +322,6 @@ def backup(root, *, remote=None, keep=7, data_only=False):
                 extract_bundle(temporary_zip, Path(check))
             temporary_zip.chmod(0o600)
             temporary_zip.replace(archive)
-        remote = remote if remote is not None else values.get("RCLONE_REMOTE", "")
-        if remote:
-            remote_environment = {**os.environ}
-            if values.get("RCLONE_CONFIG"):
-                remote_environment["RCLONE_CONFIG"] = values["RCLONE_CONFIG"]
-            subprocess.run(
-                [
-                    "rclone",
-                    "copyto",
-                    str(archive),
-                    remote.rstrip("/") + "/" + archive.name,
-                ],
-                env=remote_environment,
-                check=True,
-                timeout=3600,
-                capture_output=True,
-            )
-            subprocess.run(
-                [
-                    "rclone",
-                    "check",
-                    str(folder),
-                    remote,
-                    "--one-way",
-                    "--download",
-                    "--include",
-                    "/" + archive.name,
-                ],
-                env=remote_environment,
-                check=True,
-                timeout=3600,
-                capture_output=True,
-            )
-            entries = json.loads(
-                subprocess.run(
-                    ["rclone", "lsjson", remote, "--files-only"],
-                    env=remote_environment,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                ).stdout
-            )
-            names = sorted(
-                [
-                    e["Name"]
-                    for e in entries
-                    if e["Name"].startswith("ddeck_")
-                    and e["Name"].endswith(".zip")
-                    and "/" not in e["Name"]
-                ],
-                reverse=True,
-            )
-            for name in names[max(1, keep) :]:
-                subprocess.run(
-                    ["rclone", "deletefile", remote.rstrip("/") + "/" + name],
-                    env=remote_environment,
-                    check=True,
-                    capture_output=True,
-                    timeout=60,
-                )
         for old in sorted(folder.glob(f"{prefix}*.zip"), reverse=True)[max(1, keep) :]:
             old.unlink()
         state.update(
@@ -383,19 +329,17 @@ def backup(root, *, remote=None, keep=7, data_only=False):
             finished_at=datetime.now(timezone.utc).isoformat(),
             archive=archive.name,
             sha256=digest(archive),
-            remote_verified=bool(remote),
         )
         (folder / "LAST_FAILED").unlink(missing_ok=True)
-        (folder / "UPLOAD_FAILED").unlink(missing_ok=True)
         atomic_json(folder / "last_success.json", state)
         return archive
     except Exception:
+        if temporary and archive is not None:
+            archive.unlink(missing_ok=True)
         state.update(
             status="failed", finished_at=datetime.now(timezone.utc).isoformat()
         )
         (folder / "LAST_FAILED").write_text(state["finished_at"])
-        if remote or values.get("RCLONE_REMOTE"):
-            (folder / "UPLOAD_FAILED").write_text(state["finished_at"])
         raise
     finally:
         if temporary_zip is not None:
@@ -416,8 +360,10 @@ def main():
     parser.add_argument("--database-path", action="store_true")
     parser.add_argument("--storage-path", action="store_true")
     parser.add_argument("--restore-postgres", type=Path)
-    parser.add_argument("--local-only", action="store_true")
+    # Legacy flag accepted; routine backups always use Google.
+    parser.add_argument("--local-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--data-only", action="store_true")
+    parser.add_argument("--temporary", action="store_true")
     parser.add_argument("--keep", type=int, default=7)
     args = parser.parse_args()
     if args.storage_path:
@@ -433,13 +379,17 @@ def main():
         if not args.destination:
             parser.error("--destination is required")
         extract_bundle(args.extract, args.destination)
+    elif not args.temporary:
+        from cloud_backup import create
+
+        print(create(args.root.resolve())["name"])
     else:
         print(
             backup(
                 args.root,
                 keep=args.keep,
-                remote="" if args.local_only else None,
                 data_only=args.data_only,
+                temporary=args.temporary,
             )
         )
 

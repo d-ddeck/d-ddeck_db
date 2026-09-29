@@ -120,22 +120,28 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('데스크톱 로그인 화면에는 VPN 영역이 없다', (tester) async {
+  testWidgets('지원 플랫폼 로그인 화면에 VPN 표시', (tester) async {
     await tester.pumpWidget(
-      ChangeNotifierProvider<AuthState>(
-        create: (_) => _LoggedOutAuth(),
-        child: ChangeNotifierProvider<ThemeState>(
-          create: (_) => ThemeState(),
-          child: MaterialApp(
-            theme: ThemeData(splashFactory: NoSplash.splashFactory),
-            home: const LoginPage(),
+      ChangeNotifierProvider<VpnService>.value(
+        value: vpn,
+        child: ChangeNotifierProvider<AuthState>(
+          create: (_) => _LoggedOutAuth(),
+          child: ChangeNotifierProvider<ThemeState>(
+            create: (_) => ThemeState(),
+            child: MaterialApp(
+              theme: ThemeData(splashFactory: NoSplash.splashFactory),
+              home: const LoginPage(),
+            ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('로그인'), findsOneWidget);
-    expect(find.text('VPN 등록'), findsNothing);
+    expect(
+      find.text('VPN 등록'),
+      VpnService.isSupported ? findsOneWidget : findsNothing,
+    );
     expect(find.text('사외 접속(VPN)'), findsNothing);
     expect(tester.takeException(), isNull);
   });

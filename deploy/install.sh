@@ -160,6 +160,7 @@ else
 fi
 
 mkdir -p "$APP_DIR"/{backend,storage,backups,data}
+rm -f /etc/cron.d/ddeck-backup
 # 소스 복사. .env / storage / DB 파일은 덮어쓰지 않는다.
 rsync -a --delete \
   --exclude '.venv' --exclude '.venv-linux' --exclude '__pycache__' --exclude '*.pyc' \
@@ -263,7 +264,6 @@ SCHEDULER_ENABLED=true
 REMINDER_SCAN_SECONDS=60
 FCM_PROJECT_ID=
 FCM_CREDENTIALS_FILE=
-RCLONE_REMOTE=
 ENVEOF
   ok ".env 생성 (SECRET_KEY / 관리자 비밀번호 난수 생성)"
 fi
@@ -396,7 +396,7 @@ ${BOLD}서비스 관리${OFF}
 
 ${BOLD}다음에 할 일${OFF}
     1. 미니PC에 고정 IP 설정 (공유기 DHCP 예약 권장)
-    2. 백업 등록:  sudo ${APP_DIR}/deploy/backup.sh --install-cron
+    2. 백업 등록:  앱의 Google 백업 페이지에서 계정 연결 및 자동 백업 설정
     3. 코드 갱신:  sudo ${SCRIPT_DIR}/update.sh
 
 SUMMARY

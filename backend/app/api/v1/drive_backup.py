@@ -4,13 +4,14 @@ import html
 import logging
 
 import httpx
-from fastapi import APIRouter, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.core.deps import AdminUser
 from app.core.errors import AppError
 from app.services import drive_backup as service
+from app.services import drive_restore, drive_setup
 
 
 class _RedactOAuthQuery(logging.Filter):
@@ -44,8 +45,8 @@ class Schedule(BaseModel):
 
 
 @router.get("")
-def status(_: AdminUser):
-    return service.status()
+def status(request: Request, _: AdminUser):
+    return {**service.status(), "setup_available": drive_setup.local_console(request)}
 
 
 @router.put("/config")
@@ -105,4 +106,113 @@ def callback(
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
         },
+    )
+
+
+class SharedDriveConfig(BaseModel):
+    service_account_json: str = Field(default="", max_length=65536)
+    folder: str = Field(min_length=1, max_length=1000)
+
+
+@router.put("/shared-drive")
+def configure_shared_drive(payload: SharedDriveConfig, _: AdminUser):
+    return service.configure_shared_drive(payload.service_account_json, payload.folder)
+
+
+class RcloneConfig(BaseModel):
+    target: str = Field(min_length=1, max_length=1000)
+
+
+@router.put("/rclone")
+def configure_rclone(payload: RcloneConfig, _: AdminUser):
+    return service.configure_rclone(payload.target)
+
+
+class SetupAnswer(BaseModel):
+    value: str = Field(max_length=4096)
+
+
+class SetupFolder(BaseModel):
+    folder: str = Field(min_length=1, max_length=1000)
+    create: bool = False
+
+
+@router.post("/setup")
+def setup_start(request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_setup.start()
+
+
+@router.get("/setup/{ident}")
+def setup_status(ident: str, request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_setup.get(ident)
+
+
+@router.post("/setup/{ident}/answer")
+def setup_answer(ident: str, payload: SetupAnswer, request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_setup.answer(ident, payload.value)
+
+
+@router.delete("/setup/{ident}")
+def setup_cancel(ident: str, request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_setup.cancel(ident)
+
+
+@router.get("/setup/{ident}/folders")
+def setup_folders(
+    ident: str,
+    request: Request,
+    _: AdminUser,
+    parent: str = Query(default="", max_length=1000),
+):
+    drive_setup.require_console(request)
+    return drive_setup.folders(ident, parent)
+
+
+@router.post("/setup/{ident}/finish")
+def setup_finish(ident: str, payload: SetupFolder, request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_setup.finish(ident, payload.folder, payload.create)
+
+
+class RestoreRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    restore: bool = False
+    confirmation: str = Field(default="", max_length=100)
+
+
+class RestoreTicket(BaseModel):
+    ticket: str = Field(min_length=32, max_length=100)
+
+
+@router.get("/files")
+def backup_files(request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_restore.files()
+
+
+@router.post("/restore/start", status_code=202)
+def restore_start(payload: RestoreRequest, request: Request, _: AdminUser):
+    drive_setup.require_console(request)
+    return drive_restore.start(payload.name, payload.restore, payload.confirmation)
+
+
+@router.post("/restore/status")
+def restore_status(payload: RestoreTicket, request: Request):
+    drive_setup.require_console(request)
+    return drive_restore.status(payload.ticket)
+
+
+@router.post("/restore/download")
+def restore_download(payload: RestoreTicket, request: Request):
+    drive_setup.require_console(request)
+    path, name = drive_restore.download(payload.ticket)
+    return FileResponse(
+        path,
+        filename=name,
+        media_type="application/zip",
+        headers={"Cache-Control": "no-store"},
     )

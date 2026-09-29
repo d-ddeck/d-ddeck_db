@@ -10,21 +10,13 @@
 4. 공개 신뢰 인증서를 권장합니다. 사내 CA를 사용하면 해당 CA를 OS 신뢰 저장소에 설치하고 Android 정책에 맞게 배포합니다. 앱 인증서 검증을 해제하지 않습니다.
 5. `/healthz`와 관리자 서버 상태에서 DB·버전·디스크를 확인하고 로그인·첨부 업로드·다운로드를 확인합니다.
 
-## 백업과 원격 보관
+## Google 드라이브 백업
 
-`sudo /opt/ddeck/deploy/backup.sh --install-cron`은 매일 03:00 백업과 15분 간격 상태 검사를 등록합니다. 백업 로그는 `/var/log/ddeck-backup.log`, 상태 경고는 `journalctl -t ddeck-monitor`에서 확인합니다. logrotate는 주간 8개를 보관합니다.
+정기·수동 백업과 복구·업데이트·재시작 전 안전 백업은 Google 드라이브에만 보관합니다. 앱의 **Google 공유 드라이브 백업**에서 계정과 자동 백업 시간을 설정하세요. 서버 상태 화면도 Google 백업 결과를 표시합니다.
 
-백업은 SQLite snapshot 또는 PostgreSQL custom dump, 첨부 저장소, `.env`, Alembic 리비전, 운영 설정 파일과 SHA-256 manifest를 ZIP에 담습니다. 임시 파일 검증 후 최종 이름으로 바꾸며, 기본 최근 7개를 보관합니다. 공간 부족이나 원격 업로드 실패 시 기존 백업을 먼저 지우지 않습니다. `.env`가 포함되므로 백업 폴더와 원격 저장소 접근을 제한합니다.
+`deploy/backup.sh`, `backup-windows.ps1`, `cloud_backup.py`를 통한 수동 실행도 Google 업로드를 검증하고 임시 ZIP을 삭제합니다. Google 연결·업로드에 실패하면 데이터 교체나 업데이트·재시작을 진행하지 않습니다. 별도 로컬 cron/Windows 백업 예약은 제거했으며 설치·갱신 시 기존 표준 예약도 해제합니다.
 
-rclone을 설치하고 **전용 백업 폴더**를 준비한 뒤 서버 계정이 읽을 수 있는 rclone 설정을 배치합니다. `backend/.env`에 다음 값을 넣습니다.
-
-```dotenv
-RCLONE_REMOTE=회사백업:ddeck/전용백업폴더
-# cron과 앱 수동 백업이 같은 rclone 설정을 읽도록 절대 경로 지정
-RCLONE_CONFIG=/opt/ddeck/secrets/rclone.conf
-```
-
-업로드 후 `rclone check --download`로 검증하고 성공한 뒤 전용 폴더의 오래된 `ddeck_*.zip`을 정리합니다. 실패하면 `backups/LAST_FAILED`, 원격 실패는 `UPLOAD_FAILED`에 남습니다. 관리자 화면의 **지금 백업**은 `SCHEDULER_ENABLED=true`인 서버에서 실행합니다. 최근 성공이 없거나 36시간이 지나면 경고합니다. 수동 백업의 서버 계정도 PG 도구·rclone·설정 파일에 접근할 수 있어야 합니다.
+기존 로컬 백업은 임의로 삭제하지 않습니다. Google 보관·다운로드·복구 및 안전 백업에 관한 상세 절차는 [Google 백업 안내](google-drive-backup.md)를 따릅니다.
 
 ## 복원과 갱신 실패
 

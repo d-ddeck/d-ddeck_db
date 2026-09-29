@@ -38,32 +38,8 @@ SQLITE_HELPER="$(dirname "$SCRIPT_PATH")/sqlite_backup.py"
 
 # ------------------------------------------------------------------ cron 등록
 if [[ "${1:-}" == "--install-cron" ]]; then
-  [[ -f "$APP_DIR/deploy/backup.sh" ]] || die "설치된 deploy/backup.sh 가 없습니다. 설치 프로그램을 갱신하세요."
-  cat > /etc/cron.d/ddeck-backup <<CRONEOF
-# d-ddeck DB Server 자동 백업 - 매일 03:00
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-0 3 * * * root /bin/bash ${APP_DIR}/deploy/backup.sh --quiet >> /var/log/ddeck-backup.log 2>&1
-*/15 * * * * ddeck ${APP_DIR}/backend/.venv/bin/python ${APP_DIR}/deploy/monitor.py --root ${APP_DIR} 2>&1 | /usr/bin/logger -t ddeck-monitor
-CRONEOF
-  chmod 644 /etc/cron.d/ddeck-backup
-  cat > /etc/logrotate.d/ddeck-backup <<LOGEOF
-/var/log/ddeck-backup.log {
-    weekly
-    rotate 8
-    compress
-    missingok
-    notifempty
-    copytruncate
-    create 0640 root adm
-}
-LOGEOF
-  echo "${GREEN}${BOLD}✓ 매일 새벽 3시 자동 백업 등록${OFF}"
-  echo "  보관 수: 최근 ${KEEP_MIN}개 (${BACKUP_DIR})"
-  echo "  로그: /var/log/ddeck-backup.log"
-  echo
-  echo "  ${YELLOW}권장: 이 폴더를 NAS나 외장 디스크로도 복사하세요.${OFF}"
-  echo "  ${YELLOW}미니PC 디스크가 고장나면 백업도 같이 사라집니다.${OFF}"
+  rm -f /etc/cron.d/ddeck-backup
+  echo "별도 로컬 백업 예약을 해제했습니다. 앱의 Google 백업 페이지에서 자동 백업을 설정하세요."
   exit 0
 fi
 
@@ -128,4 +104,4 @@ fi
 [[ "${1:-}" == "--quiet" ]] && QUIET=1
 
 # Shared ZIP format, verified atomically, with optional rclone upload.
-exec "$VENV_PY" "$(dirname "$SCRIPT_PATH")/backup_bundle.py" --root "$APP_DIR" --keep "$KEEP_MIN"
+exec "$VENV_PY" "$(dirname "$SCRIPT_PATH")/cloud_backup.py" --root "$APP_DIR"

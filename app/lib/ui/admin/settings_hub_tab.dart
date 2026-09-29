@@ -33,9 +33,9 @@ class _SettingsHubTab extends StatelessWidget {
             child: Card(
               child: ListTile(
                 leading: const Icon(Icons.backup_outlined),
-                title: const Text('Google Drive 자동 백업'),
+                title: const Text('Google 공유 드라이브 백업'),
                 subtitle: const Text(
-                  '자동 백업 시간 · 연결 계정 변경 · 즉시 백업',
+                  '공유 드라이브 연결 · 자동 백업 · 즉시 백업',
                   style: TextStyle(fontSize: 12),
                 ),
                 trailing: const Icon(Icons.chevron_right),

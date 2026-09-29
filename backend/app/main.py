@@ -20,7 +20,7 @@ from app.core.database import SessionLocal, engine
 from app.core.errors import register_exception_handlers
 from app.core.upload_limit import UploadLimitMiddleware
 from app.models import Base
-from app.services import bootstrap, scheduler
+from app.services import bootstrap, restore_gate, scheduler
 from app.version import VERSION
 
 logging.basicConfig(
@@ -51,17 +51,23 @@ DESCRIPTION = """
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    restore_gate.initialize()
     # Production schema changes are applied by Alembic before startup.
     # See alembic/README.md for existing create_all database adoption.
-    if settings.ENVIRONMENT.strip().lower() != "production":
-        Base.metadata.create_all(bind=engine)
-    settings.storage_path.mkdir(parents=True, exist_ok=True)
+    if restore_gate.marker().exists():
+        # Fail closed after an interrupted restore; keep status endpoint alive.
+        yield
+        return
+    with restore_gate.read():
+        if settings.ENVIRONMENT.strip().lower() != "production":
+            Base.metadata.create_all(bind=engine)
+        settings.storage_path.mkdir(parents=True, exist_ok=True)
 
-    db = SessionLocal()
-    try:
-        bootstrap.run(db)
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            bootstrap.run(db)
+        finally:
+            db.close()
 
     scheduler.start()
     log.info(
@@ -96,6 +102,7 @@ app.add_middleware(
 )
 
 app.add_middleware(UploadLimitMiddleware)
+app.add_middleware(restore_gate.RestoreGateMiddleware)
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 

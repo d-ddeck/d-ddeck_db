@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/admin_repository.dart';
 import '../common/common.dart';
+import 'drive_setup_dialog.dart';
+import 'drive_restore_page.dart';
 
 class DriveBackupPage extends StatefulWidget {
   const DriveBackupPage({super.key});
@@ -61,99 +62,15 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
     await _load();
   }
 
-  Future<void> _configure() async {
-    final id = TextEditingController(
-      text: _data?['client_id'] as String? ?? '',
-    );
-    final secret = TextEditingController();
-    final redirect = TextEditingController(
-      text: _data?['redirect_uri'] as String? ?? '',
-    );
-    final accepted = await showDialog<bool>(
+  Future<void> _configureSharedDrive() async {
+    await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Google OAuth 앱 설정'),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Google Cloud에서 Drive API를 사용 설정하고 웹 애플리케이션 OAuth 클라이언트를 생성하세요. 승인된 리디렉션 URI에 아래 콜백 주소를 동일하게 등록하세요.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: id,
-                  decoration: const InputDecoration(labelText: '클라이언트 ID'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: secret,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: '클라이언트 보안 비밀번호',
-                    helperText: '설정 후 빈칸으로 저장하면 기존 값 유지',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: redirect,
-                  decoration: const InputDecoration(
-                    labelText: '콜백 주소',
-                    hintText: 'https://서버주소/api/v1/admin/drive-backup/callback',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('저장'),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (_) =>
+          DriveSetupDialog(repository: context.read<AdminRepository>()),
     );
-    final values = {
-      'client_id': id.text.trim(),
-      'client_secret': secret.text.trim(),
-      'redirect_uri': redirect.text.trim(),
-    };
-    // Dialog route owns the text fields until its closing animation completes.
-    Future<void>.delayed(const Duration(seconds: 1), () {
-      id.dispose();
-      secret.dispose();
-      redirect.dispose();
-    });
-    if (accepted == true && mounted) {
-      await _act((r) async {
-        await r.configureDriveBackup(values);
-      });
-    }
+    await _load();
   }
-
-  Future<void> _connect() => _act((repo) async {
-    final url = await repo.connectDriveBackup();
-    final opened = await launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
-    if (mounted) {
-      AppSnack.show(
-        context,
-        opened
-            ? '브라우저에서 Google 계정을 선택하세요. 완료 후 이 화면에 반영됩니다.'
-            : '브라우저를 열지 못했습니다. 기본 브라우저 설정을 확인하세요.',
-        error: !opened,
-      );
-    }
-  });
 
   Future<void> _disconnect() async {
     final yes = await showDialog<bool>(
@@ -196,7 +113,7 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
     final canAct = !_busy && !running;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Google Drive 자동 백업'),
+        title: const Text('Google 공유 드라이브 백업'),
         actions: [
           IconButton(
             tooltip: '새로고침',
@@ -216,6 +133,18 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                       child: Text(_error!),
                     ),
                   if (data != null) ...[
+                    if (data['setup_available'] == true && connected)
+                      OutlinedButton.icon(
+                        onPressed: canAct
+                            ? () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const DriveRestorePage(),
+                                ),
+                              )
+                            : null,
+                        icon: const Icon(Icons.restore),
+                        label: const Text('백업 다운로드 · 서버 복구'),
+                      ),
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -224,9 +153,13 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                           children: [
                             Text(
                               connected
-                                  ? '연결 계정: ${data['account']}'
-                                  : '연결된 Google 계정이 없습니다',
+                                  ? (data['connection_type'] == 'rclone'
+                                        ? 'Google 계정 연결됨'
+                                        : '연결 계정: ${data['account']}')
+                                  : '연결된 공유 드라이브가 없습니다',
                             ),
+                            if (data['folder_name'] != null)
+                              Text('백업 폴더: ${data['folder_name']}'),
                             const SizedBox(height: 12),
                             Wrap(
                               spacing: 8,
@@ -234,14 +167,14 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                               children: [
                                 FilledButton.icon(
                                   onPressed:
-                                      canAct && data['configured'] == true
-                                      ? _connect
+                                      canAct && data['setup_available'] == true
+                                      ? _configureSharedDrive
                                       : null,
                                   icon: const Icon(
                                     Icons.account_circle_outlined,
                                   ),
                                   label: Text(
-                                    connected ? '연동 계정 변경' : 'Google 계정 연결',
+                                    connected ? '연동 계정 변경' : 'Google 계정으로 연결',
                                   ),
                                 ),
                                 if (connected)
@@ -249,16 +182,13 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                                     onPressed: canAct ? _disconnect : null,
                                     child: const Text('연결 해제'),
                                   ),
-                                if (!connected)
-                                  TextButton(
-                                    onPressed: canAct ? _configure : null,
-                                    child: const Text('OAuth 앱 설정'),
-                                  ),
                               ],
                             ),
                             const SizedBox(height: 8),
-                            const Text(
-                              '계정 변경은 새 계정 연결에 성공한 뒤 적용됩니다. 기존 백업은 이전 계정에 보관됩니다.',
+                            Text(
+                              data['setup_available'] == true
+                                  ? '브라우저에서 Google 로그인 후 공유 드라이브와 백업 폴더를 선택하세요.'
+                                  : 'Google 계정 연결·변경은 서버 PC 앱에서 진행하세요.',
                             ),
                           ],
                         ),
@@ -357,7 +287,7 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                               ),
                             const SizedBox(height: 8),
                             const Text(
-                              'DB와 첨부파일을 ZIP으로 저장하고 업로드 결과를 검증합니다. 저장 위치: 내 드라이브 → D.DDECK 자동 백업. 드라이브 백업은 자동 삭제하지 않습니다. 서버 환경설정(.env)과 Google 인증정보는 포함하지 않습니다.',
+                              'DB와 첨부파일을 ZIP으로 저장하고 업로드 결과를 검증합니다. 저장 위치: 설정한 공유 드라이브 백업 폴더. rclone 연결은 업로드 검증 후 최근 백업 ZIP 30개를 유지하고 오래된 파일부터 휴지통으로 이동합니다. 이전 서버의 백업 폴더와 일반 파일은 유지됩니다. 서버 환경설정(.env)과 Google 인증정보는 포함하지 않습니다.',
                             ),
                           ],
                         ),

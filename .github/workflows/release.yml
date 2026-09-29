@@ -103,6 +103,9 @@ jobs:
           python scripts/test_service_work_types.py
           python scripts/test_quotations.py
           python scripts/test_drive_backup.py
+          python scripts/test_rclone_backup.py
+          python scripts/test_drive_setup.py
+          python scripts/test_drive_restore.py
           python scripts/test_local_admin.py
           python scripts/test_store_contacts.py
           python scripts/smoke_test.py
@@ -114,6 +117,7 @@ jobs:
           python scripts/test_client_updates.py
           python scripts/test_legacy_history.py
           python ../deploy/test_backup_bundle.py
+          python -m unittest discover -s ../deploy -p test_cloud_backup.py
           python ../deploy/test_sqlite_backup.py
           python ../deploy/test_update.py
           python ../deploy/test_operations.py

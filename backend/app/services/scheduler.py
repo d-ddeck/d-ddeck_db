@@ -109,30 +109,22 @@ def _job() -> None:
 
 
 def start() -> BackgroundScheduler | None:
+    from app.services.restore_gate import guarded
+
     global _scheduler
     if not settings.SCHEDULER_ENABLED or _scheduler is not None:
         return _scheduler
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(
-        _job,
+        guarded(_job),
         "interval",
         seconds=settings.REMINDER_SCAN_SECONDS,
         id="reminder_sweep",
         max_instances=1,
         coalesce=True,  # after a pause, run once instead of catching up N times
     )
-    from app.services.operations import process_backup_request
-
     _scheduler.add_job(
-        process_backup_request,
-        "interval",
-        seconds=10,
-        id="manual_backup",
-        max_instances=1,
-        coalesce=True,
-    )
-    _scheduler.add_job(
-        _maintenance,
+        guarded(_maintenance),
         "interval",
         hours=6,
         id="maintenance",
@@ -142,8 +134,12 @@ def start() -> BackgroundScheduler | None:
     from app.services.drive_backup import tick as drive_backup_tick
 
     _scheduler.add_job(
-        drive_backup_tick, "interval", seconds=30, id="drive_backup",
-        max_instances=1, coalesce=True,
+        guarded(drive_backup_tick),
+        "interval",
+        seconds=30,
+        id="drive_backup",
+        max_instances=1,
+        coalesce=True,
     )
     _scheduler.start()
     log.info("scheduler started (every %ds)", settings.REMINDER_SCAN_SECONDS)

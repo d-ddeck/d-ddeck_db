@@ -12,6 +12,76 @@ class AdminRepository {
     await _api.put('/admin/drive-backup/config', body: values);
   }
 
+  Future<Map<String, dynamic>> driveBackupFiles() async =>
+      asMap(await _api.get('/admin/drive-backup/files'));
+  Future<String> startBackupRestore(String name, bool restore) async =>
+      asMap(
+            await _api.post(
+              '/admin/drive-backup/restore/start',
+              body: {
+                'name': name,
+                'restore': restore,
+                'confirmation': restore ? name : '',
+              },
+            ),
+          )['ticket']
+          as String;
+  Future<Map<String, dynamic>> backupRestoreStatus(String ticket) async =>
+      asMap(
+        await _api.post(
+          '/admin/drive-backup/restore/status',
+          body: {'ticket': ticket},
+          skipAuth: true,
+        ),
+      );
+  Future<void> downloadBackup(String ticket, String destination) =>
+      _api.downloadBackup(ticket, destination);
+
+  Future<Map<String, dynamic>> startDriveSetup() async =>
+      asMap(await _api.post('/admin/drive-backup/setup'));
+  Future<Map<String, dynamic>> driveSetup(String id) async =>
+      asMap(await _api.get('/admin/drive-backup/setup/$id'));
+  Future<Map<String, dynamic>> answerDriveSetup(
+    String id,
+    String value,
+  ) async => asMap(
+    await _api.post(
+      '/admin/drive-backup/setup/$id/answer',
+      body: {'value': value},
+    ),
+  );
+  Future<void> cancelDriveSetup(String id) async {
+    await _api.delete('/admin/drive-backup/setup/$id');
+  }
+
+  Future<List<String>> driveSetupFolders(String id, String parent) async {
+    final data = asMap(
+      await _api.get(
+        '/admin/drive-backup/setup/$id/folders',
+        query: {'parent': parent},
+      ),
+    );
+    return (data['folders'] as List).cast<String>();
+  }
+
+  Future<void> finishDriveSetup(String id, String folder, bool create) async {
+    await _api.post(
+      '/admin/drive-backup/setup/$id/finish',
+      body: {'folder': folder, 'create': create},
+    );
+  }
+
+  Future<void> configureRcloneDrive(String target) async {
+    await _api.put('/admin/drive-backup/rclone', body: {'target': target});
+  }
+
+  Future<void> configureSharedDrive(String keyJson, String folder) async {
+    await _api.put(
+      '/admin/drive-backup/shared-drive',
+      body: {'service_account_json': keyJson, 'folder': folder},
+    );
+  }
+
   Future<String> connectDriveBackup() async =>
       asString(asMap(await _api.post('/admin/drive-backup/connect'))['url']);
   Future<void> disconnectDriveBackup() async {

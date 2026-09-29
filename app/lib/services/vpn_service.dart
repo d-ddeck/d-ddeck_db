@@ -6,26 +6,32 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:wireguard_flutter_plus/wireguard_flutter_plus.dart';
 
 import 'wireguard_config.dart';
+import 'windows_vpn.dart';
 
 /// 사외 접속용 WireGuard 터널.
 ///
-/// 터널을 앱이 직접 올리고 내린다. 바탕은 WireGuard 공식 안드로이드
-/// 라이브러리(`com.wireguard.android:tunnel`)이고, 이 클래스가 하는 일은
-/// 설정을 안전하게 보관하고 켜고 끄는 것뿐이다.
+/// Android는 공식 터널 라이브러리, Windows는 공식 WireGuard 서비스를 제어한다.
 ///
-/// **설정에는 개인키가 들어 있다.** 그래서 OS 키스토어(안드로이드 Keystore)에만
-/// 넣고, 화면·로그 어디에도 꺼내지 않는다. 사용자가 볼 수 있는 것은 "등록됨 /
+/// **설정에는 개인키가 들어 있다.** OS 보안 저장소를 사용하고, Windows 서비스
+/// 실행 중에는 사용자·SYSTEM·관리자만 읽는 별도 설정 파일을 둔다.
+/// 화면·로그에는 개인키를 표시하지 않는다. 사용자가 볼 수 있는 것은 "등록됨 /
 /// 연결됨" 상태와 접속 대상뿐이다. 키를 확인할 방법을 일부러 두지 않았다 -
 /// 볼 일이 없고, 볼 수 있으면 새어 나갈 수 있다.
 class VpnService extends ChangeNotifier {
-  VpnService({FlutterSecureStorage? storage})
-    : _storage =
+  VpnService({FlutterSecureStorage? storage, WindowsVpn? windows})
+    : _windows =
+          windows ?? (!kIsWeb && Platform.isWindows ? WindowsVpn() : null),
+      _storage =
           storage ??
           const FlutterSecureStorage(
             aOptions: AndroidOptions(encryptedSharedPreferences: true),
           );
 
   final FlutterSecureStorage _storage;
+  final WindowsVpn? _windows;
+  Timer? _windowsPoll;
+  bool _pollingWindows = false;
+  bool _disposed = false;
 
   static const _kConfig = 'wg_config';
   static const _kEndpoint = 'wg_endpoint';
@@ -63,12 +69,10 @@ class VpnService extends ChangeNotifier {
 
   /// 이 플랫폼에서 앱이 터널을 올릴 수 있는가.
   ///
-  /// 데스크톱은 터널을 만들려면 관리자 권한이 필요해서 일반 사용자로 실행되는
-  /// 이 앱이 할 수 없다. 사내망 PC 는 VPN 이 필요 없고, 외부 PC 는 공식
-  /// WireGuard 클라이언트를 쓰면 된다.
+  /// Windows 서비스 생성·제거 시에만 UAC 권한을 요청한다.
   static bool get isSupported {
     if (kIsWeb) return false;
-    return Platform.isAndroid;
+    return Platform.isAndroid || Platform.isWindows;
   }
 
   /// 저장된 설정이 있는지 확인하고 터널 상태를 따라가기 시작한다.
@@ -76,9 +80,17 @@ class VpnService extends ChangeNotifier {
   /// 앱 시작 때 한 번 부른다. 설정이 없어도 조용히 지나간다 - 사내망 전용
   /// 기기에서는 VPN 을 쓸 일이 없다.
   Future<void> bootstrap() async {
-    if (!isSupported) return;
+    if (!supportsTunnels) return;
     _registered = (await _read(_kConfig)) != null;
     _endpoint = await _read(_kEndpoint);
+    if (_windows != null) {
+      await _refreshWindows();
+      _windowsPoll ??= Timer.periodic(
+        const Duration(seconds: 5),
+        (_) => _refreshWindows(),
+      );
+      return;
+    }
     if (!_registered) {
       notifyListeners();
       return;
@@ -100,7 +112,28 @@ class VpnService extends ChangeNotifier {
   /// 전체 터널(0.0.0.0/0)이면 회사망만 타도록 좁혀서 저장한다. 직원 개인
   /// 인터넷까지 회사 회선을 거치게 두지 않으려는 것이고, 구 서버가 PC 에서
   /// 스크립트로 하던 일과 같다.
-  bool get supportsTunnels => isSupported;
+  bool get supportsTunnels => isSupported || _windows != null;
+  bool get isWindowsClient => _windows != null;
+
+  Future<void> _refreshWindows() async {
+    if (_pollingWindows || _busy || _disposed) return;
+    _pollingWindows = true;
+    try {
+      final state = await _windows!.status();
+      if (!_busy && !_disposed) {
+        _state = VpnConnection.values.firstWhere(
+          (s) => s.name == state,
+          orElse: () => VpnConnection.disconnected,
+        );
+        if (_state.isOn) _registered = true;
+      }
+    } catch (e) {
+      _error = _friendly(e);
+    } finally {
+      _pollingWindows = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
 
   Future<void> register(
     WireguardConfig config, {
@@ -108,6 +141,19 @@ class VpnService extends ChangeNotifier {
   }) async {
     if (!supportsTunnels) {
       throw UnsupportedError("PC에서는 공식 WireGuard 앱을 사용해 주세요.");
+    }
+    if (_windows != null && (_state.isOn || _state.isMoving)) {
+      throw StateError(
+        'Disconnect the tunnel before replacing its configuration',
+      );
+    }
+    if (_windows != null &&
+        RegExp(
+          r'^\s*(PreUp|PostUp|PreDown|PostDown)\s*=',
+          multiLine: true,
+          caseSensitive: false,
+        ).hasMatch(config.toIni())) {
+      throw const WindowsVpnException('invalid_config');
     }
     final effective = (forceSplitTunnel && config.isFullTunnel)
         ? config.toSplitTunnel()
@@ -124,7 +170,10 @@ class VpnService extends ChangeNotifier {
 
   /// 등록을 지운다. 기기를 반납하거나 피어를 재발급받을 때.
   Future<void> unregister() async {
-    if (_state == VpnConnection.connected) {
+    if (_windows != null) {
+      await _windows.remove();
+      _state = VpnConnection.disconnected;
+    } else if (_state == VpnConnection.connected) {
       await disconnect();
     }
     await _delete(_kConfig);
@@ -136,7 +185,7 @@ class VpnService extends ChangeNotifier {
   }
 
   Future<void> connect() async {
-    if (!isSupported || _busy) return;
+    if (!supportsTunnels || _busy) return;
     final conf = await _read(_kConfig);
     if (conf == null) {
       _error = 'VPN 설정이 등록되지 않았습니다.';
@@ -147,6 +196,15 @@ class VpnService extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
+      if (_windows != null) {
+        await _windows.connect(conf);
+        final status = await _windows.status();
+        _state = status == 'connected'
+            ? VpnConnection.connected
+            : VpnConnection.disconnected;
+        if (!_state.isOn) throw const WindowsVpnException('failed');
+        return;
+      }
       await _ensureInitialized();
       final wg = WireGuardFlutter.instance;
       _stageSub ??= wg.vpnStageSnapshot.listen(_onStage);
@@ -166,10 +224,16 @@ class VpnService extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
-    if (!isSupported || _busy) return;
+    if (!supportsTunnels || _busy) return;
     _busy = true;
     notifyListeners();
     try {
+      _error = null;
+      if (_windows != null) {
+        await _windows.disconnect();
+        _state = VpnConnection.disconnected;
+        return;
+      }
       await _ensureInitialized();
       await WireGuardFlutter.instance.stopVpn();
     } catch (e) {
@@ -210,6 +274,16 @@ class VpnService extends ChangeNotifier {
   /// 예외 원문을 그대로 띄우지 않는 이유: 메시지에 설정 내용이 섞여 나올 수
   /// 있고, 그 안에 개인키가 들어 있을 수 있다.
   String _friendly(Object e) {
+    if (e is WindowsVpnException) {
+      return switch (e.code) {
+        'not_installed' => '공식 WireGuard를 먼저 설치한 뒤 다시 연결하세요.',
+        'permission' => 'Windows 관리자 권한 요청을 취소했거나 권한이 없습니다. 연결 버튼으로 다시 시도하세요.',
+        'timeout' => '연결 처리 시간이 초과되었습니다. Windows 권한 창과 VPN 상태를 확인하세요.',
+        'invalid_config' =>
+          '올바른 WireGuard 설정 파일을 선택하세요. 실행 명령이 포함된 설정은 지원하지 않습니다.',
+        _ => 'Windows VPN 작업에 실패했습니다. WireGuard 설치와 설정 파일을 확인하세요.',
+      };
+    }
     final text = e.toString().toLowerCase();
     if (text.contains('permission') || text.contains('denied')) {
       return 'VPN 권한이 필요합니다. 안내 창에서 허용해 주세요.';
@@ -232,18 +306,22 @@ class VpnService extends ChangeNotifier {
     try {
       await _storage.write(key: key, value: value);
     } catch (_) {
-      // 키스토어를 못 쓰는 기기에서도 앱은 계속 돌아야 한다. 등록만 안 남는다.
+      throw StateError("VPN 보안 저장소에 설정을 저장하지 못했습니다.");
     }
   }
 
   Future<void> _delete(String key) async {
     try {
       await _storage.delete(key: key);
-    } catch (_) {}
+    } catch (_) {
+      throw StateError("VPN 보안 저장소의 설정을 삭제하지 못했습니다.");
+    }
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _windowsPoll?.cancel();
     _stageSub?.cancel();
     super.dispose();
   }

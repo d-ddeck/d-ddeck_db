@@ -23,6 +23,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.services import rclone_backup, shared_drive
 from app.services.operations import backup_root
 
 SCOPE = "https://www.googleapis.com/auth/drive.file"
@@ -75,6 +76,92 @@ def next_run(s, now=None):
     return at.isoformat()
 
 
+def connected(s):
+    return bool(
+        s.get("rclone_target") or s.get("service_account") or s.get("refresh_token")
+    )
+
+
+def configure_rclone(target):
+    target = target.strip()
+    with state() as s:
+        require_idle(s)
+        before = dict(s)
+    name = rclone_backup.validate(target)
+    with state() as s:
+        require_idle(s)
+        if dict(s) != before:
+            raise AppError(
+                "CONNECTION_CHANGED",
+                "연결 설정이 변경되었습니다. 다시 시도하세요.",
+                409,
+            )
+        for key in (
+            "service_account",
+            "refresh_token",
+            "pending",
+            "exchanging",
+            "drive_id",
+            "folder_id",
+        ):
+            s.pop(key, None)
+        s.update(
+            rclone_target=target,
+            email=name,
+            folder_name=target,
+            requested=False,
+            last_error=None,
+        )
+        s["next_run_at"] = next_run(s) if s.get("enabled") else None
+    return status()
+
+
+def configure_shared_drive(raw_key, target):
+    target = shared_drive.folder_id(target)
+    with state() as s:
+        require_idle(s)
+        before = {
+            k: s.get(k)
+            for k in ("service_account", "refresh_token", "folder_id", "client_id")
+        }
+        info = shared_drive.parse_key(raw_key) if raw_key else s.get("service_account")
+        if not info:
+            raise AppError(
+                "SERVICE_ACCOUNT_REQUIRED",
+                "서비스 계정 JSON 키 파일을 선택하세요.",
+                422,
+            )
+    try:
+        folder = shared_drive.validate_connection(info, target)
+    except httpx.HTTPError:
+        raise AppError(
+            "SHARED_DRIVE_CONNECTION",
+            "Google Drive 연결을 확인하고 다시 시도하세요.",
+            502,
+        ) from None
+    with state() as s:
+        require_idle(s)
+        if any(s.get(k) != v for k, v in before.items()):
+            raise AppError(
+                "CONNECTION_CHANGED",
+                "연결 설정이 변경되었습니다. 다시 시도하세요.",
+                409,
+            )
+        for key in ("rclone_target", "refresh_token", "pending", "exchanging"):
+            s.pop(key, None)
+        s.update(
+            service_account=info,
+            email=info["client_email"],
+            folder_id=target,
+            folder_name=folder["name"],
+            drive_id=folder["driveId"],
+            requested=False,
+            last_error=None,
+        )
+        s["next_run_at"] = next_run(s) if s.get("enabled") else None
+    return status()
+
+
 def status():
     with state() as s:
         return {
@@ -83,7 +170,14 @@ def status():
             ),
             "client_id": s.get("client_id", ""),
             "redirect_uri": s.get("redirect_uri", ""),
-            "connected": bool(s.get("refresh_token")),
+            "connected": connected(s),
+            "connection_type": "rclone"
+            if s.get("rclone_target")
+            else ("shared_drive" if s.get("service_account") else "oauth"),
+            "rclone_target": s.get("rclone_target", ""),
+            "retention_count": 30 if s.get("rclone_target") else None,
+            "folder_name": s.get("folder_name"),
+            "drive_id": s.get("drive_id"),
             "account": s.get("email"),
             "enabled": s.get("enabled", False),
             "hour": s.get("hour", 3),
@@ -122,7 +216,7 @@ def configure(client_id, client_secret, redirect_uri):
         )
     with state() as s:
         require_idle(s)
-        if s.get("refresh_token"):
+        if connected(s):
             raise AppError(
                 "DRIVE_CONNECTED",
                 "OAuth 앱 설정을 변경하려면 먼저 계정 연결을 해제하세요.",
@@ -254,6 +348,8 @@ def callback(nonce, code, denied=False):
                 "OAUTH_CHANGED", "연결 설정이 변경되었습니다. 다시 시도하세요.", 409
             )
         s.pop("exchanging", None)
+        for key in ("rclone_target", "service_account", "folder_name", "drive_id"):
+            s.pop(key, None)
         s.update(
             refresh_token=token["refresh_token"],
             email=user["emailAddress"],
@@ -269,7 +365,17 @@ def callback(nonce, code, denied=False):
 def disconnect():
     with state() as s:
         require_idle(s)
-        for key in ("refresh_token", "email", "folder_id", "pending", "exchanging"):
+        for key in (
+            "rclone_target",
+            "refresh_token",
+            "service_account",
+            "email",
+            "folder_id",
+            "folder_name",
+            "drive_id",
+            "pending",
+            "exchanging",
+        ):
             s.pop(key, None)
         s.update(enabled=False, requested=False, next_run_at=None)
     return status()
@@ -281,7 +387,7 @@ def schedule(enabled, hour):
             "SCHEDULER_DISABLED", "서버 백업 실행기가 비활성화되어 있습니다.", 503
         )
     with state() as s:
-        if enabled and not s.get("refresh_token"):
+        if enabled and not connected(s):
             raise AppError("DRIVE_NOT_CONNECTED", "Google 계정을 먼저 연결하세요.", 409)
         s.update(enabled=enabled, hour=hour)
         s["next_run_at"] = next_run(s) if enabled else None
@@ -295,27 +401,42 @@ def request_backup():
         )
     with state() as s:
         require_idle(s)
-        if not s.get("refresh_token"):
+        if not connected(s):
             raise AppError("DRIVE_NOT_CONNECTED", "Google 계정을 먼저 연결하세요.", 409)
         s["requested"] = True
     return status()
 
 
 def upload(s, archive):
+    if s.get("rclone_target"):
+        return rclone_backup.upload(s["rclone_target"], archive)
     with httpx.Client(timeout=120) as client:
-        token = checked(
-            client.post(
-                "https://oauth2.googleapis.com/token",
-                data={
-                    "client_id": s["client_id"],
-                    "client_secret": s["client_secret"],
-                    "refresh_token": s["refresh_token"],
-                    "grant_type": "refresh_token",
-                },
+        if s.get("service_account"):
+            client.headers["Authorization"] = "Bearer " + shared_drive.access_token(
+                s["service_account"]
             )
-        )
-        client.headers["Authorization"] = "Bearer " + token["access_token"]
+        else:
+            token = checked(
+                client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "client_id": s["client_id"],
+                        "client_secret": s["client_secret"],
+                        "refresh_token": s["refresh_token"],
+                        "grant_type": "refresh_token",
+                    },
+                )
+            )
+            client.headers["Authorization"] = "Bearer " + token["access_token"]
         folder = s.get("folder_id")
+        if s.get("service_account"):
+            if not folder:
+                raise AppError(
+                    "SHARED_DRIVE_FOLDER_REQUIRED",
+                    "공유 드라이브 폴더를 설정하세요.",
+                    409,
+                )
+            shared_drive.validate_folder(client, folder)
         if not folder:
             folder = checked(
                 client.post(
@@ -332,7 +453,11 @@ def upload(s, archive):
         size = archive.stat().st_size
         response = client.post(
             "https://www.googleapis.com/upload/drive/v3/files",
-            params={"uploadType": "resumable", "fields": "id,size,md5Checksum"},
+            params={
+                "uploadType": "resumable",
+                "fields": "id,size,md5Checksum",
+                "supportsAllDrives": "true",
+            },
             headers={
                 "X-Upload-Content-Type": "application/zip",
                 "X-Upload-Content-Length": str(size),
@@ -378,7 +503,7 @@ def upload(s, archive):
 def tick():
     now = datetime.now(TZ)
     with state() as s:
-        if busy(s) or not s.get("refresh_token"):
+        if busy(s) or not connected(s):
             return
         due = (
             s.get("enabled")
@@ -395,6 +520,7 @@ def tick():
             lease_until=time.time() + LEASE, job=job, requested=False, last_error=None
         )
         config = dict(s)
+    archive = None
     try:
         root = backup_root()
         result = subprocess.run(
@@ -405,15 +531,18 @@ def tick():
                 str(root),
                 "--local-only",
                 "--data-only",
+                "--temporary",
             ],
             check=True,
             capture_output=True,
             text=True,
             timeout=7200,
         )
-        archive = (root / "backups" / result.stdout.strip().splitlines()[-1]).resolve()
-        if archive.parent != (root / "backups").resolve() or not archive.is_file():
+        output = (root / "backups/.drive-private/uploads").resolve()
+        candidate = (output / result.stdout.strip().splitlines()[-1]).resolve()
+        if candidate.parent != output or not candidate.is_file():
             raise RuntimeError("Invalid backup archive")
+        archive = candidate
         file_id = upload(config, archive)
         with state() as s:
             if s.get("job") == job:
@@ -440,7 +569,11 @@ def tick():
                     else "백업 또는 Drive 업로드에 실패했습니다. 서버 저장 공간, 네트워크, 계정 권한을 확인하고 즉시 백업으로 재시도하세요."
                 )
     finally:
-        with state() as s:
-            if s.get("job") == job:
-                s["lease_until"] = 0
-                s["next_run_at"] = next_run(s) if s.get("enabled") else None
+        try:
+            if archive is not None:
+                archive.unlink(missing_ok=True)
+        finally:
+            with state() as s:
+                if s.get("job") == job:
+                    s["lease_until"] = 0
+                    s["next_run_at"] = next_run(s) if s.get("enabled") else None

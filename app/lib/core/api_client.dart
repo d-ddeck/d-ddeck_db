@@ -252,6 +252,21 @@ class ApiClient {
   );
 
   /// 첨부 내려받기. JSON 이 아니라 원본 바이트를 그대로 받는다.
+  Future<void> downloadBackup(String ticket, String destination) async {
+    await _send(
+      () => _dio.download(
+        _url('/admin/drive-backup/restore/download'),
+        destination,
+        data: {'ticket': ticket},
+        options: Options(
+          method: 'POST',
+          receiveTimeout: const Duration(minutes: 30),
+          extra: {'skipAuth': true},
+        ),
+      ),
+    );
+  }
+
   Future<List<int>> getBytes(String path) async {
     try {
       final res = await _dio.get<List<int>>(

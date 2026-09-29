@@ -166,6 +166,7 @@ foreach ($d in @($AppRoot, $BackendDir, $StorageDir, $BackupDir)) {
   New-Item -ItemType Directory -Force -Path $d | Out-Null
 }
 
+Unregister-ScheduledTask -TaskName 'd-ddeck 백업' -Confirm:$false -ErrorAction SilentlyContinue
 if ($IsUpgrade) {
   Step '기존 서버 중지 및 백업'
   Stop-DdeckTask $TaskName $BackendDir
@@ -174,7 +175,7 @@ if ($IsUpgrade) {
     Start-ScheduledTask -TaskName $TaskName
     Die '백업 실패로 갱신을 중단합니다.'
   }
-  Warn '이후 갱신 실패 시 서비스를 중지 상태로 유지합니다. backups 폴더의 백업을 확인하세요.'
+  Warn '이후 갱신 실패 시 서비스를 중지 상태로 유지합니다. Google 드라이브의 안전 백업을 확인하세요.'
 }
 
 # 기존 설정과 데이터는 보존하고 코드만 갱신한다.
@@ -315,8 +316,6 @@ if (Test-Path $EnvFile) {
     'REMINDER_SCAN_SECONDS=60',
     'FCM_PROJECT_ID='
     'FCM_CREDENTIALS_FILE='
-    'RCLONE_REMOTE='
-    'RCLONE_CONFIG='
   )
   Set-Content -Path $EnvFile -Value $lines -Encoding utf8
   Ok ".env 생성 (SECRET_KEY / 관리자 비밀번호 난수 생성)"
@@ -458,7 +457,7 @@ Write-Host "다음에 할 일" -ForegroundColor White
 Write-Host "    1. 이 PC 에 고정 IP 설정 (공유기 DHCP 예약 권장)"
 Write-Host "    2. 절전 모드 해제 - 절전에 들어가면 서버가 멈춥니다"
 Write-Host "         powercfg /change standby-timeout-ac 0"
-Write-Host "    3. 백업 등록:  .\deploy\backup-windows.ps1 -InstallTask"
+Write-Host "    3. 백업 등록:  앱의 Google 백업 페이지에서 계정 연결 및 자동 백업 설정"
 Write-Host "    4. 클라이언트 설치 파일 재생성:"
 Write-Host "         .\installer\build.ps1 -ServerUrl `"http://${ip}:$Port`""
 Write-Host ""

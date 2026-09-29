@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../common/common.dart';
 
@@ -53,7 +54,7 @@ class _VpnControlsState extends State<VpnControls> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (VpnService.isSupported)
+            if (Platform.isAndroid)
               ListTile(
                 leading: const Icon(Icons.qr_code_scanner),
                 title: const Text('QR 촬영'),
@@ -124,6 +125,19 @@ class _VpnControlsState extends State<VpnControls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (vpn.isWindowsClient) ...[
+          const Text(
+            'Windows는 공식 WireGuard 설치가 필요합니다. 연결·해제 시 관리자 권한 창이 나타날 수 있습니다. 앱을 닫아도 연결은 유지됩니다.',
+          ),
+          TextButton.icon(
+            onPressed: () => launchUrl(
+              Uri.parse('https://www.wireguard.com/install/'),
+              mode: LaunchMode.externalApplication,
+            ),
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('WireGuard 설치 안내'),
+          ),
+        ],
         if (!vpn.isRegistered) ...[
           const Text('사외에서 접속하려면 VPN 등록이 필요합니다'),
           const SizedBox(height: 8),

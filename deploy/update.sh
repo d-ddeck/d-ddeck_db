@@ -46,12 +46,13 @@ on_exit() {
           return
         fi
       fi
-      echo "갱신 실패. 서비스를 중지 상태로 유지합니다. ${APP_DIR}/backups 의 백업과 journalctl -u ${SERVICE} 를 확인하세요." >&2
+      echo "갱신 실패. 서비스를 중지 상태로 유지합니다. Google 드라이브의 백업과 journalctl -u ${SERVICE} 를 확인하세요." >&2
     fi
   fi
 }
 trap on_exit EXIT
 [[ -f "$SCRIPT_DIR/backup.sh" ]] || die "backup.sh 가 없어 갱신을 중단합니다."
+rm -f /etc/cron.d/ddeck-backup
 step "서비스 중지"
 systemctl stop "$SERVICE"
 PHASE=stopped

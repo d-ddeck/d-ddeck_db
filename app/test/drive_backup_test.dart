@@ -12,8 +12,28 @@ class _Admin implements AdminRepository {
     'enabled': false,
     'hour': 3,
     'scheduler_enabled': true,
+    'setup_available': true,
   };
   bool requested = false;
+  String? savedFolder;
+  @override
+  Future<Map<String, dynamic>> startDriveSetup() async => {
+    'id': 'test',
+    'stage': 'ready',
+    'option': {},
+  };
+  @override
+  Future<List<String>> driveSetupFolders(String id, String parent) async => [
+    '백업',
+  ];
+  @override
+  Future<void> finishDriveSetup(String id, String folder, bool create) async {
+    savedFolder = folder;
+  }
+
+  @override
+  Future<void> cancelDriveSetup(String id) async {}
+
   @override
   Future<Map<String, dynamic>> driveBackup() async => Map.of(data);
   @override
@@ -31,6 +51,32 @@ class _Admin implements AdminRepository {
 }
 
 void main() {
+  testWidgets('공유 드라이브 rclone 연결 경로 변경', (tester) async {
+    final repo = _Admin();
+    repo.data.addAll({
+      'connection_type': 'rclone',
+      'rclone_target': 'gdrive:old',
+      'folder_name': 'Backup',
+    });
+    await tester.pumpWidget(
+      Provider<AdminRepository>.value(
+        value: repo,
+        child: const MaterialApp(home: DriveBackupPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('OAuth 앱 설정'), findsNothing);
+    await tester.tap(find.text('연동 계정 변경'));
+    await tester.pumpAndSettle();
+    expect(find.text('Google 계정 연결'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'D.DDECK 백업');
+    await tester.tap(find.text('이 폴더에 백업'));
+    await tester.pumpAndSettle();
+    expect(repo.savedFolder, 'D.DDECK 백업');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final width in [390.0, 1280.0]) {
     testWidgets('Drive 백업 연결 계정과 예약/즉시 백업 $width', (tester) async {
       tester.view.devicePixelRatio = 1;

@@ -137,9 +137,8 @@ def main():
         if not args.backup_only:
             # Authenticate before spending time on backup; never ask for a password in chat.
             subprocess.run(["sudo", "-v"], check=True)
-        make_backup = lambda: backup(
-            Path(url.database).resolve(), args.backup_dir, backend / ".env"
-        )
+        from cloud_backup import create
+        make_backup = lambda: create(root)
         if args.backup_only:
             print(f"백업 완료: {make_backup()}")
             return

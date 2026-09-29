@@ -86,7 +86,8 @@ with TestClient(app) as client:
     expect_error(d.authorization_url, 'BACKUP_RUNNING')
     with d.state() as s:
         s['lease_until'] = 0
-    folder = Path(TEMP.name)/'backups'
+    folder = Path(TEMP.name)/'backups/.drive-private/uploads'
+    folder.mkdir(parents=True, exist_ok=True)
     archive = folder/'drive_test.zip'
     archive.write_bytes(b'zip-test')
     calls = []
@@ -104,6 +105,8 @@ with TestClient(app) as client:
         first = len(calls)
         d.tick()
         assert len(calls) == first, 'duplicate scheduled upload'
+    assert not archive.exists(), 'temporary archive retained'
+    archive.write_bytes(b'zip-test')
     result = d.status()
     assert result['last_file_id'] == 'file' and result['last_account'] == 'new@example.com'
     assert not result['running'] and not result['requested']
@@ -113,9 +116,67 @@ with TestClient(app) as client:
         d.tick()
     assert d.status()['last_error'] and 'SECRET' not in d.status()['last_error']
     assert not d.status()['running']
+    with patch.object(d.settings, 'SCHEDULER_ENABLED', True):
+        d.request_backup()
+    with patch.object(d.subprocess, 'run', return_value=type('Result', (), {'stdout':str(archive)})()), patch.object(d, 'upload', side_effect=AppError('UPLOAD_FAILED','upload failed',502)):
+        d.tick()
+    assert not archive.exists(), 'failed upload left a local backup'
+    archive.write_bytes(b'zip-test')
     d.disconnect()
     assert not d.status()['connected'] and not d.status()['enabled']
     assert d.next_run({'hour': 3}, datetime(2026,9,29,4,tzinfo=d.TZ)).startswith('2026-09-30T03:00')
+
+    # Shared Drive: reject personal folders/read-only membership, preserve the
+    # previous connection on failure and upload using supportsAllDrives.
+    import json
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from app.services import shared_drive
+    pem = rsa.generate_private_key(public_exponent=65537, key_size=2048).private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    raw_key = json.dumps({'type': 'service_account', 'client_email': 'backup@test.iam.gserviceaccount.com',
+        'private_key': pem, 'private_key_id': 'test-key', 'token_uri': 'https://untrusted.example/token'})
+    assert shared_drive.parse_key(raw_key)['token_uri'] == 'https://oauth2.googleapis.com/token'
+    target = 'shared_folder_12345'
+    assert shared_drive.folder_id('https://drive.google.com/drive/u/0/folders/' + target) == target
+    expect_error(lambda: shared_drive.folder_id('https://evil.example/folders/' + target), 'INVALID_DRIVE_FOLDER')
+    expect_error(lambda: shared_drive.parse_key('{}'), 'INVALID_SERVICE_ACCOUNT')
+    metadata = {'id': target, 'name': 'Backup', 'driveId': 'drive_12345', 'mimeType': 'application/vnd.google-apps.folder', 'capabilities': {'canAddChildren': True}}
+    shared_calls = []
+    def shared_http(req):
+        shared_calls.append(req)
+        if req.method == 'GET':
+            assert req.url.params['supportsAllDrives'] == 'true'
+            return httpx.Response(200, json=metadata)
+        if req.method == 'POST':
+            assert req.url.params['supportsAllDrives'] == 'true'
+            assert json.loads(req.content)['parents'] == [target]
+            return httpx.Response(200, headers={'Location': 'https://www.googleapis.com/upload-session'})
+        return httpx.Response(200, json={'id': 'shared-file', 'size': str(archive.stat().st_size), 'md5Checksum': hashlib.md5(archive.read_bytes()).hexdigest()})
+    with patch.object(shared_drive, 'access_token', return_value='service-access'), patch.object(d.httpx, 'Client', side_effect=lambda **kw: RealClient(transport=httpx.MockTransport(shared_http), **kw)):
+        response = client.put(base + '/shared-drive', headers=headers, json={'service_account_json': raw_key, 'folder': target})
+        assert response.status_code == 200, response.text
+        public = response.json()
+        assert public['connected'] and public['connection_type'] == 'shared_drive' and public['folder_name'] == 'Backup'
+        assert 'private_key' not in response.text and 'service_account' not in public
+        # Existing key can be reused to change the target folder.
+        assert d.configure_shared_drive('', target)['account'] == 'backup@test.iam.gserviceaccount.com'
+        metadata.pop('driveId')
+        expect_error(lambda: d.configure_shared_drive(raw_key, target), 'SHARED_DRIVE_FOLDER_REQUIRED')
+        assert d.status()['connected']
+        metadata['driveId'] = 'drive_12345'
+        metadata['capabilities']['canAddChildren'] = False
+        expect_error(lambda: d.configure_shared_drive(raw_key, target), 'SHARED_DRIVE_FOLDER_REQUIRED')
+        metadata['capabilities']['canAddChildren'] = True
+        with d.state() as st:
+            snapshot = dict(st)
+        assert d.upload(snapshot, archive) == 'shared-file'
+        with patch.object(d.settings, 'SCHEDULER_ENABLED', True):
+            assert d.schedule(True, 3)['enabled']
+    d.disconnect()
+    assert not d.status()['connected']
 
     # Directory-backed responders: duplicate names remain separate accounts,
     # superadmin, pending, resigned and soft-deleted users never appear.
@@ -147,12 +208,36 @@ with TestClient(app) as client:
         admin.role = Role.MANAGER
         db.commit()
     for method, path, payload in [
-        ('GET', '', None), ('POST', '/connect', None), ('POST', '/run', None),
+        ('GET', '', None),
+        ('PUT', '/rclone', {'target': 'gdrive:Backup'}),
+        ('POST', '/setup', None),
+        ('GET', '/files', None),
+        ('POST', '/restore/start', {'name': 'drive_20260929_000000_000000.zip'}),
+        ('GET', '/setup/test', None),
+        ('POST', '/setup/test/answer', {'value': 'x'}),
+        ('POST', '/setup/test/finish', {'folder': 'Backup'}),
+        ('DELETE', '/setup/test', None),
+        ('PUT', '/shared-drive', {'folder': 'shared_folder_12345'}), ('POST', '/connect', None), ('POST', '/run', None),
         ('DELETE', '/connection', None),
         ('PUT', '/schedule', {'enabled': False, 'hour': 3}),
         ('PUT', '/config', {'client_id': 'x', 'client_secret': 'x', 'redirect_uri': 'https://example.com/api/v1/admin/drive-backup/callback'}),
     ]:
         assert client.request(method, base + path, headers=headers, json=payload).status_code == 403
+
+with d.state() as stored:
+    stored.clear()
+    stored.update(refresh_token='old-token', email='old@example.com')
+with patch.object(d.rclone_backup, 'validate', side_effect=AppError('BAD', 'bad', 502)):
+    expect_error(lambda: d.configure_rclone('gdrive:Backup'), 'BAD')
+with d.state() as stored:
+    assert stored['refresh_token'] == 'old-token'
+with patch.object(d.rclone_backup, 'validate', return_value='gdrive'):
+    result = d.configure_rclone('gdrive:Backup')
+assert result['connected'] and result['connection_type'] == 'rclone'
+assert result['retention_count'] == 30
+with d.state() as stored:
+    assert 'refresh_token' not in stored
+assert not d.disconnect()['connected']
 
 print('Drive backup and service responder regressions passed')
 TEMP.cleanup()

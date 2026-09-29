@@ -8,37 +8,57 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import cloud_backup
 from backup_bundle import config, database_path, extract_bundle
 from sqlite_backup import restore
 
 
 def prepare(root, unit):
-    folder = (
-        root
-        / "backups/revisions"
-        / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    metadata = json.loads(
+        (root / "backups/.drive-private/last_cloud_backup.json").read_text()
     )
-    size = sum(p.stat().st_size for p in (root / "backend").rglob("*") if p.is_file())
-    if shutil.disk_usage(root).free < size * 2 + 128 * 1024**2:
-        raise RuntimeError("Insufficient disk for rollback snapshot")
+    folder = root / "backups/revisions" / stamp
     folder.mkdir(parents=True, mode=0o700)
-    shutil.copytree(
-        root / "backend",
-        folder / "backend",
-        symlinks=True,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-    )
-    if unit.exists():
-        shutil.copy2(unit, folder / "service.unit")
-    archives = sorted((root / "backups").glob("ddeck_*.zip"), reverse=True)
-    if not archives:
-        raise RuntimeError("Verified pre-update backup is required")
-    (folder / "snapshot.json").write_text(
-        json.dumps({"archive": archives[0].name, "unit": str(unit)})
-    )
+    with tempfile.TemporaryDirectory(dir=root / "backups/.drive-private") as temp:
+        work = Path(temp)
+        payload = work / "payload"
+        payload.mkdir()
+        shutil.copytree(
+            root / "backend",
+            payload / "backend",
+            symlinks=True,
+            ignore=shutil.ignore_patterns(
+                "__pycache__",
+                "*.pyc",
+                ".env",
+                "*.db",
+                "*.db-wal",
+                "*.db-shm",
+                "storage",
+            ),
+        )
+        if unit.exists():
+            shutil.copy2(unit, payload / "service.unit")
+        source = work / metadata["name"]
+        cloud_backup.download_archive(root, metadata, source)
+        source.rename(payload / "data.zip")
+        (payload / "snapshot.json").write_text(
+            json.dumps({"archive": "data.zip", "unit": str(unit)})
+        )
+        archive = work / ("update_" + stamp + ".zip")
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+            for path in payload.rglob("*"):
+                z.write(path, path.relative_to(payload).as_posix())
+        cloud = cloud_backup.upload_archive(root, archive)
+        (folder / "snapshot.json").write_text(
+            json.dumps({"cloud": cloud, "unit": str(unit)})
+        )
+    # Only the cloud pointer remains on disk; code/data archives are temporary.
     return folder
 
 
@@ -61,10 +81,23 @@ def recover(root, folder):
     if not folder.resolve().is_relative_to((root / "backups/revisions").resolve()):
         raise ValueError("Snapshot outside backup directory")
     metadata = json.loads((folder / "snapshot.json").read_text())
-    archive = root / "backups" / metadata["archive"]
-    if archive.parent.resolve() != (root / "backups").resolve():
+    if "cloud" in metadata:
+        with tempfile.TemporaryDirectory(dir=root / "backups/.drive-private") as temp:
+            work = Path(temp)
+            archive = work / metadata["cloud"]["name"]
+            cloud_backup.download_archive(root, metadata["cloud"], archive)
+            extract_bundle(archive, work / "payload")
+            return _recover_payload(root, work / "payload", local=False)
+    return _recover_payload(root, folder, local=True)
+
+
+def _recover_payload(root, folder, *, local):
+    metadata = json.loads((folder / "snapshot.json").read_text())
+    archive_root = root / "backups" if local else folder
+    archive = archive_root / metadata["archive"]
+    if archive.parent.resolve() != archive_root.resolve():
         raise ValueError("Invalid archive")
-    values = config(folder)  # snapshot has backend/.env
+    values = config(folder if local else root)
     destination = database_path(root, values["DATABASE_URL"])
     if destination is None:
         raise RuntimeError(
@@ -83,9 +116,9 @@ def recover(root, folder):
         if staged.exists():
             raise RuntimeError("Previous rollback staging exists; inspect it first")
         shutil.copytree(folder / "backend", staged, symlinks=True)
-        failed = root / (
-            "backend.failed." + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-        )
+        if not local:
+            shutil.copy2(root / "backend/.env", staged / ".env")
+        failed = extracted / "failed-backend"
         (root / "backend").rename(failed)
         staged.rename(root / "backend")
         destination.parent.mkdir(parents=True, exist_ok=True)
