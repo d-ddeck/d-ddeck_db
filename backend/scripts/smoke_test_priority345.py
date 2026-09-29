@@ -73,7 +73,10 @@ def main():
             for url in ("/docs", "/redoc", "/openapi.json"):
                 assert client.get(url).status_code == 404
             health = call("GET", "/admin/health")
-            assert health["version"] == app.version and health["backup"]["overdue"]
+            assert health["version"] == app.version
+            assert health["backup"]["state"] == "google_drive"
+            assert not health["backup"]["connected"]
+            assert not health["backup"]["overdue"]  # Disabled schedules are not late.
             call("POST", "/admin/backup", status=503)
             store = call("POST", "/stores", {"name": "운영 검사"}, 201)
             location = call(
