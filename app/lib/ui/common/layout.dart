@@ -88,15 +88,21 @@ class SectionCard extends StatelessWidget {
 
 /// Place inside a scroll view, or wrap a bounded list/table with this widget.
 class PageBody extends StatelessWidget {
-  const PageBody({super.key, required this.child, this.padding});
+  const PageBody({
+    super.key,
+    required this.child,
+    this.padding,
+    this.maxWidth = 1200,
+  });
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.topCenter,
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 1200),
+      constraints: BoxConstraints(maxWidth: maxWidth),
       child: Padding(
         padding:
             padding ??

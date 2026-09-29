@@ -14,7 +14,8 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.core.deps import Client, CurrentUser, DbSession
 from app.core.errors import AppError
-from app.models.enums import AuditAction, ModuleKey
+from app.core.security import now_utc
+from app.models.enums import ROLE_LEVEL, AuditAction, ModuleKey, Role
 from app.models.quotation import QuotationRevision
 from app.models.service import ServiceTicket
 from app.models.store import Store
@@ -37,8 +38,13 @@ def ticket(db, ticket_id, lock=False):
     return value
 
 
-def out(row, detail=False):
+def can_delete(row, user):
+    return row.created_by_id == user.id or ROLE_LEVEL[user.role] >= ROLE_LEVEL[Role.MANAGER]
+
+
+def out(row, detail=False, user=None):
     result = {
+        "can_delete": can_delete(row, user) if user else False,
         "id": str(row.id),
         "version": row.version,
         "filename": row.filename,
@@ -83,13 +89,13 @@ def defaults(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
 
 
 @router.get("", response_model=list[QuoteSummary])
-def revisions(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
+def revisions(ticket_id: uuid.UUID, db: DbSession, user: CurrentUser):
     ticket(db, ticket_id)
     return [
-        out(r)
+        out(r, user=user)
         for r in db.scalars(
             select(QuotationRevision)
-            .where(QuotationRevision.ticket_id == ticket_id)
+            .where(QuotationRevision.ticket_id == ticket_id, QuotationRevision.deleted_at.is_(None))
             .order_by(QuotationRevision.version.desc())
         ).all()
     ]
@@ -112,7 +118,11 @@ def create(
         )
         or 0
     )
-    if payload.base_version != latest:
+    latest_visible = db.scalar(select(func.max(QuotationRevision.version)).where(
+        QuotationRevision.ticket_id == ticket_id,
+        QuotationRevision.deleted_at.is_(None),
+    )) or 0
+    if payload.base_version != latest_visible:
         raise AppError(
             "QUOTE_CONFLICT",
             "다른 견적 버전이 저장되었습니다. 목록을 새로고침한 뒤 최신 버전으로 수정해 주세요.",
@@ -164,7 +174,10 @@ def create(
     configured_logo = settings_store.get(db, ModuleKey.SERVICE, "quotation_logo", {})
     if (
         isinstance(configured_logo, dict)
-        and configured_logo.get("company") == snapshot["supplier"]["company"]
+        and (
+            configured_logo.get("apply_to_all") is True
+            or configured_logo.get("company") == snapshot["supplier"]["company"]
+        )
         and configured_logo.get("png_base64")
     ):
         logo = base64.b64decode(configured_logo["png_base64"], validate=True)
@@ -212,7 +225,7 @@ def create(
             "다른 견적 버전이 저장되었습니다. 최신 목록을 확인해 주세요.",
             409,
         ) from None
-    return out(row, True)
+    return out(row, True, user)
 
 
 def revision(db, ticket_id, revision_id):
@@ -221,6 +234,7 @@ def revision(db, ticket_id, revision_id):
         select(QuotationRevision).where(
             QuotationRevision.ticket_id == ticket_id,
             QuotationRevision.id == revision_id,
+            QuotationRevision.deleted_at.is_(None),
         )
     )
     if row is None:
@@ -229,8 +243,8 @@ def revision(db, ticket_id, revision_id):
 
 
 @router.get("/{revision_id}", response_model=QuoteDetail)
-def detail(ticket_id: uuid.UUID, revision_id: uuid.UUID, db: DbSession, _: CurrentUser):
-    return out(revision(db, ticket_id, revision_id), True)
+def detail(ticket_id: uuid.UUID, revision_id: uuid.UUID, db: DbSession, user: CurrentUser):
+    return out(revision(db, ticket_id, revision_id), True, user)
 
 
 @router.get("/{revision_id}/pdf")
@@ -247,3 +261,18 @@ def download(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.delete("/{revision_id}")
+def delete_revision(ticket_id: uuid.UUID, revision_id: uuid.UUID, db: DbSession,
+                    user: CurrentUser, client: Client):
+    ticket(db, ticket_id, lock=True)
+    row = revision(db, ticket_id, revision_id)
+    if not can_delete(row, user):
+        raise AppError("FORBIDDEN", "작성자 또는 팀장 이상만 견적서를 삭제할 수 있습니다.", 403)
+    row.deleted_at = now_utc()
+    audit.record(db, action=AuditAction.DELETE, actor=user, module=ModuleKey.SERVICE,
+                 entity_type="service_ticket", entity_id=ticket_id,
+                 summary=f"견적서 {row.snapshot['document_no']} 삭제", client=client)
+    db.commit()
+    return {"message": "견적서가 삭제되었습니다."}

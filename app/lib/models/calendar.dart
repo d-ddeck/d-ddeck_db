@@ -7,7 +7,7 @@ import 'common.dart';
 enum CalendarType {
   personal('PERSONAL', '개인', Icons.person),
   department('DEPARTMENT', '부서', Icons.groups),
-  company('COMPANY', '전사', Icons.apartment);
+  company('COMPANY', '공유', Icons.apartment);
 
   const CalendarType(this.value, this.label, this.icon);
   final String value;

@@ -54,6 +54,35 @@ class _QuotationPageState extends State<QuotationPage> {
     if (mounted) setState(() => _busy = false);
   }
 
+  Future<void> _delete(Map<String, dynamic> version) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('견적서 삭제'),
+        content: Text(
+          'v${version['version']} 견적서를 삭제하시겠습니까?\n삭제하면 목록에서 사라지고 PDF를 열 수 없습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    await runGuarded(context, () async {
+      await context.read<ApiClient>().delete('$_path/${version['id']}');
+      if (mounted) _key.currentState?.reload();
+    });
+    if (mounted) setState(() => _busy = false);
+  }
+
   Future<void> _pdf(Map<String, dynamic> version, bool save) async {
     setState(() => _busy = true);
     await runGuarded(context, () async {
@@ -143,6 +172,12 @@ class _QuotationPageState extends State<QuotationPage> {
                             icon: const Icon(Icons.save_alt),
                             label: const Text('파일로 저장'),
                           ),
+                          if (v['can_delete'] == true)
+                            OutlinedButton.icon(
+                              onPressed: _busy ? null : () => _delete(v),
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('삭제'),
+                            ),
                         ],
                       ),
                     ],

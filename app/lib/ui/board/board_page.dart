@@ -1,3 +1,4 @@
+import '../common/section_main_reporter.dart';
 import '../common/save_attachment_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../common/form_attachments_page.dart';
@@ -33,45 +34,47 @@ class BoardPage extends StatelessWidget {
       emptyIcon: Icons.forum_outlined,
       builder: (context, boards, reload) => DefaultTabController(
         length: boards.length,
-        child: Column(
-          children: [
-            if (context.watch<AuthState>().isAdmin)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.settings),
-                  label: const Text('게시판 관리'),
-                  onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => const BoardSettingsPage(),
-                      ),
-                    );
-                    if (context.mounted) reload();
-                  },
+        child: SectionMainReporter(
+          child: Column(
+            children: [
+              if (context.watch<AuthState>().isAdmin)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.settings),
+                    label: const Text('게시판 관리'),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const BoardSettingsPage(),
+                        ),
+                      );
+                      if (context.mounted) reload();
+                    },
+                  ),
                 ),
-              ),
-            if (boards.isEmpty)
-              const Expanded(child: Center(child: Text('접근 가능한 게시판이 없습니다.'))),
-            if (boards.isNotEmpty)
-              TabBar(
-                isScrollable: boards.length > 3,
-                tabAlignment: boards.length > 3
-                    ? TabAlignment.start
-                    : TabAlignment.fill,
-                tabs: [
-                  for (final b in boards)
-                    Tab(text: b.name, icon: Icon(b.type.icon, size: 18)),
-                ],
-              ),
-            if (boards.isNotEmpty)
-              Expanded(
-                child: TabBarView(
-                  children: [for (final b in boards) _PostListTab(board: b)],
+              if (boards.isEmpty)
+                const Expanded(child: Center(child: Text('접근 가능한 게시판이 없습니다.'))),
+              if (boards.isNotEmpty)
+                TabBar(
+                  isScrollable: boards.length > 3,
+                  tabAlignment: boards.length > 3
+                      ? TabAlignment.start
+                      : TabAlignment.fill,
+                  tabs: [
+                    for (final b in boards)
+                      Tab(text: b.name, icon: Icon(b.type.icon, size: 18)),
+                  ],
                 ),
-              ),
-          ],
+              if (boards.isNotEmpty)
+                Expanded(
+                  child: TabBarView(
+                    children: [for (final b in boards) _PostListTab(board: b)],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -46,6 +46,7 @@ class QuoteCreate(BaseModel):
 
 
 class QuoteSummary(BaseModel):
+    can_delete: bool = False
     id: UUID
     version: int
     filename: str

@@ -7,8 +7,6 @@ import 'package:provider/provider.dart';
 import '../common/common.dart';
 
 import '../../data/store_repository.dart';
-import '../../data/inventory_repository.dart';
-import '../../models/inventory.dart';
 import '../equipment/equipment_page.dart';
 import '../../models/store.dart';
 import '../async_view.dart';
@@ -120,6 +118,25 @@ class StoreTabState extends State<StoreTab> {
     _includeClosed = false;
   });
 
+  bool backToBrands() {
+    if (_brandId == null &&
+        _brandName.isEmpty &&
+        _query.isEmpty &&
+        !_includeClosed &&
+        !_includeInactive) {
+      return false;
+    }
+    setState(() {
+      _brandId = null;
+      _brandName = '';
+      _query = '';
+      _searchCtl.clear();
+      _includeClosed = false;
+      _includeInactive = false;
+    });
+    return true;
+  }
+
   @override
   void dispose() {
     _searchCtl.dispose();
@@ -136,7 +153,6 @@ class StoreTabState extends State<StoreTab> {
   @override
   Widget build(BuildContext context) {
     final repo = context.read<StoreRepository>();
-    final inventory = context.read<InventoryRepository>();
 
     // 브랜드를 고르기 전에는 브랜드 카드만 보여 준다.
     if (_brandId == null &&
@@ -145,17 +161,13 @@ class StoreTabState extends State<StoreTab> {
         !_includeClosed &&
         !_includeInactive) {
       return PageBody(
-        child: AsyncView<(List<BrandSummary>, InventoryOverview)>(
+        child: AsyncView<List<BrandSummary>>(
           key: ValueKey('brands:$_revision'),
-          load: () => guardedLoad(
-            context,
-            () async => (await repo.brands(), await inventory.overview()),
-          ),
+          load: () => guardedLoad(context, repo.brands),
           builder: (context, data, reload) {
-            _brands = data.$1;
+            _brands = data;
             return _BrandGrid(
-              brands: data.$1,
-              overview: data.$2,
+              brands: data,
               onPick: (brand) => EquipmentPage.open(
                 context,
                 tab: EquipmentTab.stores,
@@ -348,14 +360,12 @@ class PagedStores {
 class _BrandGrid extends StatelessWidget {
   const _BrandGrid({
     required this.brands,
-    required this.overview,
     required this.onPick,
     required this.searchField,
     required this.onRefresh,
   });
 
   final List<BrandSummary> brands;
-  final InventoryOverview overview;
   final ValueChanged<BrandSummary> onPick;
   final Widget searchField;
   final VoidCallback onRefresh;
@@ -423,18 +433,7 @@ class _BrandGrid extends StatelessWidget {
                             : constraints.maxWidth < 500
                             ? 1
                             : 2),
-                    child: _BrandCard(
-                      brand: brand,
-                      breakdown: [
-                        for (final row in overview.byBrand.where(
-                          (r) => r.key == (brand.brandId ?? '-'),
-                        ))
-                          for (final kind in overview.kinds)
-                            if ((row.counts[kind.id] ?? 0) > 0)
-                              '${kind.name} ${row.counts[kind.id]}',
-                      ],
-                      onTap: () => onPick(brand),
-                    ),
+                    child: _BrandCard(brand: brand, onTap: () => onPick(brand)),
                   ),
               ],
             ),
@@ -446,14 +445,9 @@ class _BrandGrid extends StatelessWidget {
 }
 
 class _BrandCard extends StatelessWidget {
-  const _BrandCard({
-    required this.brand,
-    required this.breakdown,
-    required this.onTap,
-  });
+  const _BrandCard({required this.brand, required this.onTap});
 
   final BrandSummary brand;
-  final List<String> breakdown;
   final VoidCallback onTap;
 
   @override
@@ -494,48 +488,10 @@ class _BrandCard extends StatelessWidget {
               ),
               const SizedBox(height: AppSpace.md),
               Text(
-                '${Fmt.number(brand.storeCount)}곳',
+                '운영 ${Fmt.number(brand.openStoreCount)}',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                brand.closedStoreCount > 0
-                    ? '운영 ${Fmt.number(brand.openStoreCount)} · 폐점 ${Fmt.number(brand.closedStoreCount)}'
-                    : '운영 ${Fmt.number(brand.openStoreCount)}',
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: 6),
-              StatusChip(
-                label: '미종결 ${Fmt.number(brand.openTicketCount)}건',
-                icon: Icons.build_outlined,
-              ),
-              const SizedBox(height: 6),
-              if (breakdown.isEmpty)
-                const Text('설치 장비 없음')
-              else
-                Wrap(
-                  spacing: AppSpace.xs,
-                  runSpacing: AppSpace.xs,
-                  children: [
-                    for (final label in breakdown)
-                      Chip(
-                        label: Text(label, style: theme.textTheme.bodySmall),
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                      ),
-                  ],
-                ),
-              Row(
-                children: [
-                  const Icon(Icons.store_outlined, size: 14),
-                  const SizedBox(width: 4),
-                  Text(
-                    '장비 ${Fmt.number(brand.assetCount)}대 · 대응 ${brand.ticketCount}건',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
               ),
             ],
           ),
@@ -569,7 +525,7 @@ class _StoreList extends StatelessWidget {
           if (index == 0) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text('매장 $total곳', style: theme.textTheme.labelLarge),
+              child: Text('매장 $total', style: theme.textTheme.labelLarge),
             );
           }
           final store = stores[index - 1];

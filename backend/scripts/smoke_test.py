@@ -902,7 +902,7 @@ with TestClient(app) as c:
     print("\n[6] 캘린더: 일정 공유 -> 참석자 -> 알림")
 
     r = c.get("/api/v1/calendar/calendars", headers=bearer(user_token))
-    check("전사 캘린더 공유", r.status_code == 200 and len(r.json()) == 1, r.text)
+    check("공유 캘린더 공유", r.status_code == 200 and len(r.json()) == 1, r.text)
     cal_id = r.json()[0]["id"]
 
     admin_me = c.get("/api/v1/auth/me", headers=bearer(admin_token)).json()
@@ -1095,7 +1095,7 @@ with TestClient(app) as c:
     )
 
     r = c.delete(f"/api/v1/calendar/calendars/{cal_id}", headers=bearer(admin_token))
-    check("전사 캘린더 삭제 차단", r.status_code == 400, r.status_code)
+    check("공유 캘린더 삭제 차단", r.status_code == 400, r.status_code)
 
     r = c.delete(
         f"/api/v1/calendar/calendars/{personal_id}", headers=bearer(user_token)

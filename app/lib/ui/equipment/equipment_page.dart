@@ -1,8 +1,11 @@
+import '../common/section_main_reporter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/inventory_repository.dart';
+import '../../data/store_repository.dart';
 import '../async_view.dart';
 import '../common/common.dart';
+import '../common/download.dart';
 import '../format.dart';
 import '../theme.dart';
 import '../inventory/asset_form_page.dart';
@@ -104,6 +107,7 @@ class EquipmentPageState extends State<EquipmentPage>
   final _list = GlobalKey<InventoryListTabState>();
   final _stores = GlobalKey<StoreTabState>();
   int _revision = 0;
+  bool _exporting = false;
   final _visited = <int>{};
   @override
   void initState() {
@@ -138,107 +142,151 @@ class EquipmentPageState extends State<EquipmentPage>
     setState(() => _revision++);
   }
 
+  void backToMain() {
+    if (_tabs.index == EquipmentTab.stores.index &&
+        (_stores.currentState?.backToBrands() ?? false)) {
+      return;
+    }
+    _tabs.animateTo(EquipmentTab.overview.index);
+  }
+
+  Future<void> _menuAction(String action) async {
+    switch (action) {
+      case 'register':
+        if (_tabs.index != EquipmentTab.assets.index) return;
+        final saved = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(builder: (_) => const AssetFormPage()),
+        );
+        if (saved == true && mounted) _changed();
+        return;
+      case 'export':
+        if (_exporting) return;
+        setState(() => _exporting = true);
+        try {
+          final list = _list.currentState;
+          if (_tabs.index == EquipmentTab.assets.index && list != null) {
+            await list.export();
+          } else {
+            await runGuarded(context, () async {
+              final bytes = await context
+                  .read<InventoryRepository>()
+                  .exportXlsx();
+              await saveAndOpenDownload(
+                bytes,
+                '재고_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+              );
+            });
+          }
+        } finally {
+          if (mounted) setState(() => _exporting = false);
+        }
+        return;
+      case 'refresh':
+        _changed();
+        return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Builder(
     builder: (context) {
       _visited.add(_tabs.index);
-      return Column(
-        children: [
-          AppBar(
-            primary: false,
-            automaticallyImplyLeading: false,
-            titleSpacing: AppSpace.lg,
-            actions: [
-              TextButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('장비 등록'),
-                onPressed: () async {
-                  final saved = await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AssetFormPage()),
-                  );
-                  if (saved == true && mounted) _changed();
-                },
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.download),
-                label: const Text('엑셀'),
-                onPressed: () => _list.currentState?.export(
-                  all: _tabs.index != EquipmentTab.assets.index,
+      return SectionMainReporter(
+        controller: _tabs,
+        child: Column(
+          children: [
+            AppBar(
+              primary: false,
+              automaticallyImplyLeading: false,
+              titleSpacing: AppSpace.lg,
+              actions: [
+                PopupMenuButton<String>(
+                  tooltip: '더보기',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: _menuAction,
+                  itemBuilder: (_) => [
+                    if (_tabs.index == EquipmentTab.assets.index)
+                      const PopupMenuItem(
+                        value: 'register',
+                        child: Text('장비 등록'),
+                      ),
+                    PopupMenuItem(
+                      value: 'export',
+                      enabled: !_exporting,
+                      child: Text(_exporting ? '엑셀 다운로드 중…' : '엑셀 다운로드'),
+                    ),
+                    const PopupMenuItem(value: 'refresh', child: Text('새로고침')),
+                  ],
                 ),
-              ),
-              PopupMenuButton<String>(
-                tooltip: '더보기',
-                onSelected: (_) => _changed(),
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'refresh', child: Text('새로고침')),
-                ],
-              ),
-              const SizedBox(width: AppSpace.lg),
-            ],
-          ),
-          TabBar(
-            controller: _tabs,
-            isScrollable: true,
-            tabs: const [
-              Tab(icon: Icon(Icons.dashboard_outlined), text: '현황'),
-              Tab(icon: Icon(Icons.store_outlined), text: '매장'),
-              Tab(icon: Icon(Icons.inventory_2_outlined), text: '장비 목록'),
-              Tab(icon: Icon(Icons.place_outlined), text: '위치'),
-            ],
-          ),
-          _EquipmentSummary(key: ValueKey('summary:$_revision')),
-          Expanded(
-            child: IndexedStack(
-              index: _tabs.index,
-              children: [
-                !_visited.contains(0)
-                    ? const SizedBox.shrink()
-                    : InventoryOverviewTab(
-                        key: ValueKey('overview:$_revision'),
-                        onChanged: _changed,
-                        onDrill: (filters) {
-                          EquipmentPage.open(
-                            context,
-                            tab: filters.containsKey('brand_id')
-                                ? EquipmentTab.stores
-                                : EquipmentTab.assets,
-                            brandId: filters['brand_id'] as String?,
-                            locationId: filters['location_id'] as String?,
-                            categoryId: filters['category_id'] as String?,
-                            statusItemId:
-                                (filters['status_item_id'] ?? filters['status'])
-                                    as String?,
-                          );
-                        },
-                      ),
-                !_visited.contains(1)
-                    ? const SizedBox.shrink()
-                    : StoreTab(
-                        key: _stores,
-                        onChanged: _changed,
-                        initialBrandId: widget.tab == EquipmentTab.stores
-                            ? widget.filters['brand_id'] as String?
-                            : null,
-                        revision: _revision,
-                      ),
-                !_visited.contains(2)
-                    ? const SizedBox.shrink()
-                    : InventoryListTab(
-                        key: _list,
-                        initialFilters: widget.tab == EquipmentTab.assets
-                            ? widget.filters
-                            : const {},
-                        revision: _revision,
-                        onChanged: _changed,
-                      ),
-                !_visited.contains(3)
-                    ? const SizedBox.shrink()
-                    : LocationPage(embedded: true, onChanged: _changed),
+                const SizedBox(width: AppSpace.lg),
               ],
             ),
-          ),
-        ],
+            TabBar(
+              controller: _tabs,
+              isScrollable: true,
+              tabs: const [
+                Tab(icon: Icon(Icons.dashboard_outlined), text: '현황'),
+                Tab(icon: Icon(Icons.store_outlined), text: '매장'),
+                Tab(icon: Icon(Icons.inventory_2_outlined), text: '장비 목록'),
+                Tab(icon: Icon(Icons.place_outlined), text: '위치'),
+              ],
+            ),
+            if (_tabs.index == EquipmentTab.overview.index)
+              _EquipmentSummary(key: ValueKey('summary:$_revision')),
+            Expanded(
+              child: IndexedStack(
+                index: _tabs.index,
+                children: [
+                  !_visited.contains(0)
+                      ? const SizedBox.shrink()
+                      : InventoryOverviewTab(
+                          key: ValueKey('overview:$_revision'),
+                          onChanged: _changed,
+                          onDrill: (filters) {
+                            EquipmentPage.open(
+                              context,
+                              tab: filters.containsKey('brand_id')
+                                  ? EquipmentTab.stores
+                                  : EquipmentTab.assets,
+                              brandId: filters['brand_id'] as String?,
+                              locationId: filters['location_id'] as String?,
+                              categoryId: filters['category_id'] as String?,
+                              statusItemId:
+                                  (filters['status_item_id'] ??
+                                          filters['status'])
+                                      as String?,
+                            );
+                          },
+                        ),
+                  !_visited.contains(1)
+                      ? const SizedBox.shrink()
+                      : StoreTab(
+                          key: _stores,
+                          onChanged: _changed,
+                          initialBrandId: widget.tab == EquipmentTab.stores
+                              ? widget.filters['brand_id'] as String?
+                              : null,
+                          revision: _revision,
+                        ),
+                  !_visited.contains(2)
+                      ? const SizedBox.shrink()
+                      : InventoryListTab(
+                          key: _list,
+                          initialFilters: widget.tab == EquipmentTab.assets
+                              ? widget.filters
+                              : const {},
+                          revision: _revision,
+                          onChanged: _changed,
+                        ),
+                  !_visited.contains(3)
+                      ? const SizedBox.shrink()
+                      : LocationPage(embedded: true, onChanged: _changed),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
     },
   );
@@ -246,9 +294,35 @@ class EquipmentPageState extends State<EquipmentPage>
 
 class _EquipmentSummary extends StatelessWidget {
   const _EquipmentSummary({super.key});
+
+  int _kindCount(InventoryOverview overview, String code) {
+    final ids = overview.kinds
+        .where((kind) => kind.code == code)
+        .map((kind) => kind.id)
+        .toSet();
+    return overview.byStatus.fold(
+      0,
+      (sum, row) =>
+          sum +
+          row.counts.entries
+              .where((entry) => ids.contains(entry.key))
+              .fold<int>(0, (count, entry) => count + entry.value),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => AsyncView<InventoryOverview>(
-    load: context.read<InventoryRepository>().overview,
+  Widget build(BuildContext context) => AsyncView<(InventoryOverview, int)>(
+    load: () async {
+      final inventory = context.read<InventoryRepository>();
+      final stores = context.read<StoreRepository>();
+      final overview = await inventory.overview();
+      final openStores = await stores.list(
+        size: 1,
+        includeClosed: false,
+        includeInactive: false,
+      );
+      return (overview, openStores.total);
+    },
     builder: (context, data, reload) => PageBody(
       padding: EdgeInsets.fromLTRB(
         AppTheme.isWide(context) ? AppSpace.xl : AppSpace.lg,
@@ -257,31 +331,43 @@ class _EquipmentSummary extends StatelessWidget {
         0,
       ),
       child: LayoutBuilder(
-        builder: (context, constraints) => Row(
+        builder: (context, constraints) => Wrap(
+          spacing: AppSpace.sm,
+          runSpacing: AppSpace.sm,
           children: [
-            for (final item in <(String, int, Widget)>[
-              ('전체 대수', data.total, const Icon(Icons.inventory_2_outlined)),
+            for (final item in <(String, int, Widget, String)>[
               (
-                '매장 설치',
-                data.byBrand.fold<int>(0, (sum, row) => sum + row.total),
-                const Icon(Icons.store_outlined),
+                '로봇팔',
+                _kindCount(data.$1, 'ROBOT_ARM'),
+                const Icon(Icons.inventory_2_outlined),
+                '대',
               ),
+              (
+                '제어박스',
+                _kindCount(data.$1, 'CONTROL_BOX'),
+                const Icon(Icons.developer_board_outlined),
+                '대',
+              ),
+              ('운영 매장', data.$2, const Icon(Icons.store_outlined), ''),
               (
                 '창고/사무실',
-                data.byPlace.fold<int>(0, (sum, row) => sum + row.total),
+                data.$1.byPlace.fold<int>(0, (sum, row) => sum + row.total),
                 const Icon(Icons.place_outlined),
+                '대',
               ),
-            ]) ...[
-              if (item.$1 != '전체 대수') const SizedBox(width: AppSpace.sm),
-              Expanded(
+            ])
+              SizedBox(
+                width:
+                    (constraints.maxWidth -
+                        AppSpace.sm * (constraints.maxWidth >= 600 ? 3 : 1)) /
+                    (constraints.maxWidth >= 600 ? 4 : 2),
                 child: StatTile(
                   label: item.$1,
-                  value: '${Fmt.number(item.$2)}대',
+                  value: '${Fmt.number(item.$2)}${item.$4}',
                   iconWidget: item.$3,
                   compact: !AppTheme.isWide(context),
                 ),
               ),
-            ],
           ],
         ),
       ),

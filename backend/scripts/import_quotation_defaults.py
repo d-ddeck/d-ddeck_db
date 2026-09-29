@@ -82,7 +82,7 @@ def extract_image(workbook_bytes: bytes, first_row: int, last_row: int) -> bytes
 
 
 def extract_signature(workbook_bytes: bytes) -> bytes | None:
-    return extract_image(workbook_bytes, 28, 31)
+    return extract_image(workbook_bytes, 27, 31)
 
 
 def extract_logo(workbook_bytes: bytes) -> bytes | None:

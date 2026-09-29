@@ -18,6 +18,7 @@ class QuotationRevision(UUIDMixin, Base):
     ticket_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("service_tickets.id", ondelete="CASCADE"), index=True
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     version: Mapped[int] = mapped_column(Integer)
     snapshot: Mapped[dict] = mapped_column(JSONType)
     filename: Mapped[str] = mapped_column(String(200))

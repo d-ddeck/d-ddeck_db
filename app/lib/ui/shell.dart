@@ -1,3 +1,4 @@
+import 'common/section_main_reporter.dart';
 import 'update_dialog.dart';
 import 'package:flutter/services.dart';
 import '../state/theme_state.dart';
@@ -45,6 +46,11 @@ class _HomeShellState extends State<HomeShell> {
   late int _index = widget.equipmentTab == null ? 0 : 2;
   final _equipmentKey = GlobalKey<EquipmentPageState>();
   final _visited = <int>{};
+  final _sectionRevisions = List<int>.filled(7, 0);
+  late final _sectionIsMain = List<bool>.filled(7, true)
+    ..[2] =
+        widget.equipmentTab == null ||
+        widget.equipmentTab == EquipmentTab.overview;
   bool _railExpanded = true;
   bool _railTouched = false;
   Future<void> _railSave = Future.value();
@@ -91,6 +97,18 @@ class _HomeShellState extends State<HomeShell> {
 
   final _pagesKey = GlobalKey();
 
+  void _backToSectionMain() {
+    final destinations = _destinationsFor(context.read<AuthState>().role);
+    final index = _index.clamp(0, destinations.length - 1);
+    if (index == 2) {
+      _equipmentKey.currentState?.backToMain();
+      return;
+    }
+    // Detail/form routes already pop normally, including unsaved-form guards.
+    // At the section root, return its tabs and transient view state to home.
+    setState(() => _sectionRevisions[index]++);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -115,193 +133,220 @@ class _HomeShellState extends State<HomeShell> {
           for (var i = 0; i < destinations.length; i++)
             !_visited.contains(i)
                 ? const SizedBox.shrink()
-                : destinations[i].label == '장비·매장'
-                ? EquipmentPage(
-                    key: _equipmentKey,
-                    tab: widget.equipmentTab ?? EquipmentTab.overview,
-                  )
-                : destinations[i].page,
+                : NotificationListener<SectionMainNotification>(
+                    onNotification: (notification) {
+                      if (_sectionIsMain[i] != notification.isMain) {
+                        setState(() => _sectionIsMain[i] = notification.isMain);
+                      }
+                      return true;
+                    },
+                    child: destinations[i].label == '장비·매장'
+                        ? EquipmentPage(
+                            key: _equipmentKey,
+                            tab: widget.equipmentTab ?? EquipmentTab.overview,
+                          )
+                        : KeyedSubtree(
+                            key: ValueKey('section-$i-${_sectionRevisions[i]}'),
+                            child: destinations[i].page,
+                          ),
+                  ),
         ],
       ),
     );
 
-    return CallbackShortcuts(
-      bindings: {
-        for (var i = 0; i < destinations.length && i < 7; i++)
-          SingleActivator(
-            [
-              LogicalKeyboardKey.digit1,
-              LogicalKeyboardKey.digit2,
-              LogicalKeyboardKey.digit3,
-              LogicalKeyboardKey.digit4,
-              LogicalKeyboardKey.digit5,
-              LogicalKeyboardKey.digit6,
-              LogicalKeyboardKey.digit7,
-            ][i],
-            alt: true,
-          ): () =>
-              setState(() => _index = i),
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _backToSectionMain();
       },
-      child: FocusTraversalGroup(
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(destinations[index].label),
-            actions: [
-              if (auth.isLoggingOut)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+              _backToSectionMain,
+          for (var i = 0; i < destinations.length && i < 7; i++)
+            SingleActivator(
+              [
+                LogicalKeyboardKey.digit1,
+                LogicalKeyboardKey.digit2,
+                LogicalKeyboardKey.digit3,
+                LogicalKeyboardKey.digit4,
+                LogicalKeyboardKey.digit5,
+                LogicalKeyboardKey.digit6,
+                LogicalKeyboardKey.digit7,
+              ][i],
+              alt: true,
+            ): () =>
+                setState(() => _index = i),
+        },
+        child: FocusTraversalGroup(
+          child: Scaffold(
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              title: _sectionIsMain[index]
+                  ? Text(destinations[index].label)
+                  : null,
+              leading: _sectionIsMain[index]
+                  ? null
+                  : BackButton(onPressed: _backToSectionMain),
+              actions: [
+                if (auth.isLoggingOut)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: context.read<ApiClient>().connected,
+                  builder: (context, connected, _) => connected
+                      ? const SizedBox.shrink()
+                      : const Tooltip(
+                          message: '서버 연결 끊김 · 다시 시도해 주세요',
+                          child: Icon(Icons.cloud_off),
+                        ),
                 ),
-              ValueListenableBuilder<bool>(
-                valueListenable: context.read<ApiClient>().connected,
-                builder: (context, connected, _) => connected
-                    ? const SizedBox.shrink()
-                    : const Tooltip(
-                        message: '서버 연결 끊김 · 다시 시도해 주세요',
-                        child: Icon(Icons.cloud_off),
+                if (AlarmService.isSupported)
+                  IconButton(
+                    tooltip: '이 폰에 저장된 알람 보기',
+                    icon: const Icon(Icons.alarm),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SyncedAlarmsPage(),
                       ),
-              ),
-              if (AlarmService.isSupported)
-                IconButton(
-                  tooltip: '이 폰에 저장된 알람 보기',
-                  icon: const Icon(Icons.alarm),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const SyncedAlarmsPage(),
                     ),
                   ),
-                ),
-              if (wide)
-                PopupMenuButton<bool>(
-                  tooltip: '목록 밀도',
-                  icon: const Icon(Icons.density_medium),
-                  itemBuilder: (_) => [
-                    CheckedPopupMenuItem(
-                      value: false,
-                      checked: !context.read<ThemeState>().compact,
-                      child: const Text('기본 간격'),
-                    ),
-                    CheckedPopupMenuItem(
-                      value: true,
-                      checked: context.read<ThemeState>().compact,
-                      child: const Text('촘촘히 보기'),
-                    ),
-                  ],
-                  onSelected: (value) async {
-                    try {
-                      await context.read<ThemeState>().setCompact(value);
-                    } catch (_) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('목록 밀도를 저장하지 못했습니다.')),
-                        );
+                if (wide)
+                  PopupMenuButton<bool>(
+                    tooltip: '목록 밀도',
+                    icon: const Icon(Icons.density_medium),
+                    itemBuilder: (_) => [
+                      CheckedPopupMenuItem(
+                        value: false,
+                        checked: !context.read<ThemeState>().compact,
+                        child: const Text('기본 간격'),
+                      ),
+                      CheckedPopupMenuItem(
+                        value: true,
+                        checked: context.read<ThemeState>().compact,
+                        child: const Text('촘촘히 보기'),
+                      ),
+                    ],
+                    onSelected: (value) async {
+                      try {
+                        await context.read<ThemeState>().setCompact(value);
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('목록 밀도를 저장하지 못했습니다.')),
+                          );
+                        }
                       }
-                    }
-                  },
-                ),
-              const ThemeModeButton(),
-              _NotificationButton(unread: auth.unreadCount),
-              _AccountMenu(user: auth.user),
-              const SizedBox(width: 8),
-            ],
-          ),
-          body: wide
-              ? Row(
-                  children: [
-                    SizedBox(
-                      width: _railExpanded ? 220 : 88,
-                      child: Column(
-                        children: [
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: IconButton(
-                              tooltip: _railExpanded ? '메뉴 접기' : '메뉴 펼치기',
-                              onPressed: _toggleRail,
-                              icon: _railExpanded
-                                  ? const Icon(Icons.menu_open)
-                                  : const Icon(Icons.menu),
+                    },
+                  ),
+                const ThemeModeButton(),
+                _NotificationButton(unread: auth.unreadCount),
+                _AccountMenu(user: auth.user),
+                const SizedBox(width: 8),
+              ],
+            ),
+            body: wide
+                ? Row(
+                    children: [
+                      SizedBox(
+                        width: _railExpanded ? 220 : 88,
+                        child: Column(
+                          children: [
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                tooltip: _railExpanded ? '메뉴 접기' : '메뉴 펼치기',
+                                onPressed: _toggleRail,
+                                icon: _railExpanded
+                                    ? const Icon(Icons.menu_open)
+                                    : const Icon(Icons.menu),
+                              ),
                             ),
-                          ),
-                          Expanded(
-                            child: NavigationRail(
-                              extended: _railExpanded,
-                              scrollable: true,
-                              minExtendedWidth: 220,
-                              selectedIndex: index,
-                              onDestinationSelected: (i) =>
-                                  setState(() => _index = i),
-                              labelType: NavigationRailLabelType.none,
-                              destinations: [
-                                for (final d in destinations)
-                                  NavigationRailDestination(
-                                    icon: Tooltip(
-                                      message: d.label,
-                                      child: Icon(d.icon),
+                            Expanded(
+                              child: NavigationRail(
+                                extended: _railExpanded,
+                                scrollable: true,
+                                minExtendedWidth: 220,
+                                selectedIndex: index,
+                                onDestinationSelected: (i) =>
+                                    setState(() => _index = i),
+                                labelType: NavigationRailLabelType.none,
+                                destinations: [
+                                  for (final d in destinations)
+                                    NavigationRailDestination(
+                                      icon: Tooltip(
+                                        message: d.label,
+                                        child: Icon(d.icon),
+                                      ),
+                                      selectedIcon: Tooltip(
+                                        message: d.label,
+                                        child: Icon(d.selectedIcon),
+                                      ),
+                                      label: Text(d.label),
                                     ),
-                                    selectedIcon: Tooltip(
-                                      message: d.label,
-                                      child: Icon(d.selectedIcon),
-                                    ),
-                                    label: Text(d.label),
+                                ],
+                              ),
+                            ),
+                            const Divider(),
+                            Padding(
+                              padding: const EdgeInsets.all(AppSpace.sm),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    auth.user?.fullName ?? '-',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                              ],
+                                  Text(
+                                    auth.role.label,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelSmall,
+                                  ),
+                                  IconButton(
+                                    tooltip: '로그아웃',
+                                    onPressed: () => _logout(context),
+                                    icon: const Icon(Icons.logout),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const Divider(),
-                          Padding(
-                            padding: const EdgeInsets.all(AppSpace.sm),
-                            child: Column(
-                              children: [
-                                Text(
-                                  auth.user?.fullName ?? '-',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  auth.role.label,
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                                IconButton(
-                                  tooltip: '로그아웃',
-                                  onPressed: () => _logout(context),
-                                  icon: const Icon(Icons.logout),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const VerticalDivider(width: 1),
-                    Expanded(child: body),
-                  ],
-                )
-              : body,
-          bottomNavigationBar: wide
-              ? null
-              : NavigationBar(
-                  selectedIndex: index < 4 ? index : 4,
-                  onDestinationSelected: (i) {
-                    if (i == 4) {
-                      _showMore(destinations);
-                    } else {
-                      setState(() => _index = i);
-                    }
-                  },
-                  destinations: [
-                    for (final d in destinations.take(4))
-                      NavigationDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
-                        label: d.label,
+                      const VerticalDivider(width: 1),
+                      Expanded(child: body),
+                    ],
+                  )
+                : body,
+            bottomNavigationBar: wide
+                ? null
+                : NavigationBar(
+                    selectedIndex: index < 4 ? index : 4,
+                    onDestinationSelected: (i) {
+                      if (i == 4) {
+                        _showMore(destinations);
+                      } else {
+                        setState(() => _index = i);
+                      }
+                    },
+                    destinations: [
+                      for (final d in destinations.take(4))
+                        NavigationDestination(
+                          icon: Icon(d.icon),
+                          selectedIcon: Icon(d.selectedIcon),
+                          label: d.label,
+                        ),
+                      const NavigationDestination(
+                        icon: Icon(Icons.more_horiz),
+                        label: '더보기',
                       ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.more_horiz),
-                      label: '더보기',
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );

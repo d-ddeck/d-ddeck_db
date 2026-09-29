@@ -1,3 +1,4 @@
+import '../common/section_main_reporter.dart';
 import '../../core/api_exception.dart';
 import '../../state/auth_state.dart';
 import '../../services/filter_memory.dart';
@@ -41,22 +42,25 @@ class _ServicePageState extends State<ServicePage>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: '접수 목록', icon: Icon(Icons.list_alt, size: 18)),
-            Tab(text: '자동 통계', icon: Icon(Icons.insights, size: 18)),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(
+    return SectionMainReporter(
+      controller: _tabs,
+      child: Column(
+        children: [
+          TabBar(
             controller: _tabs,
-            children: const [ServiceListTab(), ServiceStatsTab()],
+            tabs: const [
+              Tab(text: '접수 목록', icon: Icon(Icons.list_alt, size: 18)),
+              Tab(text: '자동 통계', icon: Icon(Icons.insights, size: 18)),
+            ],
           ),
-        ),
-      ],
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: const [ServiceListTab(), ServiceStatsTab()],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

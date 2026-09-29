@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:ddeck_app/data/admin_repository.dart';
 import 'package:ddeck_app/data/auth_repository.dart';
 import 'package:ddeck_app/data/calendar_repository.dart';
@@ -133,6 +134,102 @@ void main() {
         }
       }
     }
+  }
+
+  testWidgets('calendar rows resize with available screen height', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = _Auth();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthState>.value(value: auth),
+          Provider<CalendarRepository>.value(value: _Calendar()),
+          Provider<AdminRepository>.value(value: _Admin()),
+          Provider<AuthRepository>.value(value: _Directory()),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const CalendarPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double rowHeight() => tester
+        .widget<CalendarRangeSelection>(find.byType(CalendarRangeSelection))
+        .rowHeight;
+    final tallHeight = rowHeight();
+    final initialWidth = tester
+        .getSize(find.byType(CalendarRangeSelection))
+        .width;
+    tester.view.physicalSize = const Size(1800, 900);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(CalendarRangeSelection)).width,
+      greaterThan(initialWidth + 300),
+    );
+    expect(tester.takeException(), isNull);
+
+    tester.view.physicalSize = const Size(1200, 650);
+    await tester.pumpAndSettle();
+    expect(rowHeight(), lessThan(tallHeight));
+    expect(tester.takeException(), isNull);
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    final phoneHeight = rowHeight();
+    tester.view.physicalSize = const Size(390, 1100);
+    await tester.pumpAndSettle();
+    expect(rowHeight(), greaterThan(phoneHeight));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
+  for (final kind in [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+    testWidgets('double click date opens registration for that date $kind', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final auth = _Auth();
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthState>.value(value: auth),
+            Provider<CalendarRepository>.value(value: _Calendar()),
+            Provider<AdminRepository>.value(value: _Admin()),
+            Provider<AuthRepository>.value(value: _Directory()),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const CalendarPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final date = find.descendant(
+        of: find.byType(CalendarRangeSelection),
+        matching: find.text('15'),
+      );
+      await tester.tap(date, kind: kind);
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      expect(find.byType(EventFormPage), findsNothing);
+      await tester.tap(date, kind: kind);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(date, kind: kind);
+      await tester.pumpAndSettle();
+      expect(find.byType(EventFormPage), findsOneWidget);
+      final form = tester.widget<EventFormPage>(find.byType(EventFormPage));
+      final now = DateTime.now();
+      expect(form.initialDate, DateTime(now.year, now.month, 15));
+      expect(form.initialEnd, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      auth.dispose();
+    });
   }
 
   testWidgets(

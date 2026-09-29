@@ -141,7 +141,7 @@ def delete_calendar(
     calendar = _load_calendar(db, calendar_id)
     _require_calendar_admin(calendar, user)
     if calendar.type == CalendarType.COMPANY:
-        raise AppError("CANNOT_DELETE", "전사 캘린더는 삭제할 수 없습니다.")
+        raise AppError("CANNOT_DELETE", "공유 캘린더는 삭제할 수 없습니다.")
     calendar.deleted_at = now_utc()
     from app.services.attachment_lifecycle import soft_delete
 

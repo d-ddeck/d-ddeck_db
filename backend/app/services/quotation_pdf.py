@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from PIL import Image as PillowImage
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -20,6 +21,7 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
+    TopPadder,
 )
 
 
@@ -58,27 +60,39 @@ def render(
             [[p(c) for c in row] for row in rows], colWidths=widths, hAlign="LEFT"
         )
         commands = [
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#8692a3")),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("TOPPADDING", (0, 0), (-1, -1), 7),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ]
         if header:
             commands.extend([("SPAN", (0, 0), (1, 0)), ("SPAN", (2, 0), (3, 0))])
-            commands.append(("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf1f7")))
+            commands.append(("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.94, 0.94, 0.94)))
         t.setStyle(TableStyle(commands))
         return t
+
+    def monochrome_image(data):
+        # Composite transparent artwork on paper before embedding in grayscale.
+        # Keep uploaded originals intact for future templates.
+        with PillowImage.open(BytesIO(data)) as original:
+            rgba = original.convert("RGBA")
+            paper = PillowImage.new("RGBA", rgba.size, "white")
+            paper.alpha_composite(rgba)
+            output = BytesIO()
+            paper.convert("L").save(output, format="PNG")
+        output.seek(0)
+        return Image(output)
 
     money = lambda n: f"{int(n):,}"
     supplier, recipient = snapshot["supplier"], snapshot["recipient"]
     if logo:
-        logo_image = Image(BytesIO(logo))
+        logo_image = monochrome_image(logo)
         scale = min(58 / logo_image.imageWidth, 48 / logo_image.imageHeight)
         logo_image.drawWidth = logo_image.imageWidth * scale
         logo_image.drawHeight = logo_image.imageHeight * scale
         logo_image.hAlign = "LEFT"
         heading = Table(
-            [[logo_image, Paragraph("D.DDECK &nbsp; 견 적 서", title_style), ""]],
+            [[logo_image, Paragraph("견적서", title_style), ""]],
             colWidths=[70, 375, 70],
             hAlign="LEFT",
         )
@@ -94,7 +108,7 @@ def render(
             )
         )
     else:
-        heading = Paragraph("D.DDECK &nbsp; 견 적 서", title_style)
+        heading = Paragraph("견적서", title_style)
     story = [heading, Spacer(1, 16)]
     story += [
         table(
@@ -168,8 +182,8 @@ def render(
     items.setStyle(
         TableStyle(
             [
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#8692a3")),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf1f7")),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.94, 0.94, 0.94)),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("TOPPADDING", (0, 0), (-1, -1), 8),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
@@ -193,10 +207,12 @@ def render(
             ]
         ),
     ]
-    right_style = ParagraphStyle("closing", parent=style, alignment=TA_RIGHT)
+    right_style = ParagraphStyle(
+        "closing", parent=style, fontSize=19, leading=26, alignment=TA_RIGHT
+    )
     closing_text = f"{supplier['company']}  대표이사 {supplier['contact']}"
     if signature:
-        signature_image = Image(BytesIO(signature))
+        signature_image = monochrome_image(signature)
         scale = min(76 / signature_image.imageWidth, 48 / signature_image.imageHeight)
         signature_image.drawWidth = signature_image.imageWidth * scale
         signature_image.drawHeight = signature_image.imageHeight * scale
@@ -219,21 +235,32 @@ def render(
         )
     else:
         closing = Paragraph(escape(closing_text + " (인)"), right_style)
-    story += [
-        p("[ 안내사항 ]"),
-        p(snapshot["notes"] or "-"),
-        Spacer(1, 18),
-        KeepTogether(
-            [
-                Paragraph(
-                    "상기 견적서를 제출합니다.",
-                    ParagraphStyle("submission", parent=style, alignment=TA_CENTER),
-                ),
-                Spacer(1, 6),
-                closing,
-            ]
-        ),
-    ]
+    notes = Table(
+        [[p("안내사항")], [p(snapshot["notes"] or "-")]],
+        colWidths=[515], hAlign="LEFT", splitInRow=1,
+    )
+    notes.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.94, 0.94, 0.94)),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    # Keep the submission and signature together at the bottom of the final page.
+    closing_block = Table(
+        [[Paragraph(
+            "상기 견적서를 제출합니다.",
+            ParagraphStyle("submission", parent=style, alignment=TA_RIGHT),
+        )], [Spacer(1, 28)], [closing]],
+        colWidths=[515], hAlign="RIGHT", splitByRow=0,
+    )
+    closing_block.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story += [notes, Spacer(1, 18), TopPadder(closing_block)]
 
     def footer(canvas, doc):
         canvas.setFont(font, 8)

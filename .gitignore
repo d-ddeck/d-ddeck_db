@@ -53,3 +53,6 @@ dddeckservercode/
 /backend/server.pid
 /backend/storage/*
 !/backend/storage/.gitkeep
+
+# Local company templates and signature artwork
+/source/

@@ -76,7 +76,11 @@ try:
         )
         path = f"/service/tickets/{t['id']}/quotations"
         defaults = call("GET", path + "/defaults")
-        assert defaults["supplier"]["company"] == ""
+        assert defaults["supplier"] == {
+            "company": "디떽", "contact": "원정훈",
+            "address": "경기도 하남시 조정대로 45",
+            "phone": "010-2256-5407", "email": "exit@d-ddeck.com",
+        }
         assert call("GET", path) == []
         payload = {
             **defaults,
@@ -138,7 +142,7 @@ try:
             )
             anchors = "".join(
                 f'<x:oneCellAnchor><x:from><x:row>{row}</x:row></x:from><x:pic><x:blipFill><a:blip r:embed="{identifier}"/></x:blipFill></x:pic></x:oneCellAnchor>'
-                for row, identifier in [(0, "logo"), (29, "signature")]
+                for row, identifier in [(0, "logo"), (27, "signature")]
             )
             archive.writestr(
                 "xl/drawings/drawing1.xml",
@@ -187,6 +191,20 @@ try:
             "/api/v1" + path + "/" + v2["id"] + "/pdf", headers=headers
         ).content
         assert len(PdfReader(io.BytesIO(pdf2)).pages[0].images) == 2
+        for image in PdfReader(io.BytesIO(pdf2)).pages[0].images:
+            assert image.image.mode == "L", "Quotation images must be grayscale"
+        for document in (pdf1.content, pdf2):
+            pages = PdfReader(io.BytesIO(document)).pages
+            first_text = pages[0].extract_text()
+            assert "견적서" in first_text and "D.DDECK" not in first_text
+            signature_sizes = []
+            def inspect_signature(text, cm, tm, font_dict, font_size, sizes=signature_sizes):
+                if "대표이사" in text:
+                    sizes.append(font_size)
+                    assert cm[5] + tm[5] < 120, "Signature must be near page bottom"
+            pages[-1].extract_text(visitor_text=inspect_signature)
+            assert signature_sizes and all(size == 19 for size in signature_sizes)
+
         assert v2["snapshot"]["logo_sha256"] == hashlib.sha256(logo_bytes).hexdigest()
         assert (
             "상기 견적서를 제출합니다."
@@ -204,7 +222,6 @@ try:
         assert [r["version"] for r in call("GET", path)] == [2, 1]
         call("POST", path, updated, 409)
         call("PATCH", path + "/" + v1["id"], {}, 405)
-        call("DELETE", path + "/" + v1["id"], expected=405)
         assert c.get("/api/v1" + path + "/" + v1["id"] + "/pdf").status_code == 401
         call(
             "GET",
@@ -246,6 +263,10 @@ try:
         ).content
         reader = PdfReader(io.BytesIO(pdf3))
         assert len(reader.pages) > 1
+        assert "상기 견적서를 제출합니다." in reader.pages[-1].extract_text()
+        assert all("상기 견적서를 제출합니다." not in page.extract_text()
+                   for page in reader.pages[:-1])
+
         assert "항목 60" in "".join(p.extract_text() for p in reader.pages)
 
         # Logo must not be applied to another supplier company.
@@ -265,6 +286,25 @@ try:
         with ThreadPoolExecutor(max_workers=2) as pool:
             assert sorted(pool.map(submit, range(2))) == [201, 409]
         assert [v["version"] for v in call("GET", path)] == [4, 3, 2, 1]
+        saved_versions = call("GET", path)
+        assert all(v["can_delete"] for v in saved_versions)
+        first_id = saved_versions[0]["id"]
+        call("DELETE", f"/service/tickets/{t2['id']}/quotations/{first_id}", expected=404)
+        assert c.delete("/api/v1" + path + "/" + first_id).status_code == 401
+        with patch("app.api.v1.quotations.can_delete", return_value=False):
+            call("DELETE", path + "/" + first_id, expected=403)
+        call("DELETE", path + "/" + first_id)
+        call("GET", path + "/" + first_id, expected=404)
+        call("GET", path + "/" + first_id + "/pdf", expected=404)
+        call("DELETE", path + "/" + first_id, expected=404)
+        call("POST", path, {**payload, "base_version": 4}, 409)
+        next_quote = call("POST", path, {**payload, "base_version": 3}, 201)
+        assert next_quote["version"] == 5
+        for v in call("GET", path):
+            call("DELETE", path + "/" + v["id"])
+        assert call("GET", path) == []
+        next_quote = call("POST", path, {**payload, "base_version": 0}, 201)
+        assert next_quote["version"] == 6
         call("DELETE", f"/service/tickets/{t['id']}")
         call("GET", path, expected=404)
         print(

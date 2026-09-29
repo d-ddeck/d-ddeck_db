@@ -36,8 +36,8 @@ class StoreRepository {
         'size': size,
         'q': query,
         'brand_id': brandId,
-        // 기본이 false 라 켤 때만 보낸다.
-        'include_closed': includeClosed ? true : null,
+        // Explicit false must override the server's show_closed_stores setting.
+        'include_closed': includeClosed,
         'include_inactive': includeInactive,
         'sort': sort,
         'descending': descending,

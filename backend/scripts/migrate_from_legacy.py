@@ -805,7 +805,7 @@ def migrate_events(
     calendar = db.scalar(select(Calendar).where(Calendar.type == CalendarType.COMPANY))
     if calendar is None:
         calendar = Calendar(
-            name="전사 캘린더", type=CalendarType.COMPANY, color="#3B82F6"
+            name="공유 캘린더", type=CalendarType.COMPANY, color="#3B82F6"
         )
         db.add(calendar)
         db.flush()

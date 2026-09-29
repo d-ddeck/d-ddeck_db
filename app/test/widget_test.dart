@@ -305,7 +305,7 @@ void main() {
       'scheduled_at': '2026-09-21T00:30:00+00:00',
       'offset_minutes': offset,
       'color': '#3B82F6',
-      'calendar_name': '전사 캘린더',
+      'calendar_name': '공유 캘린더',
     };
 
     test('서버 응답을 파싱하고 UTC 를 로컬로 바꾼다', () {

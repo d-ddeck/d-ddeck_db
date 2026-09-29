@@ -271,7 +271,13 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
     (
         ModuleKey.SERVICE,
         "quotation_supplier",
-        {"company": "", "contact": "", "address": "", "phone": "", "email": ""},
+        {
+            "company": "디떽",
+            "contact": "원정훈",
+            "address": "경기도 하남시 조정대로 45",
+            "phone": "010-2256-5407",
+            "email": "exit@d-ddeck.com",
+        },
         "json",
         "견적서 기본 공급자 정보",
         False,
@@ -705,11 +711,18 @@ def _seed_boards(db: Session) -> None:
 
 
 def _seed_calendar(db: Session) -> None:
+    for calendar in db.scalars(
+        select(Calendar).where(
+            Calendar.type == CalendarType.COMPANY,
+            Calendar.name == "전사 캘린더",
+        )
+    ):
+        calendar.name = "공유 캘린더"
     exists = db.scalar(select(Calendar.id).where(Calendar.type == CalendarType.COMPANY))
     if exists is None:
         db.add(
             Calendar(
-                name="전사 캘린더",
+                name="공유 캘린더",
                 type=CalendarType.COMPANY,
                 color="#3B82F6",
                 is_shared=True,

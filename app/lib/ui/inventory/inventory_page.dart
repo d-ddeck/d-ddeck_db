@@ -311,6 +311,8 @@ class InventoryListTabState extends State<InventoryListTab> {
         if (_filters.isEmpty) {
           final saved = await FilterMemory.load(_filterMemoryKey!);
           if (!mounted) return <Asset>[];
+          saved.remove('store_id');
+          saved.remove('at_store');
           _sort = saved.remove('_sort') as String? ?? _sort;
           _filters.addAll(saved);
           _search.text = _filters['q'] as String? ?? '';
@@ -486,6 +488,38 @@ class InventoryListTabState extends State<InventoryListTab> {
             padding: const EdgeInsets.only(bottom: AppSpace.md),
             child: Column(
               children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: AppSpace.sm),
+                        child: ChoiceChip(
+                          label: const Text('전체'),
+                          selected: !_filters.containsKey('category_id'),
+                          onSelected: (_) => _set('category_id', null),
+                        ),
+                      ),
+                      for (final kind in [
+                        ..._kinds.where((k) => k.code == 'ROBOT_ARM'),
+                        ..._kinds.where((k) => k.code == 'CONTROL_BOX'),
+                        ..._kinds.where(
+                          (k) =>
+                              k.code != 'ROBOT_ARM' && k.code != 'CONTROL_BOX',
+                        ),
+                      ])
+                        Padding(
+                          padding: const EdgeInsets.only(right: AppSpace.sm),
+                          child: ChoiceChip(
+                            label: Text(kind.name),
+                            selected: _filters['category_id'] == kind.id,
+                            onSelected: (_) => _set('category_id', kind.id),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpace.sm),
                 TextField(
                   controller: _search,
                   decoration: const InputDecoration(
@@ -537,9 +571,6 @@ class InventoryListTabState extends State<InventoryListTab> {
                         ),
                         onDeleted: () => _set('status', null),
                       ),
-                    _filter('종류', 'category_id', {
-                      for (final c in _kinds) c.id: c.name,
-                    }),
                     _filter('세부 상태', 'status_item_id', {
                       for (final c in _statuses) c.id: c.name,
                     }),
@@ -547,27 +578,9 @@ class InventoryListTabState extends State<InventoryListTab> {
                       for (final b in _brands)
                         if (b.brandId != null) b.brandId!: b.brandName,
                     }),
-                    _filter('매장', 'store_id', {
-                      for (final s in _stores.where(
-                        (s) =>
-                            _filters['brand_id'] == null ||
-                            s.brandId == _filters['brand_id'],
-                      ))
-                        s.id: s.name,
-                    }),
                     _filter('위치', 'location_id', {
                       for (final l in _places) l.id: l.display,
                     }),
-                    for (final option in <(String, bool?)>[
-                      ('전체 위치', null),
-                      ('매장', true),
-                      ('미설치', false),
-                    ])
-                      ChoiceChip(
-                        label: Text(option.$1),
-                        selected: _filters['at_store'] == option.$2,
-                        onSelected: (_) => _set('at_store', option.$2),
-                      ),
                   ],
                 ),
               ],
@@ -638,7 +651,7 @@ class InventoryListTabState extends State<InventoryListTab> {
                                     ),
                                   ),
                                   TableColumn(
-                                    label: '품명',
+                                    label: '제품명',
                                     cell: (a) => Tooltip(
                                       message: a.name,
                                       child: Text(
@@ -649,14 +662,7 @@ class InventoryListTabState extends State<InventoryListTab> {
                                     ),
                                   ),
                                   TableColumn(
-                                    label: '상태',
-                                    cell: (a) => StatusChip(
-                                      label: _statusLabel(a),
-                                      color: a.status.color,
-                                    ),
-                                  ),
-                                  TableColumn(
-                                    label: '위치',
+                                    label: '현재 위치',
                                     cell: (a) => Tooltip(
                                       message: _placeLabel(a),
                                       child: Text(
@@ -666,12 +672,6 @@ class InventoryListTabState extends State<InventoryListTab> {
                                       ),
                                     ),
                                   ),
-                                  TableColumn(
-                                    label: '세트',
-                                    numeric: true,
-                                    cell: (a) => Text(Fmt.number(a.setNo)),
-                                  ),
-                                  TableColumn(label: '작업', cell: _actions),
                                 ],
                               ),
                             ],
@@ -732,22 +732,12 @@ class InventoryListTabState extends State<InventoryListTab> {
     );
   }
 
-  String _statusLabel(Asset a) =>
-      _statuses.where((s) => s.id == a.statusItemId).firstOrNull?.name ??
-      a.statusLabel;
   String _placeLabel(Asset a) => a.storeId != null
       ? _stores.where((s) => s.id == a.storeId).firstOrNull?.name ??
             a.placeLabel
       : _places.where((l) => l.id == a.locationId).firstOrNull?.display ??
             a.placeLabel;
 
-  Widget _actions(Asset a) => AssetActionsMenu(
-    key: ValueKey(a.id),
-    assetId: a.id,
-    label: '${a.name} S/N ${a.serialNo ?? a.assetNo}',
-    atStore: a.storeId != null,
-    onChanged: widget.onChanged,
-  );
   Future<void> _detail(Asset a, VoidCallback reload) async {
     await Navigator.push(
       context,
