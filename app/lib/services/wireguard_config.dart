@@ -12,9 +12,9 @@ library;
 /// 비밀로 다뤄야 하는 키. 사람이 보는 출력에서 제외한다.
 const _secretKeys = {'privatekey', 'presharedkey'};
 
-/// 구 서버 문서(deploy/README-vpn.md)가 쓰는 기본값.
-const defaultLanSubnet = '192.168.0.0/24';
-const defaultVpnSubnet = '10.109.203.0/24';
+/// 현재 사내망과 공유기 WireGuard 인터페이스의 대역.
+const defaultLanSubnet = '192.168.121.0/24';
+const defaultVpnSubnet = '10.153.127.0/24';
 
 /// 공유기 NAT 매핑이 끊겨 첫 접속이 지연되는 것을 막는 값.
 const defaultKeepalive = 25;
@@ -172,7 +172,7 @@ class WireguardConfig {
 
   /// 이 터널로 [host] 에 닿을 수 있는가.
   ///
-  /// 서버 주소(192.168.0.20 같은 사내 IP)가 AllowedIPs 안에 들어 있는지 본다.
+  /// 서버 주소(192.168.121.2 같은 사내 IP)가 AllowedIPs 안에 들어 있는지 본다.
   /// 들어 있지 않으면 VPN 을 켜도 앱이 서버를 찾지 못한다 - 가져오기 화면에서
   /// 미리 잡아야 할 실수다.
   ///

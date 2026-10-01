@@ -20,7 +20,7 @@ cd C:\Users\kmean\OneDrive\Desktop\d-ddeck_db
   설치 완료
 
 클라이언트에서 입력할 서버 주소
-    http://192.168.0.20:8000
+    https://192.168.121.2
 
 최고 관리자 계정
     이메일   admin@ddeck.local
@@ -88,7 +88,7 @@ powercfg /change monitor-timeout-ac 15
 **3. 클라이언트 설치 파일 재생성** — 나온 주소로 다시 만들어 배포합니다.
 
 ```powershell
-.\installer\build.ps1 -ServerUrl "http://192.168.0.20:8000"
+.\installer\build.ps1 -ServerUrl "https://192.168.121.2"
 ```
 
 ---

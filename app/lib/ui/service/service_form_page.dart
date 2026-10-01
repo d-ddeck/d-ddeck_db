@@ -1,3 +1,5 @@
+import 'package:file_picker/file_picker.dart';
+import '../../data/file_repository.dart';
 import '../common/save_attachment_button.dart';
 import 'service_detail_page.dart';
 import 'quotation_page.dart';
@@ -71,6 +73,11 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   final _product = TextEditingController();
   final _model = TextEditingController();
   final _serial = TextEditingController();
+  final _note = TextEditingController();
+  final _resultNote = TextEditingController();
+  ServiceStatus _initialStatus = ServiceStatus.received;
+  final List<PlatformFile> _pendingFiles = [];
+  ServiceTicket? _createdTicket;
   final _description = TextEditingController();
   final _rentalController = TextEditingController();
   final _rentalField = GlobalKey<InventorySerialFieldState>();
@@ -90,7 +97,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   bool _defaultsLoaded = false;
   bool _storeContactDefaultsLoaded = false;
   final _sectionKeys = {
-    for (final name in ['매장', '발생', '원인', '서비스', '렌탈', '기타']) name: GlobalKey(),
+    for (final name in ['매장', '발생', '원인', '서비스', '렌탈', '비고']) name: GlobalKey(),
   };
   Set<FormFieldState<Object?>> _invalidFields = {};
   ServicePriority _priority = ServicePriority.normal;
@@ -168,6 +175,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       _model,
       _serial,
       _description,
+      _note,
+      _resultNote,
     ]) {
       c.dispose();
     }
@@ -330,6 +339,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     DateTime? date,
     ValueChanged<DateTime> changed, {
     bool required = false,
+    bool withTime = false,
   }) => FormField<DateTime>(
     key: ValueKey('$label:$date'),
     validator: (_) => required && date == null ? '$label을 선택해 주세요.' : null,
@@ -338,7 +348,9 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       children: [
         OutlinedButton.icon(
           icon: const Icon(Icons.calendar_today, size: 18),
-          label: Text('$label: ${date == null ? '선택' : Fmt.date(date)}'),
+          label: Text(
+            '$label: ${date == null ? '선택' : (withTime ? '${Fmt.date(date)} ${TimeOfDay.fromDateTime(date.toLocal()).format(context)}' : Fmt.date(date))}',
+          ),
           onPressed: () async {
             final picked = await pickDate(
               context,
@@ -346,7 +358,25 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
               firstDate: DateTime(1900),
               lastDate: DateTime(2100, 12, 31),
             );
-            if (picked != null && mounted) setState(() => changed(picked));
+            if (picked == null || !mounted) return;
+            var value = picked;
+            if (withTime) {
+              final time = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.fromDateTime(
+                  (date ?? DateTime.now()).toLocal(),
+                ),
+              );
+              if (time == null || !mounted) return;
+              value = DateTime(
+                picked.year,
+                picked.month,
+                picked.day,
+                time.hour,
+                time.minute,
+              );
+            }
+            setState(() => changed(value));
           },
         ),
         if (field.hasError)
@@ -474,6 +504,10 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
               _model.text,
               _serial.text,
               _description.text,
+              _note.text,
+              _resultNote.text,
+              _initialStatus,
+              _pendingFiles.map((f) => f.path).join(","),
               _rentalSerials,
               _customerId,
               _assigneeId,
@@ -549,7 +583,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                   Expanded(
                     child: SingleChildScrollView(
                       child: AbsorbPointer(
-                        absorbing: _busy,
+                        absorbing: _busy || _createdTicket != null,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -602,7 +636,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                       DropdownMenuItem(
                                         value: s.id,
                                         child: Text(
-                                          '${s.name}${s.isClosed ? ' (폐점)' : ''}',
+                                          '${s.name}${s.isClosed ? ' (미운영)' : ''}',
                                         ),
                                       ),
                                   ],
@@ -653,9 +687,10 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                               title: '발생',
                               children: [
                                 _date(
-                                  '발생일',
+                                  '발생일시',
                                   _receivedAt,
                                   (v) => _receivedAt = v,
+                                  withTime: true,
                                   required: true,
                                 ),
                                 _code(
@@ -796,168 +831,251 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                               ],
                             ),
                             const FormGap(),
-                            FormSection(
-                              key: _sectionKeys['기타'],
-                              title: '기타',
-                              children: [
-                                DropdownButtonFormField<String>(
-                                  initialValue: _customerId,
-                                  decoration: const InputDecoration(
-                                    labelText: '거래처',
-                                  ),
-                                  isExpanded: true,
-                                  items: [
-                                    const DropdownMenuItem(
-                                      value: null,
-                                      child: Text('직접 입력'),
-                                    ),
-                                    for (final c in options.customers)
-                                      DropdownMenuItem(
-                                        value: c.id,
-                                        child: Text(c.name),
-                                      ),
-                                  ],
-                                  onChanged: (v) => setState(() {
-                                    _customerId = v;
-                                    // Pre-fill contact details from the chosen customer so the
-                                    // technician does not retype them.
-                                    if (v != null && _storeId == null) {
-                                      final c = options.customers.firstWhere(
-                                        (x) => x.id == v,
-                                      );
-                                      _phone.text = c.phone ?? '';
-                                      _address.text = c.address ?? '';
-                                    }
-                                  }),
-                                ),
-                                if (_customerId == null) ...[
-                                  TextFormField(
-                                    controller: _customerName,
+                            if (_isEdit)
+                              FormSection(
+                                key: _sectionKeys['비고'],
+                                title: '기존 부가 정보',
+                                children: [
+                                  DropdownButtonFormField<String>(
+                                    initialValue: _customerId,
                                     decoration: const InputDecoration(
-                                      labelText: '거래처명 (직접 입력)',
+                                      labelText: '거래처',
                                     ),
+                                    isExpanded: true,
+                                    items: [
+                                      const DropdownMenuItem(
+                                        value: null,
+                                        child: Text('직접 입력'),
+                                      ),
+                                      for (final c in options.customers)
+                                        DropdownMenuItem(
+                                          value: c.id,
+                                          child: Text(c.name),
+                                        ),
+                                    ],
+                                    onChanged: (v) => setState(() {
+                                      _customerId = v;
+                                      // Pre-fill contact details from the chosen customer so the
+                                      // technician does not retype them.
+                                      if (v != null && _storeId == null) {
+                                        final c = options.customers.firstWhere(
+                                          (x) => x.id == v,
+                                        );
+                                        _phone.text = c.phone ?? '';
+                                        _address.text = c.address ?? '';
+                                      }
+                                    }),
+                                  ),
+                                  if (_customerId == null) ...[
+                                    TextFormField(
+                                      controller: _customerName,
+                                      decoration: const InputDecoration(
+                                        labelText: '거래처명 (직접 입력)',
+                                      ),
+                                    ),
+                                  ],
+
+                                  TextFormField(
+                                    controller: _product,
+                                    decoration: const InputDecoration(
+                                      labelText: '제품명',
+                                    ),
+                                  ),
+
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _model,
+                                          decoration: const InputDecoration(
+                                            labelText: '모델',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _serial,
+                                          decoration: const InputDecoration(
+                                            labelText: '시리얼',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  const Divider(height: 32),
+                                  DropdownButtonFormField<String>(
+                                    initialValue: _assigneeId,
+                                    decoration: const InputDecoration(
+                                      labelText: '담당자',
+                                    ),
+                                    isExpanded: true,
+                                    items: [
+                                      const DropdownMenuItem(
+                                        value: null,
+                                        child: Text('미배정'),
+                                      ),
+                                      for (final m in options.members)
+                                        DropdownMenuItem(
+                                          value: m.id,
+                                          child: Text(m.display),
+                                        ),
+                                    ],
+                                    onChanged: (v) =>
+                                        setState(() => _assigneeId = v),
+                                  ),
+
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child:
+                                            DropdownButtonFormField<
+                                              ServicePriority
+                                            >(
+                                              initialValue: _priority,
+                                              decoration: const InputDecoration(
+                                                labelText: '우선순위',
+                                              ),
+                                              isExpanded: true,
+                                              items: [
+                                                for (final p
+                                                    in ServicePriority.values)
+                                                  DropdownMenuItem(
+                                                    value: p,
+                                                    child: Text(p.label),
+                                                  ),
+                                              ],
+                                              onChanged: (v) => setState(
+                                                () =>
+                                                    _priority = v ?? _priority,
+                                              ),
+                                            ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child:
+                                            DropdownButtonFormField<
+                                              ServiceChannel
+                                            >(
+                                              initialValue: _channel,
+                                              decoration: const InputDecoration(
+                                                labelText: '접수 경로',
+                                              ),
+                                              isExpanded: true,
+                                              items: [
+                                                for (final c
+                                                    in ServiceChannel.values)
+                                                  DropdownMenuItem(
+                                                    value: c,
+                                                    child: Text(c.label),
+                                                  ),
+                                              ],
+                                              onChanged: (v) => setState(
+                                                () => _channel = v ?? _channel,
+                                              ),
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  SwitchListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text(
+                                      '보증 수리',
+                                      style: TextStyle(fontSize: 14),
+                                    ),
+                                    subtitle: const Text(
+                                      '끄면 유상 처리로 집계됩니다.',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    value: _isWarranty,
+                                    onChanged: (v) =>
+                                        setState(() => _isWarranty = v),
                                   ),
                                 ],
-
-                                TextFormField(
-                                  controller: _product,
-                                  decoration: const InputDecoration(
-                                    labelText: '제품명',
+                              ),
+                            if (!_isEdit)
+                              FormSection(
+                                key: _sectionKeys['비고'],
+                                title: '비고',
+                                children: [
+                                  TextFormField(
+                                    controller: _note,
+                                    maxLines: 3,
+                                    decoration: const InputDecoration(
+                                      labelText: '비고',
+                                      hintText: '추가 전달 사항을 입력하세요.',
+                                    ),
                                   ),
-                                ),
-
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: _model,
-                                        decoration: const InputDecoration(
-                                          labelText: '모델',
+                                  DropdownButtonFormField<ServiceStatus>(
+                                    initialValue: _initialStatus,
+                                    decoration: const InputDecoration(
+                                      labelText: '저장 상태',
+                                    ),
+                                    items: [
+                                      for (final status in [
+                                        ServiceStatus.received,
+                                        ServiceStatus.inProgress,
+                                        ServiceStatus.completed,
+                                      ])
+                                        DropdownMenuItem(
+                                          value: status,
+                                          child: Text(status.label),
                                         ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: _serial,
-                                        decoration: const InputDecoration(
-                                          labelText: '시리얼',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const Divider(height: 32),
-                                DropdownButtonFormField<String>(
-                                  initialValue: _assigneeId,
-                                  decoration: const InputDecoration(
-                                    labelText: '담당자',
+                                    ],
+                                    onChanged: (value) =>
+                                        setState(() => _initialStatus = value!),
                                   ),
-                                  isExpanded: true,
-                                  items: [
-                                    const DropdownMenuItem(
-                                      value: null,
-                                      child: Text('미배정'),
-                                    ),
-                                    for (final m in options.members)
-                                      DropdownMenuItem(
-                                        value: m.id,
-                                        child: Text(m.display),
+                                  if (_initialStatus == ServiceStatus.completed)
+                                    TextFormField(
+                                      controller: _resultNote,
+                                      maxLines: 3,
+                                      decoration: const InputDecoration(
+                                        labelText: '서비스 처리 내용 *',
                                       ),
-                                  ],
-                                  onChanged: (v) =>
-                                      setState(() => _assigneeId = v),
-                                ),
-
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child:
-                                          DropdownButtonFormField<
-                                            ServicePriority
-                                          >(
-                                            initialValue: _priority,
-                                            decoration: const InputDecoration(
-                                              labelText: '우선순위',
-                                            ),
-                                            isExpanded: true,
-                                            items: [
-                                              for (final p
-                                                  in ServicePriority.values)
-                                                DropdownMenuItem(
-                                                  value: p,
-                                                  child: Text(p.label),
+                                      validator: (value) =>
+                                          value == null || value.trim().isEmpty
+                                          ? '종결 처리 내용을 입력해 주세요.'
+                                          : null,
+                                    ),
+                                  OutlinedButton.icon(
+                                    onPressed: _busy
+                                        ? null
+                                        : () async {
+                                            final files = await FilePicker
+                                                .platform
+                                                .pickFiles(allowMultiple: true);
+                                            if (!mounted || files == null) {
+                                              return;
+                                            }
+                                            setState(
+                                              () => _pendingFiles.addAll(
+                                                files.files.where(
+                                                  (f) => f.path != null,
                                                 ),
-                                            ],
-                                            onChanged: (v) => setState(
-                                              () => _priority = v ?? _priority,
-                                            ),
-                                          ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child:
-                                          DropdownButtonFormField<
-                                            ServiceChannel
-                                          >(
-                                            initialValue: _channel,
-                                            decoration: const InputDecoration(
-                                              labelText: '접수 경로',
-                                            ),
-                                            isExpanded: true,
-                                            items: [
-                                              for (final c
-                                                  in ServiceChannel.values)
-                                                DropdownMenuItem(
-                                                  value: c,
-                                                  child: Text(c.label),
-                                                ),
-                                            ],
-                                            onChanged: (v) => setState(
-                                              () => _channel = v ?? _channel,
-                                            ),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text(
-                                    '보증 수리',
-                                    style: TextStyle(fontSize: 14),
+                                              ),
+                                            );
+                                          },
+                                    icon: const Icon(Icons.attach_file),
+                                    label: const Text('첨부파일 추가'),
                                   ),
-                                  subtitle: const Text(
-                                    '끄면 유상 처리로 집계됩니다.',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                  value: _isWarranty,
-                                  onChanged: (v) =>
-                                      setState(() => _isWarranty = v),
-                                ),
-                              ],
-                            ),
+                                  for (final file in _pendingFiles.toList())
+                                    ListTile(
+                                      title: Text(file.name),
+                                      subtitle: const Text('저장 시 업로드'),
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.close),
+                                        onPressed: _busy
+                                            ? null
+                                            : () => setState(
+                                                () =>
+                                                    _pendingFiles.remove(file),
+                                              ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             const FormGap(),
                           ],
                         ),
@@ -970,7 +1088,13 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                       children: [
                         FilledButton(
                           onPressed: _busy || _storesLoading ? null : _submit,
-                          child: Text(_busy ? '저장 중…' : '저장'),
+                          child: Text(
+                            _busy
+                                ? '저장 중…'
+                                : _createdTicket != null
+                                ? '첨부 업로드 재시도'
+                                : '저장',
+                          ),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
@@ -1012,8 +1136,8 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     if (closed != null &&
         !await ConfirmDialog.show(
           context,
-          title: '폐점 매장',
-          message: '${closed.name}은(는) 폐점 매장입니다. 서비스 기록을 저장하시겠습니까?',
+          title: '미운영 매장',
+          message: '${closed.name}은(는) 미운영 매장입니다. 서비스 기록을 저장하시겠습니까?',
           confirmLabel: '저장',
         )) {
       return;
@@ -1033,7 +1157,9 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       if (!mounted) return;
       try {
         final ServiceTicket saved;
-        if (_isEdit) {
+        if (_createdTicket != null) {
+          saved = _createdTicket!;
+        } else if (_isEdit) {
           saved = await repo.update(widget.ticket!.id, {
             'store_id': _storeId,
             'work_type_id': _workTypeId,
@@ -1069,6 +1195,9 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
           });
         } else {
           saved = await repo.create(
+            initialStatus: _initialStatus,
+            note: _note.text.trim(),
+            resultNote: _resultNote.text.trim(),
             storeId: _storeId,
             workTypeId: _workTypeId,
             faultId: _faultId,
@@ -1099,6 +1228,31 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             channel: _channel,
             isWarranty: _isWarranty,
           );
+        }
+        if (!_isEdit) _createdTicket = saved;
+        if (!mounted) return;
+        final files = _pendingFiles.isEmpty
+            ? null
+            : context.read<FileRepository>();
+        for (final file in _pendingFiles.toList()) {
+          try {
+            await files!.upload(
+              entityType: FileRepository.serviceTicket,
+              entityId: saved.id,
+              filePath: file.path!,
+              fileName: file.name,
+            );
+            _pendingFiles.remove(file);
+          } catch (_) {
+            if (mounted) {
+              AppSnack.show(
+                context,
+                '접수는 저장되었습니다. 첨부 업로드에 실패했습니다. 저장을 눌러 남은 파일을 재시도하세요.',
+                error: true,
+              );
+            }
+            return;
+          }
         }
         if (!mounted) return;
         AppSnack.saved(

@@ -276,7 +276,7 @@ void main() {
     ]);
   });
 
-  test('목록 수준의 매장 응답과 폐점·장비 설정 결과를 읽는다', () {
+  test('목록 수준의 매장 응답과 미운영·장비 설정 결과를 읽는다', () {
     final json = {'id': 'store', 'name': '강남점', 'is_closed': true};
     final store = Store.fromJson(json);
     expect(store.openTicketCount, 0);
@@ -374,7 +374,7 @@ void main() {
     expect(CrosstabRow.fromJson({'cells': null}).cells, isEmpty);
   });
 
-  test('운영 매장의 연도·브랜드 순서, 폐점, 미상, 매장당 건수를 읽는다', () {
+  test('운영 매장의 연도·브랜드 순서, 미운영, 미상, 매장당 건수를 읽는다', () {
     final years = StoreYears.fromJson({
       'years': ['2025', '2026'],
       'total_stores': '3',

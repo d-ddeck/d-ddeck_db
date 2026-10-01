@@ -7,7 +7,7 @@
 브랜드는 분류 코드(CodeGroup "STORE_BRAND")다. 바른치킨·자담치킨처럼 매장이
 묶이는 단위이고, 이름이 바뀌어도 FK 라 매장 쪽이 따라온다.
 
-구 서버(CS_Record)의 매장 화면 규칙: 폐점 저장 = 설치 장비를 고른 회수 위치로
+구 서버(CS_Record)의 매장 화면 규칙: 미운영 저장 = 설치 장비를 고른 회수 위치로
 (브랜드 회수 · 창고 · 사무실), 납품 세트 단위 장비 설정(없는 S/N 은 등록, 다른
 곳의 장비는 이동), 비전동 그리퍼 관리 번호(NG-0001 …) 자동.
 """
@@ -223,7 +223,7 @@ def list_stores(
     page: PageParams,
     q: str | None = Query(None, description="매장명 · 메모"),
     brand_id: uuid.UUID | None = None,
-    include_closed: bool | None = Query(None, description="폐점 매장도 포함"),
+    include_closed: bool | None = Query(None, description="미운영 매장도 포함"),
     include_inactive: bool = False,
     sort: str = "name",
     descending: bool = False,
@@ -317,7 +317,7 @@ def list_stores(
 @router.get("/{store_id}", response_model=StoreDetail)
 def get_store(store_id: uuid.UUID, db: DbSession, _: CurrentUser) -> StoreDetail:
     """매장 하나와 그 매장에 나가 있는 우리 자산 전부(종류별로 묶어서), 그리고 구 서버 매장
-    화면이 보여 주던 것들: 서비스구분별 발생, 미회수 렌탈, 대응 이력, 폐점 회수 안내."""
+    화면이 보여 주던 것들: 서비스구분별 발생, 미회수 렌탈, 대응 이력, 미운영 회수 안내."""
     store = _load(db, store_id)
     return _detail(db, store)
 
@@ -577,7 +577,7 @@ def update_store(
             status.HTTP_409_CONFLICT,
         )
     if data.get("closed_date") and "is_closed" not in data:
-        data["is_closed"] = True  # 폐점일을 넣으면 폐점으로 본다 (구 서버와 같음)
+        data["is_closed"] = True  # 미운영일을 넣으면 미운영으로 본다 (구 서버와 같음)
     if data.get("is_closed") is False:
         data["closed_date"] = None
     before = {k: getattr(store, k) for k in data}
@@ -602,7 +602,7 @@ def update_store(
         entity_type="store",
         entity_id=store.id,
         summary=f"매장 수정 {store.name}"
-        + (f" · 폐점 회수 {len(moved)}대" if moved else ""),
+        + (f" · 미운영 회수 {len(moved)}대" if moved else ""),
         changes=audit.diff(before, data),
         client=client,
     )
@@ -620,7 +620,7 @@ def close_store(
     user: AdminUser,
     client: Client,
 ) -> StoreCloseResult:
-    """폐점 처리 (구 서버 매장 화면의 [매장 상태 저장]): 설치 · AS 장비를 고른 회수 위치로.
+    """미운영 처리 (구 서버 매장 화면의 [매장 상태 저장]): 설치 · AS 장비를 고른 회수 위치로.
 
     렌탈 중 장비는 건드리지 않는다 - 대응 기록에서 회수 처리하면 창고로 돌아온다.
     그 매장 장비 전부를 옮기는 대량 변경이라 관리자(ADMIN) 이상만. `PATCH is_closed` 는
@@ -642,7 +642,7 @@ def close_store(
         module=ModuleKey.STORE,
         entity_type="store",
         entity_id=store.id,
-        summary=f"매장 폐점 {store.name} · 장비 {len(moved)}대 회수",
+        summary=f"매장 미운영 {store.name} · 장비 {len(moved)}대 회수",
         client=client,
     )
     db.commit()
@@ -654,7 +654,7 @@ def close_store(
 def _recover_closed_store_assets(
     db: Session, store: Store, target_id: uuid.UUID | None, user: User
 ) -> tuple[list[str], list[str]]:
-    """폐점 매장의 설치 · AS 장비를 target(회수 상태)로. 돌려주는 값: (옮긴 장비, 안내)."""
+    """미운영 매장의 설치 · AS 장비를 target(회수 상태)로. 돌려주는 값: (옮긴 장비, 안내)."""
     brands = _brand_map(db)
     brand_name = brands[store.brand_id].name if store.brand_id in brands else None
     options = {i.id: i for i in asset_rules.recover_options(db, brand_name)}
@@ -695,7 +695,7 @@ def _recover_closed_store_assets(
                 quantity=a.quantity,
                 moved_at=now_utc(),
                 moved_by_id=user.id,
-                reason=f"매장 폐점 ({store.name}) → {target.name}",
+                reason=f"매장 미운영 ({store.name}) → {target.name}",
             )
             a.store_id = None
             asset_rules.apply_status(db, a, target)

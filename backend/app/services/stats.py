@@ -1033,7 +1033,7 @@ def store_years(db: Session) -> StoreYears:
     """매장별 운영 기간을 추정해 연도별 운영 매장 수를 낸다 (구 서버 store_years).
 
     개점 연도 = 개점일이 있으면 그것, 없으면 첫 대응 기록일 · 첫 장비 설치일 중 이른 날.
-    폐점 연도 = 폐점에 체크된 매장만: 폐점일이 있으면 그것, 없으면 마지막 기록 연도(없으면 개점 연도).
+    미운영 연도 = 미운영에 체크된 매장만: 미운영일이 있으면 그것, 없으면 마지막 기록 연도(없으면 개점 연도).
     """
     first: dict[uuid.UUID, datetime] = {}
     last: dict[uuid.UUID, datetime] = {}

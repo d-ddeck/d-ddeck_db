@@ -110,6 +110,9 @@ class ServiceRepository {
       ServiceTicket.fromJson(asMap(await _api.get('/service/tickets/$id')));
 
   Future<ServiceTicket> create({
+    ServiceStatus? initialStatus,
+    String? note,
+    String? resultNote,
     String? title,
     String? storeId,
     String? faultId,
@@ -142,6 +145,9 @@ class ServiceRepository {
     final res = await _api.post(
       '/service/tickets',
       body: {
+        'initial_status': initialStatus?.value,
+        'note': note,
+        'result_note': resultNote,
         'title': titleFromDescription(description ?? title ?? ''),
         'store_id': storeId,
         'fault_id': faultId,

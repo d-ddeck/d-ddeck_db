@@ -86,7 +86,7 @@ DEFAULT_STATUSES: list[str] = [
     "미상",
 ]
 
-# 매장 폐점 때 장비를 보낼 상태. 브랜드 이름과 회수 상태 이름이 다른 것만 적는다.
+# 매장 미운영 때 장비를 보낼 상태. 브랜드 이름과 회수 상태 이름이 다른 것만 적는다.
 # 그 밖은 '<브랜드> 회수' 가 목록에 있으면 그것.
 CLOSE_RECOVER_ALIAS: dict[str, str] = {"바른치킨": "바른 회수", "자담치킨": "자담 회수"}
 
@@ -278,7 +278,7 @@ def is_at_store_rule(item: CodeItem | None) -> bool:
 
 
 def is_movable_on_close(item: CodeItem | None) -> bool:
-    """폐점 때 회수 대상인가: 설치 · AS 대기 · AS 반출. 렌탈 중은 대응 기록이 관리한다."""
+    """미운영 때 회수 대상인가: 설치 · AS 대기 · AS 반출. 렌탈 중은 대응 기록이 관리한다."""
     if item is None:
         return False
     r = rule_of(item)
@@ -286,7 +286,7 @@ def is_movable_on_close(item: CodeItem | None) -> bool:
 
 
 def recover_options(db: Session, brand_name: str | None) -> list[CodeItem]:
-    """폐점 시 장비를 보낼 수 있는 곳: [브랜드 회수 상태(있으면), 창고, 사무실]. 첫 항목이 기본값."""
+    """미운영 시 장비를 보낼 수 있는 곳: [브랜드 회수 상태(있으면), 창고, 사무실]. 첫 항목이 기본값."""
     items = {i.name: i for i in status_items(db)}
     out: list[CodeItem] = []
     if brand_name:

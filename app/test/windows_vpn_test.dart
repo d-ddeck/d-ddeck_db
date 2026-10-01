@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 const config = '''
 [Interface]
 PrivateKey = private-test-secret
-Address = 10.109.203.7/24
+Address = 10.153.127.7/24
 [Peer]
 PublicKey = public-test-key
 Endpoint = vpn.example.com:51820
@@ -90,6 +90,32 @@ void main() {
       );
     },
   );
+  for (final failure in {
+    'config_access': '접근 권한',
+    'config_write': '저장하지 못했습니다',
+    'service_install': '서비스 등록',
+    'service_start': '시작되지 않았습니다',
+    'service_remove': '제거하지 못했습니다',
+    'process_result': '실행 결과',
+    'unsafe_path': '저장 경로',
+  }.entries) {
+    test(
+      'Windows failure ${failure.key} preserves registration and explains the stage',
+      () async {
+        await vpn.register(WireguardConfig.parse(config));
+        windows.failure = failure.key;
+        await vpn.connect();
+        expect(vpn.state, VpnConnection.disconnected);
+        expect(vpn.isRegistered, isTrue);
+        expect(vpn.error, contains(failure.value));
+        expect(vpn.error, isNot(contains('private-test-secret')));
+        expect(
+          await const FlutterSecureStorage().read(key: 'wg_config'),
+          isNotNull,
+        );
+      },
+    );
+  }
   test('Windows startup reads current service state', () async {
     await vpn.register(WireguardConfig.parse(config));
     windows.state = 'connected';

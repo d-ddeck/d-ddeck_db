@@ -418,7 +418,7 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
         "show_closed_stores",
         False,
         "bool",
-        "폐점 매장 목록에 표시",
+        "미운영 매장 목록에 표시",
         True,
     ),
     (

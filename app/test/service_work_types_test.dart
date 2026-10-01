@@ -121,6 +121,25 @@ void main() {
     await repo.list(workTypeId: 'po');
     expect(api.lastQuery!['work_type_id'], 'po');
   });
+  test(
+    'creation sends selected status, note and occurrence time in UTC',
+    () async {
+      final api = FakeApi();
+      final time = DateTime(2026, 10, 1, 14, 37);
+      await ServiceRepository(api).create(
+        description: '점검',
+        receivedAt: time,
+        initialStatus: ServiceStatus.completed,
+        note: '방문 메모',
+        resultNote: '점검 완료',
+      );
+      final body = api.lastBody as Map;
+      expect(body['initial_status'], 'COMPLETED');
+      expect(body['note'], '방문 메모');
+      expect(body['result_note'], '점검 완료');
+      expect(body['received_at'], time.toUtc().toIso8601String());
+    },
+  );
   for (final width in [390.0, 1440.0]) {
     for (final dark in [false, true]) {
       testWidgets('new form defaults AS and offers custom type $width/$dark', (
@@ -173,6 +192,21 @@ void main() {
         await tester.tap(find.text('INSTALL · 설치 지원').last);
         await tester.pumpAndSettle();
         expect(tester.state<FormFieldState<String>>(field).value, 'custom');
+        expect(find.text('기타'), findsNothing);
+        expect(find.text('첨부파일 추가'), findsOneWidget);
+        final status = find.byWidgetPredicate(
+          (w) => w is DropdownButtonFormField<ServiceStatus>,
+        );
+        await Scrollable.ensureVisible(tester.element(status), alignment: 0.25);
+        await tester.pumpAndSettle();
+        await tester.tap(status);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('종결').last);
+        await tester.pumpAndSettle();
+        expect(
+          find.widgetWithText(TextFormField, '서비스 처리 내용 *'),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
         if (capture.isNotEmpty) {
           Scrollable.of(tester.element(field)).position.jumpTo(0);

@@ -609,7 +609,16 @@ def dashboard(
 def create_ticket(
     payload: ServiceTicketCreate, db: DbSession, user: CurrentUser, client: Client
 ) -> ServiceTicketDetail:
-    data = payload.model_dump(exclude={"parts", "causes", "responder_ids"})
+    data = payload.model_dump(
+        exclude={
+            "parts",
+            "causes",
+            "responder_ids",
+            "initial_status",
+            "note",
+            "result_note",
+        }
+    )
     received_at = data.pop("received_at", None) or now_utc()
     for k in ("rental_returned",):
         if data.get(k) is None:
@@ -683,9 +692,32 @@ def create_ticket(
             ticket_id=ticket.id,
             author_id=user.id,
             to_status=ticket.status,
-            content="접수 등록",
+            content="접수 등록"
+            + (
+                f"\n비고: {payload.note.strip()}"
+                if payload.note and payload.note.strip()
+                else ""
+            ),
         )
     )
+    if payload.initial_status in ("IN_PROGRESS", "COMPLETED"):
+        _transition_status(
+            db,
+            ticket,
+            ServiceStatusChange(status=ServiceStatus.IN_PROGRESS),
+            user,
+            client,
+        )
+        if payload.initial_status == "COMPLETED":
+            _transition_status(
+                db,
+                ticket,
+                ServiceStatusChange(
+                    status=ServiceStatus.COMPLETED, result_note=payload.result_note
+                ),
+                user,
+                client,
+            )
     notices = ticket_rules.sync_rental_assets(db, ticket, user)
     _notify_assignee(db, ticket, user.id)
     audit.record(
@@ -701,7 +733,7 @@ def create_ticket(
     db.commit()
     out = _detail(db, ticket.id)
     out.notices = notices + (
-        ["폐점 매장에 등록된 대응 기록입니다."]
+        ["미운영 매장에 등록된 대응 기록입니다."]
         if ticket.store_id and db.get(Store, ticket.store_id).is_closed
         else []
     )
@@ -845,7 +877,7 @@ def update_ticket(
         if reissue_number
         else []
     ) + notices + (
-        ["폐점 매장에 등록된 대응 기록입니다."]
+        ["미운영 매장에 등록된 대응 기록입니다."]
         if ticket.store_id and db.get(Store, ticket.store_id).is_closed
         else []
     )

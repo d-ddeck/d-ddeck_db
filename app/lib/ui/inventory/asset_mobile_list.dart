@@ -4,18 +4,14 @@ import '../../models/inventory.dart';
 
 /// Android rows show only the serial number and item name.
 class AssetMobileList extends StatelessWidget {
-  const AssetMobileList({
-    super.key,
-    required this.assets,
-    required this.onTap,
-  });
+  const AssetMobileList({super.key, required this.assets, required this.onTap});
 
   final List<Asset> assets;
   final ValueChanged<Asset> onTap;
 
   @override
   Widget build(BuildContext context) => ListView.separated(
-    padding: EdgeInsets.zero,
+    padding: const EdgeInsets.only(bottom: 88),
     itemCount: assets.length,
     separatorBuilder: (_, _) => const Divider(height: 1),
     itemBuilder: (context, index) {

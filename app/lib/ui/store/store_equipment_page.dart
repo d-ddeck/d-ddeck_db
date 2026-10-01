@@ -151,8 +151,8 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
     if (_store?.isClosed == true &&
         !await ConfirmDialog.show(
           context,
-          title: '폐점 매장',
-          message: '폐점 매장의 장비 설정을 변경하시겠습니까?',
+          title: '미운영 매장',
+          message: '미운영 매장의 장비 설정을 변경하시겠습니까?',
           confirmLabel: '변경',
         )) {
       return;

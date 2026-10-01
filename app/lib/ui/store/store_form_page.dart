@@ -14,7 +14,7 @@ import '../../state/auth_state.dart';
 import '../inventory/asset_destination.dart';
 import 'store_equipment_page.dart';
 
-/// 매장 등록 / 수정. 폐점은 회수 상태를 확인한 뒤 전용 API로 저장한다.
+/// 매장 등록 / 수정. 미운영은 회수 상태를 확인한 뒤 전용 API로 저장한다.
 class StoreFormPage extends StatefulWidget {
   const StoreFormPage({super.key, this.store});
 
@@ -126,7 +126,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, update) => ConfirmDialog.form(
             destructive: true,
-            title: const Text('폐점 처리'),
+            title: const Text('미운영 처리'),
             content: SizedBox(
               width: 440,
               child: SingleChildScrollView(
@@ -156,7 +156,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                       ),
                     ),
                     ListTile(
-                      title: const Text('폐점일'),
+                      title: const Text('미운영일'),
                       subtitle: Text(
                         (_closedDate == null ? null : Fmt.date(_closedDate)) ??
                             '지정 안 함',
@@ -184,7 +184,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('폐점으로 저장'),
+                child: const Text('미운영으로 저장'),
               ),
             ],
           ),
@@ -241,7 +241,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
           if (!mounted) return;
           await inventoryResult(
             context,
-            '폐점 처리 결과',
+            '미운영 처리 결과',
             '이동 ${result.moved.length}대\n${result.moved.join('\n')}\n\n${result.notices.join('\n')}',
           );
         }
@@ -404,7 +404,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                   const Divider(),
                                   SwitchListTile(
                                     contentPadding: EdgeInsets.zero,
-                                    title: const Text('폐점'),
+                                    title: const Text('미운영'),
                                     subtitle: Text(
                                       widget.store!.assetCount > 0
                                           ? '장비 ${widget.store!.assetCount}대가 설치되어 있습니다'
@@ -417,7 +417,7 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                   if (_isClosed)
                                     ListTile(
                                       contentPadding: EdgeInsets.zero,
-                                      title: const Text('폐점일'),
+                                      title: const Text('미운영일'),
                                       subtitle: Text(
                                         _closedDate == null
                                             ? '지정 안 함'

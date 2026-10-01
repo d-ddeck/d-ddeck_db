@@ -41,7 +41,7 @@ class StoreTabState extends State<StoreTab> {
   String? _brandId;
   String _brandName = '';
   String _query = '';
-  bool _includeClosed = false, _includeInactive = false, _descending = false;
+  bool _closedOnly = false, _includeInactive = false, _descending = false;
   String _sort = "name";
 
   int _revision = 0;
@@ -57,7 +57,7 @@ class StoreTabState extends State<StoreTab> {
         'brand': _brandId,
         'brand_name': _brandName,
         'q': _query,
-        'closed': _includeClosed,
+        'closed_only': _closedOnly,
         'inactive': _includeInactive,
         'sort': _sort,
         'descending': _descending,
@@ -83,7 +83,8 @@ class StoreTabState extends State<StoreTab> {
           _brandName = saved['brand_name'] as String? ?? '';
           _query = saved['q'] as String? ?? '';
           _searchCtl.text = _query;
-          _includeClosed = saved['closed'] == true;
+          _closedOnly = saved['closed_only'] == true;
+          if (_closedOnly) _brandName = '미운영';
           _includeInactive = saved['inactive'] == true;
           _sort = saved['sort'] as String? ?? 'name';
           _descending = saved['descending'] == true;
@@ -91,8 +92,13 @@ class StoreTabState extends State<StoreTab> {
         _filtersReady = true;
       });
     });
-    _brandId = widget.initialBrandId == '-' ? null : widget.initialBrandId;
-    _brandName = widget.initialBrandId == '-'
+    _closedOnly = widget.initialBrandId == '__closed__';
+    _brandId = widget.initialBrandId == '-' || _closedOnly
+        ? null
+        : widget.initialBrandId;
+    _brandName = _closedOnly
+        ? '미운영'
+        : widget.initialBrandId == '-'
         ? '미지정'
         : widget.initialBrandId == null
         ? ''
@@ -106,8 +112,11 @@ class StoreTabState extends State<StoreTab> {
   }
 
   void selectBrand(String? id) => setState(() {
-    _brandId = id == '-' ? null : id;
-    _brandName = id == '-'
+    _closedOnly = id == '__closed__';
+    _brandId = id == '-' || _closedOnly ? null : id;
+    _brandName = _closedOnly
+        ? '미운영'
+        : id == '-'
         ? '미지정'
         : id == null
         ? ''
@@ -115,14 +124,13 @@ class StoreTabState extends State<StoreTab> {
               '선택한 브랜드';
     _query = '';
     _searchCtl.clear();
-    _includeClosed = false;
   });
 
   bool backToBrands() {
     if (_brandId == null &&
         _brandName.isEmpty &&
         _query.isEmpty &&
-        !_includeClosed &&
+        !_closedOnly &&
         !_includeInactive) {
       return false;
     }
@@ -131,7 +139,7 @@ class StoreTabState extends State<StoreTab> {
       _brandName = '';
       _query = '';
       _searchCtl.clear();
-      _includeClosed = false;
+      _closedOnly = false;
       _includeInactive = false;
     });
     return true;
@@ -145,29 +153,56 @@ class StoreTabState extends State<StoreTab> {
 
   void _pickBrand(BrandSummary? brand) {
     setState(() {
+      _closedOnly = false;
       _brandId = brand?.brandId;
       _brandName = brand?.brandName ?? '';
     });
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Scaffold(
+    floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    floatingActionButton: FloatingActionButton.extended(
+      heroTag: 'create-store',
+      tooltip: '매장 등록',
+      onPressed: _addStore,
+      icon: const Icon(Icons.store_outlined),
+      label: const Text('+'),
+    ),
+    body: _buildContent(context),
+  );
+
+  Widget _buildContent(BuildContext context) {
     final repo = context.read<StoreRepository>();
 
     // 브랜드를 고르기 전에는 브랜드 카드만 보여 준다.
     if (_brandId == null &&
         _brandName.isEmpty &&
         _query.isEmpty &&
-        !_includeClosed &&
+        !_closedOnly &&
         !_includeInactive) {
       return PageBody.workspace(
         child: AsyncView<List<BrandSummary>>(
           key: ValueKey('brands:$_revision'),
           load: () => guardedLoad(context, repo.brands),
           builder: (context, data, reload) {
+            final closed = data.fold<int>(
+              0,
+              (sum, brand) => sum + brand.closedStoreCount,
+            );
+            final display = [
+              ...data,
+              BrandSummary(
+                brandId: '__closed__',
+                brandName: '미운영',
+                storeCount: closed,
+                openStoreCount: closed,
+                assetCount: 0,
+              ),
+            ];
             _brands = data;
             return _BrandGrid(
-              brands: data,
+              brands: display,
               onPick: (brand) => EquipmentPage.open(
                 context,
                 tab: EquipmentTab.stores,
@@ -201,7 +236,7 @@ class StoreTabState extends State<StoreTab> {
           Expanded(
             child: AsyncView<PagedStores>(
               key: ValueKey(
-                '$_brandId|$_brandName|$_query|$_includeClosed|$_includeInactive|$_sort|$_descending|$_revision',
+                '$_brandId|$_brandName|$_query|$_closedOnly|$_includeInactive|$_sort|$_descending|$_revision',
               ),
               load: () => guardedLoad(context, () async {
                 final items = <Store>[];
@@ -211,18 +246,19 @@ class StoreTabState extends State<StoreTab> {
                     page: pageNo++,
                     brandId: _brandId,
                     query: _query.isEmpty ? null : _query,
-                    includeClosed: _includeClosed,
-                    includeInactive: _includeInactive,
+                    includeClosed: _closedOnly,
+                    includeInactive: _closedOnly || _includeInactive,
                     sort: _sort,
                     descending: _descending,
                     size: 200,
                   );
                   items.addAll(
                     page.items.where(
-                      (s) =>
-                          _brandId != null ||
-                          _brandName.isEmpty ||
-                          s.brandId == null,
+                      (s) => _closedOnly
+                          ? s.isClosed
+                          : (_brandId != null ||
+                                _brandName.isEmpty ||
+                                s.brandId == null),
                     ),
                   );
                   if (!page.hasMore) break;
@@ -262,24 +298,15 @@ class StoreTabState extends State<StoreTab> {
   Widget _buildSearch() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Align(
-        alignment: Alignment.centerRight,
-        child: FilledButton.icon(
-          onPressed: _addStore,
-          icon: const Icon(Icons.add),
-          label: const Text('매장 등록'),
-        ),
-      ),
       FilterBar(
         appliedFilters: [
           if (_query.isNotEmpty) '검색: $_query',
-          if (_includeClosed) '폐점 포함',
-          if (_brandName.isNotEmpty) _brandName,
+          if (!_closedOnly && _brandName.isNotEmpty) _brandName,
         ],
         onReset: () => setState(() {
           _query = '';
           _searchCtl.clear();
-          _includeClosed = false;
+          _closedOnly = false;
           _brandId = null;
           _brandName = '';
         }),
@@ -315,11 +342,6 @@ class StoreTabState extends State<StoreTab> {
             tooltip: _descending ? '내림차순' : '오름차순',
             onPressed: () => setState(() => _descending = !_descending),
             icon: Icon(_descending ? Icons.arrow_downward : Icons.arrow_upward),
-          ),
-          FilterChip(
-            label: const Text('폐점 포함'),
-            selected: _includeClosed,
-            onSelected: (v) => setState(() => _includeClosed = v),
           ),
         ],
       ),
@@ -377,7 +399,7 @@ class _BrandGrid extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       child: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.only(bottom: 88),
         children: [
           searchField,
           if (brands.isEmpty) const EmptyState(message: '아직 등록된 매장이 없습니다'),
@@ -488,7 +510,7 @@ class _BrandCard extends StatelessWidget {
               ),
               const SizedBox(height: AppSpace.md),
               Text(
-                '운영 ${Fmt.number(brand.openStoreCount)}',
+                '${brand.brandId == '__closed__' ? '미운영' : '운영'} ${Fmt.number(brand.openStoreCount)}',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -518,7 +540,7 @@ class _StoreList extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
         itemCount: stores.length + 1,
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (context, index) {
@@ -542,7 +564,7 @@ class _StoreList extends StatelessWidget {
                 ),
                 if (store.isClosed) ...[
                   const SizedBox(width: 6),
-                  StatusChip(label: '폐점', color: AppColors.muted(context)),
+                  StatusChip(label: '미운영', color: AppColors.muted(context)),
                 ],
               ],
             ),

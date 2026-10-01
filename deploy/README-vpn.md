@@ -6,7 +6,7 @@
 WireGuard 포트 하나만 열려 있으면 되고, DB 서버(8000)는 계속 사내망에만 보입니다.
 
 ```
-[직원 노트북] --암호화 터널--> [공유기 WireGuard] --> [DB 서버 192.168.0.20:8000]
+[직원 노트북] --암호화 터널--> [공유기 WireGuard] --> [DB 서버 192.168.121.2:443]
        |
        +--- 인터넷은 터널을 거치지 않고 평소 회선으로 직행 (분할 터널)
 ```
@@ -22,7 +22,7 @@ WireGuard 포트 하나만 열려 있으면 되고, DB 서버(8000)는 계속 �
 AllowedIPs = 0.0.0.0/0
 
 # 분할 터널 - 회사 트래픽만 VPN, 인터넷은 직행  ← 권장
-AllowedIPs = 192.168.0.0/24, 10.109.203.0/24
+AllowedIPs = 192.168.121.0/24, 10.153.127.0/24
 ```
 
 | | 전체 터널 | 분할 터널 |
@@ -39,13 +39,13 @@ AllowedIPs = 192.168.0.0/24, 10.109.203.0/24
 ```ini
 [Interface]
 PrivateKey = <기기마다 다름>
-Address    = 10.109.203.X/24
+Address    = 10.153.127.X/24
 # DNS 는 분할 터널에서 불필요 (IP 로 접속하므로)
 
 [Peer]
 PublicKey    = <서버 공개키>
 PresharedKey = <기기마다 다름>
-AllowedIPs   = 192.168.0.0/24, 10.109.203.0/24
+AllowedIPs   = 192.168.121.0/24, 10.153.127.0/24
 Endpoint     = <공인IP>:<포트>
 PersistentKeepalive = 25
 ```
@@ -59,7 +59,7 @@ PersistentKeepalive = 25
 
 ### 1단계 — 공유기에서 피어 발급 (관리자)
 
-`http://192.168.0.1` → 관리도구 → 고급 설정 → 특수기능 → VPN 설정 → WireGuard
+`http://192.168.121.1` → 관리도구 → 고급 설정 → 특수기능 → VPN 설정 → WireGuard
 
 **기기마다 피어를 따로** 만듭니다. 한 설정을 여러 명이 돌려쓰면 한 대를 분실했을 때
 전원 재발급해야 합니다.
@@ -100,12 +100,12 @@ PersistentKeepalive = 25
 직원 PC 에서 (VPN 활성화 상태로):
 
 ```powershell
-ping 192.168.0.20
-curl http://192.168.0.20:8000/healthz     # {"status":"ok"} 가 나와야 정상
+ping 192.168.121.2
+curl --cacert app/assets/company_ca.crt https://192.168.121.2/healthz     # {"status":"ok"} 가 나와야 정상
 ```
 
 그다음 d-ddeck 앱을 실행해 로그인되면 끝입니다.
-앱의 서버 주소는 **사내망과 동일하게 `http://192.168.0.20:8000`** 입니다.
+앱의 서버 주소는 **사내망과 동일하게 `https://192.168.121.2`** 입니다.
 
 ### 5단계 — 서버 쪽 방화벽 (최초 1 회만)
 
@@ -113,7 +113,7 @@ DB 서버 PC 에서 관리자 PowerShell:
 
 ```powershell
 Set-NetFirewallRule -DisplayName "d-ddeck DB Server" `
-  -Profile Any -RemoteAddress LocalSubnet,10.109.203.0/24
+  -Profile Any -RemoteAddress LocalSubnet,10.153.127.0/24
 ```
 
 ---
@@ -123,12 +123,12 @@ Set-NetFirewallRule -DisplayName "d-ddeck DB Server" `
 ### VPN 은 연결됐는데 앱만 접속이 안 됨
 
 **사설 대역 충돌**입니다. 집이나 외부 공유기가 회사와 같은 `192.168.0.x` 를 쓰면,
-`192.168.0.20` 을 찾을 때 VPN 이 아니라 **그 집의 192.168.0.20** 으로 갑니다.
-국내 공유기 상당수가 `192.168.0.1` 을 기본값으로 쓰므로 실제로 자주 발생합니다.
+`192.168.121.2` 을 찾을 때 VPN 이 아니라 **그 집의 192.168.121.2** 으로 갑니다.
+국내 공유기 상당수가 `192.168.121.1` 을 기본값으로 쓰므로 실제로 자주 발생합니다.
 
 확인:
 ```powershell
-Get-NetRoute -DestinationPrefix '192.168.0.0/24' | Select-Object InterfaceAlias, NextHop
+Get-NetRoute -DestinationPrefix '192.168.121.0/24' | Select-Object InterfaceAlias, NextHop
 ```
 `InterfaceAlias` 가 WireGuard 어댑터가 아니면 충돌입니다.
 

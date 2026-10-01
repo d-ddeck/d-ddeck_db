@@ -4,7 +4,7 @@ A 매장 is not a `Customer` and not a `Location`, and it took a migration from
 the previous server to make that obvious:
 
 * `Customer` (service.py) is a flat contact record - no brand hierarchy, and
-  only `is_active` where a store needs 개점일 / 폐점 / 폐점일 to answer
+  only `is_active` where a store needs 개점일 / 미운영 / 미운영일 to answer
   "how many stores were we running in 2024?".
 * `Location` (inventory.py) is our *own* physical tree (사업장 > 층 > 랙) that
   `Asset.location_id` points at. Putting customer sites in it would turn the

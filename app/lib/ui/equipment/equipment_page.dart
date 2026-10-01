@@ -150,16 +150,16 @@ class EquipmentPageState extends State<EquipmentPage>
     _tabs.animateTo(EquipmentTab.overview.index);
   }
 
+  Future<void> _addAsset() async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AssetFormPage()),
+    );
+    if (saved == true && mounted) _changed();
+  }
+
   Future<void> _menuAction(String action) async {
     switch (action) {
-      case 'register':
-        if (_tabs.index != EquipmentTab.assets.index) return;
-        final saved = await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(builder: (_) => const AssetFormPage()),
-        );
-        if (saved == true && mounted) _changed();
-        return;
       case 'export':
         if (_exporting) return;
         setState(() => _exporting = true);
@@ -228,11 +228,6 @@ class EquipmentPageState extends State<EquipmentPage>
                   icon: const Icon(Icons.more_vert),
                   onSelected: _menuAction,
                   itemBuilder: (_) => [
-                    if (_tabs.index == EquipmentTab.assets.index)
-                      const PopupMenuItem(
-                        value: 'register',
-                        child: Text('장비 등록'),
-                      ),
                     PopupMenuItem(
                       value: 'export',
                       enabled: !_exporting,
@@ -283,13 +278,24 @@ class EquipmentPageState extends State<EquipmentPage>
                         ),
                   !_visited.contains(2)
                       ? const SizedBox.shrink()
-                      : InventoryListTab(
-                          key: _list,
-                          initialFilters: widget.tab == EquipmentTab.assets
-                              ? widget.filters
-                              : const {},
-                          revision: _revision,
-                          onChanged: _changed,
+                      : Scaffold(
+                          floatingActionButtonLocation:
+                              FloatingActionButtonLocation.endFloat,
+                          floatingActionButton: FloatingActionButton.extended(
+                            heroTag: 'create-asset',
+                            tooltip: '장비 등록',
+                            onPressed: _addAsset,
+                            icon: const Icon(Icons.inventory_2_outlined),
+                            label: const Text('+'),
+                          ),
+                          body: InventoryListTab(
+                            key: _list,
+                            initialFilters: widget.tab == EquipmentTab.assets
+                                ? widget.filters
+                                : const {},
+                            revision: _revision,
+                            onChanged: _changed,
+                          ),
                         ),
                   !_visited.contains(3)
                       ? const SizedBox.shrink()

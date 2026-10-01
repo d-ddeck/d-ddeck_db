@@ -29,7 +29,7 @@ concurrency:
 env:
   FLUTTER_VERSION: "3.47.5"
   # 설치 프로그램이 기본값으로 보여 주는 서버 주소. 설치 중 바꿀 수 있다.
-  DEFAULT_SERVER_URL: "https://192.168.121.69"
+  DEFAULT_SERVER_URL: "https://192.168.121.2"
 
 jobs:
   # ------------------------------------------------------------ 버전 결정
@@ -160,6 +160,13 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
             if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
           }
+          $vpnSource = Get-Content app/lib/services/windows_vpn.dart -Raw
+          $vpnScript = [regex]::Match($vpnSource, "(?s)static const _script = r'''(.*?)''';").Groups[1].Value
+          if ([string]::IsNullOrWhiteSpace($vpnScript)) { throw 'Windows VPN script not found' }
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($vpnScript, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { throw 'Windows VPN PowerShell syntax check failed' }
           python deploy/test_sqlite_backup.py
           if ($LASTEXITCODE -ne 0) { throw 'SQLite 복원 검사 실패' }
       - uses: subosito/flutter-action@v2

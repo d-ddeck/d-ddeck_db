@@ -326,8 +326,8 @@ class _AssetMoveDialogState extends State<_AssetMoveDialog> {
     if (closed != null &&
         !await ConfirmDialog.show(
           context,
-          title: '폐점 매장',
-          message: '${closed.name}은(는) 폐점 매장입니다. 장비를 이동하시겠습니까?',
+          title: '미운영 매장',
+          message: '${closed.name}은(는) 미운영 매장입니다. 장비를 이동하시겠습니까?',
           confirmLabel: '이동',
         )) {
       return;

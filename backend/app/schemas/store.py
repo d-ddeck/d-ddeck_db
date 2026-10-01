@@ -36,7 +36,7 @@ class StoreUpdate(PatchModel):
     non_nullable: ClassVar[set[str]] = {"name", "is_closed", "is_active"}
 
     name: str | None = Field(None, min_length=1, max_length=150)
-    # 폐점(is_closed=true)으로 저장하면서 설치 장비를 보낼 상태. 비우면 장비는 그대로.
+    # 미운영(is_closed=true)으로 저장하면서 설치 장비를 보낼 상태. 비우면 장비는 그대로.
     recover_to_status_item_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
     open_date: date | None = None
@@ -143,7 +143,7 @@ class StoreDetail(StoreOut):
     notices: list[str] = Field(default_factory=list)
     sets: list[StoreSetOut] = Field(default_factory=list)
     asset_groups: list[StoreAssetGroup] = Field(default_factory=list)
-    # 구 서버 매장 화면의 나머지: 서비스구분별 발생 · 미회수 렌탈 · 대응 이력 · 폐점 회수 안내
+    # 구 서버 매장 화면의 나머지: 서비스구분별 발생 · 미회수 렌탈 · 대응 이력 · 미운영 회수 안내
     open_ticket_count: int = 0
     install_date: date | None = Field(None, description="보유 장비 중 가장 이른 설치일")
     category_counts: list[CategoryCount] = Field(
@@ -153,16 +153,16 @@ class StoreDetail(StoreOut):
     recent_tickets: list[StoreTicketBrief] = Field(default_factory=list)
     recover_options: list[CodeItemBrief] = Field(
         default_factory=list,
-        description="폐점 때 장비를 보낼 수 있는 상태. 첫 항목이 기본값",
+        description="미운영 때 장비를 보낼 수 있는 상태. 첫 항목이 기본값",
     )
     movable_count: int = Field(
-        0, description="폐점 때 회수될 장비 수 (설치 · AS 대기 · AS 반출)"
+        0, description="미운영 때 회수될 장비 수 (설치 · AS 대기 · AS 반출)"
     )
-    rental_count: int = Field(0, description="렌탈 중 장비 수 - 폐점 때 옮기지 않음")
+    rental_count: int = Field(0, description="렌탈 중 장비 수 - 미운영 때 옮기지 않음")
 
 
 class StoreCloseRequest(BaseModel):
-    """폐점 처리. 설치 장비를 고른 상태로 옮긴다 (구 서버 recover_closed_store_assets).
+    """미운영 처리. 설치 장비를 고른 상태로 옮긴다 (구 서버 recover_closed_store_assets).
 
     recover_to_status_item_id 가 비어 있으면 장비는 그대로 두고 남은 수만 알려 준다.
     """

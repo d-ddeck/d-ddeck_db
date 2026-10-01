@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -137,6 +137,9 @@ class _RentalFields(BaseModel):
 
 
 class ServiceTicketCreate(_RentalFields):
+    initial_status: Literal["RECEIVED", "IN_PROGRESS", "COMPLETED"] | None = None
+    note: str | None = Field(None, max_length=10000)
+    result_note: str | None = None
     title: str = Field(min_length=1, max_length=250)
     customer_id: uuid.UUID | None = None
     customer_name: str | None = Field(None, max_length=150)
@@ -429,7 +432,7 @@ class StoreYearRow(BaseModel):
     year: str
     operating: int = Field(description="그 해에 운영된 매장 수")
     opened: int = Field(description="그 해 개점(또는 첫 확인)")
-    closed: int = Field(description="그 해 폐점")
+    closed: int = Field(description="그 해 미운영")
     year_end: int = Field(description="연말 운영 매장")
     active: int = Field(description="대응이 발생한 매장 수")
     tickets: int = Field(description="대응 건수")

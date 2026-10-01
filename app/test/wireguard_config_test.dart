@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 const routerDefault = '''
 [Interface]
 PrivateKey = qJ8vZ1nKQ0pR3sT5uW7xY9aB2cD4eF6gH8iJ0kL2mN0=
-Address = 10.109.203.7/24
-DNS = 192.168.0.1
+Address = 10.153.127.7/24
+DNS = 192.168.121.1
 
 [Peer]
 PublicKey = aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4c=
@@ -20,12 +20,12 @@ Endpoint = ddeck.iptime.org:51820
 const splitTunnel = '''
 [Interface]
 PrivateKey = qJ8vZ1nKQ0pR3sT5uW7xY9aB2cD4eF6gH8iJ0kL2mN0=
-Address    = 10.109.203.7/24
+Address    = 10.153.127.7/24
 
 [Peer]
 PublicKey    = aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4c=
 PresharedKey = zY9xW8vU7tS6rQ5pO4nM3lK2jI1hG0fE9dC8bA7zY6x=
-AllowedIPs   = 192.168.0.0/24, 10.109.203.0/24
+AllowedIPs   = 192.168.121.0/24, 10.153.127.0/24
 Endpoint     = 1.2.3.4:51820
 PersistentKeepalive = 25
 ''';
@@ -34,10 +34,10 @@ void main() {
   group('설정 읽기', () {
     test('공유기 기본 설정을 읽는다', () {
       final c = WireguardConfig.parse(routerDefault);
-      expect(c.address, '10.109.203.7/24');
+      expect(c.address, '10.153.127.7/24');
       expect(c.endpoint, 'ddeck.iptime.org:51820');
       expect(c.allowedIps, '0.0.0.0/0');
-      expect(c.dns, '192.168.0.1');
+      expect(c.dns, '192.168.121.1');
       expect(c.hasPrivateKey, isTrue);
     });
 
@@ -50,7 +50,7 @@ void main() {
 
     test('BOM 과 CRLF 가 섞여 있어도 읽는다', () {
       final messy = '﻿${routerDefault.replaceAll('\n', '\r\n')}';
-      expect(WireguardConfig.parse(messy).address, '10.109.203.7/24');
+      expect(WireguardConfig.parse(messy).address, '10.153.127.7/24');
     });
 
     test('주석과 빈 줄을 건너뛴다', () {
@@ -58,16 +58,16 @@ void main() {
 # 홍길동 노트북
 [Interface]
 PrivateKey = qJ8vZ1nKQ0pR3sT5uW7xY9aB2cD4eF6gH8iJ0kL2mN0=
-Address = 10.109.203.7/24
-; DNS = 192.168.0.1
+Address = 10.153.127.7/24
+; DNS = 192.168.121.1
 
 [Peer]
 PublicKey = aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4c=
-AllowedIPs = 192.168.0.0/24
+AllowedIPs = 192.168.121.0/24
 Endpoint = 1.2.3.4:51820
 ''');
       expect(c.dns, isNull, reason: '주석 처리된 DNS 는 값이 아니다');
-      expect(c.allowedIps, '192.168.0.0/24');
+      expect(c.allowedIps, '192.168.121.0/24');
     });
 
     test('WireGuard 설정이 아니면 거절한다', () {
@@ -106,8 +106,8 @@ Endpoint = 1.2.3.4:51820
   group('서버에 닿는지', () {
     test('사내 서버가 터널 대역 안에 있으면 true', () {
       final c = WireguardConfig.parse(splitTunnel);
-      expect(c.covers('192.168.0.20'), isTrue);
-      expect(c.covers('10.109.203.1'), isTrue);
+      expect(c.covers('192.168.121.2'), isTrue);
+      expect(c.covers('10.153.127.1'), isTrue);
     });
 
     test('대역 밖이면 false', () {
@@ -115,7 +115,7 @@ Endpoint = 1.2.3.4:51820
       expect(
         c.covers('192.168.1.20'),
         isFalse,
-        reason: '192.168.0.0/24 에 192.168.1.x 는 없다',
+        reason: '192.168.121.0/24 에 192.168.1.x 는 없다',
       );
       expect(c.covers('8.8.8.8'), isFalse);
     });
@@ -136,7 +136,7 @@ Endpoint = 1.2.3.4:51820
     test('AllowedIPs 를 회사망으로 좁히고 DNS 를 지운다', () {
       final fixed = WireguardConfig.parse(routerDefault).toSplitTunnel();
       expect(fixed.isFullTunnel, isFalse);
-      expect(fixed.allowedIps, '192.168.0.0/24, 10.109.203.0/24');
+      expect(fixed.allowedIps, '192.168.121.0/24, 10.153.127.0/24');
       expect(fixed.dns, isNull);
       expect(fixed.keepalive, '25');
       expect(fixed.problems(), isEmpty);

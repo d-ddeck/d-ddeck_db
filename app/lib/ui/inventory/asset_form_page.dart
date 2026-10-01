@@ -109,8 +109,8 @@ class _AssetFormPageState extends State<AssetFormPage> {
     if (closed != null &&
         !await ConfirmDialog.show(
           context,
-          title: '폐점 매장',
-          message: '${closed.name}은(는) 폐점 매장입니다. 장비를 등록하시겠습니까?',
+          title: '미운영 매장',
+          message: '${closed.name}은(는) 미운영 매장입니다. 장비를 등록하시겠습니까?',
           confirmLabel: '등록',
         )) {
       return;

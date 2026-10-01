@@ -180,7 +180,7 @@ class AssetMovement(UUIDMixin, TimestampMixin, Base):
     to_holder_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL")
     )
-    # 매장 이동도 위치 이동만큼 자주 일어난다(창고 -> 설치, 폐점 -> 회수).
+    # 매장 이동도 위치 이동만큼 자주 일어난다(창고 -> 설치, 미운영 -> 회수).
     # 여기에 남기지 않으면 "이 장비가 어느 매장에 있었나"를 되짚을 수 없다.
     from_store_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("stores.id", ondelete="SET NULL")

@@ -294,6 +294,27 @@ try:
         print(
             "PASS: renumbering, audit/export, reserved numbers, collision retry and rollback"
         )
+        # Creation can transition atomically; invalid completion leaves no ticket.
+        progress = create(initial_status="IN_PROGRESS", note="방문 전 연락")
+        assert progress["status"] == "IN_PROGRESS" and progress["started_at"]
+        assert any("방문 전 연락" in log["content"] for log in progress["logs"])
+        with SessionLocal() as db:
+            before_ids = set(db.scalars(select(ServiceTicket.id)))
+        call("POST", "/service/tickets", {**base, "initial_status": "COMPLETED"}, 400)
+        with SessionLocal() as db:
+            assert set(db.scalars(select(ServiceTicket.id))) == before_ids
+            from app.models.enums import Role, UserStatus
+            from app.models.user import User
+            db.add(User(email="worker@example.com", full_name="서비스 담당", password_hash="unused", status=UserStatus.APPROVED, role=Role.MEMBER))
+            db.commit()
+        responder = call("GET", "/admin/codes/SERVICE_RESPONDER")["items"][0]["id"]
+        completed = create(initial_status="COMPLETED", result_note="수리 완료", responder_ids=[responder])
+        assert completed["status"] == "COMPLETED"
+        assert completed["started_at"] and completed["completed_at"]
+        assert completed["result_note"] == "수리 완료"
+        assert [log["to_status"] for log in completed["logs"]] == ["RECEIVED", "IN_PROGRESS", "COMPLETED"]
+        call("POST", "/service/tickets", {**base, "initial_status": "CANCELED"}, 422)
+        print("PASS: direct progress/completion, notes, required completion fields and rollback")
         call("DELETE", "/admin/codes/items/" + types["AS"])
         print(
             "PASS: defaults/custom codes, validation, legacy null, edit/history, filters/statistics and Excel"

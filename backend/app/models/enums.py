@@ -39,7 +39,7 @@ class ModuleKey(StrEnum):
     INVENTORY = "INVENTORY"
     BOARD = "BOARD"
     CALENDAR = "CALENDAR"
-    STORE = "STORE"  # 매장 - 브랜드/폐점/납품 장비 세트
+    STORE = "STORE"  # 매장 - 브랜드/미운영/납품 장비 세트
     WORKLOG = "WORKLOG"  # 근무일지 - 작성자·일자마다 한 장
 
 

@@ -1082,7 +1082,7 @@ def _detail(db: Session, asset_id: uuid.UUID) -> AssetDetail:
         store = db.get(Store, asset.store_id)
         out.store = StoreBrief.model_validate(store) if store else None
         if store and store.is_closed:
-            out.notices = ["폐점 매장에 배치된 장비입니다."]
+            out.notices = ["미운영 매장에 배치된 장비입니다."]
     if asset.status_item_id:
         item = db.get(CodeItem, asset.status_item_id)
         out.status_item = CodeItemBrief.model_validate(item) if item else None

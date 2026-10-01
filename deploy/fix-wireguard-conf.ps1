@@ -20,10 +20,10 @@
   .conf 파일 하나, 또는 여러 .conf 가 든 폴더 (기본: 현재 폴더)
 
 .PARAMETER LanSubnet
-  회사 사내망 대역 (기본 192.168.0.0/24)
+  회사 사내망 대역 (기본 192.168.121.0/24)
 
 .PARAMETER VpnSubnet
-  WireGuard 대역 (기본 10.109.203.0/24)
+  WireGuard 대역 (기본 10.153.127.0/24)
 
 .PARAMETER Endpoint
   Endpoint 의 호스트를 이 값으로 교체. 포트는 그대로 둡니다.
@@ -38,8 +38,8 @@
 [CmdletBinding()]
 param(
   [string]$Path = '.',
-  [string]$LanSubnet = '192.168.0.0/24',
-  [string]$VpnSubnet = '10.109.203.0/24',
+  [string]$LanSubnet = '192.168.121.0/24',
+  [string]$VpnSubnet = '10.153.127.0/24',
   [string]$Endpoint = '',
   [switch]$FullTunnel
 )

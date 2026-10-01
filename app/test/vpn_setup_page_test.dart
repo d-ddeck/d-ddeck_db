@@ -16,7 +16,7 @@ import 'package:provider/provider.dart';
 const _config = '''
 [Interface]
 PrivateKey = private-test-secret
-Address = 10.109.203.7/24
+Address = 10.153.127.7/24
 [Peer]
 PublicKey = public-test-key
 PresharedKey = preshared-test-secret
@@ -159,9 +159,9 @@ void main() {
       'private-test-secret',
       'preshared-test-secret',
       'public-test-key',
-      '10.109.203.7/24',
+      '10.153.127.7/24',
       '0.0.0.0/0',
-      '192.168.0.0/24',
+      '192.168.121.0/24',
       'PrivateKey',
       'PresharedKey',
       'PublicKey',
@@ -173,7 +173,7 @@ void main() {
     expect(find.byType(Table), findsNothing);
     expect(find.text('WireGuard 앱으로 보내기'), findsNothing);
     final saved = await const FlutterSecureStorage().read(key: 'wg_config');
-    expect(saved, contains('192.168.0.0/24, 10.109.203.0/24'));
+    expect(saved, contains('192.168.121.0/24, 10.153.127.0/24'));
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(find.textContaining('연결됨'), findsOneWidget);

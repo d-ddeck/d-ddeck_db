@@ -307,7 +307,7 @@ class _StoreBody extends StatelessWidget {
               Text(store.brandName),
               StatusChip(
                 label: store.isClosed
-                    ? '폐점'
+                    ? '미운영'
                     : store.isActive
                     ? '운영 중'
                     : '비활성',
@@ -397,11 +397,11 @@ class _InfoCard extends StatelessWidget {
         store.contactPhone?.isNotEmpty == true ? store.contactPhone! : '미등록',
       ),
       ('주소', store.address?.isNotEmpty == true ? store.address! : '미등록'),
-      ('폐점 여부', store.isClosed ? '폐점' : '운영'),
+      ('미운영 여부', store.isClosed ? '미운영' : '운영'),
       ('설치일', Fmt.date(store.installDate)),
       if (store.openDate != null) ('개점일', Fmt.date(store.openDate)),
       if (store.isClosed && store.closedDate != null)
-        ('폐점일', Fmt.date(store.closedDate)),
+        ('미운영일', Fmt.date(store.closedDate)),
       if (store.gripperType?.isNotEmpty == true) ('그리퍼 종류', store.gripperType!),
       if (store.note?.isNotEmpty == true) ('비고', store.note!),
     ];

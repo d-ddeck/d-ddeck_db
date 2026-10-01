@@ -278,6 +278,19 @@ class VpnService extends ChangeNotifier {
       return switch (e.code) {
         'not_installed' => '공식 WireGuard를 먼저 설치한 뒤 다시 연결하세요.',
         'permission' => 'Windows 관리자 권한 요청을 취소했거나 권한이 없습니다. 연결 버튼으로 다시 시도하세요.',
+        'config_access' =>
+          'VPN 설정 폴더의 접근 권한을 설정하지 못했습니다. Windows 계정 권한과 보안 프로그램의 차단 여부를 확인하세요.',
+        'config_write' =>
+          'VPN 설정 파일을 저장하지 못했습니다. 저장 공간과 보안 프로그램의 차단 여부를 확인하세요.',
+        'service_install' =>
+          'WireGuard 터널 서비스 등록에 실패했습니다. 공식 WireGuard의 로그에서 오류를 확인하세요.',
+        'service_start' =>
+          'WireGuard 터널 서비스가 시작되지 않았습니다. 공식 WireGuard의 같은 터널을 비활성화한 뒤 다시 시도하고 로그를 확인하세요.',
+        'service_remove' =>
+          '기존 WireGuard 터널 서비스를 제거하지 못했습니다. Windows 관리자 권한과 서비스 상태를 확인하세요.',
+        'process_result' =>
+          'WireGuard 실행 결과를 확인하지 못했습니다. 공식 WireGuard에서 터널 상태를 확인하세요.',
+        'unsafe_path' => 'VPN 설정 저장 경로가 안전한 일반 폴더가 아닙니다. 관리자에게 문의하세요.',
         'timeout' => '연결 처리 시간이 초과되었습니다. Windows 권한 창과 VPN 상태를 확인하세요.',
         'invalid_config' =>
           '올바른 WireGuard 설정 파일을 선택하세요. 실행 명령이 포함된 설정은 지원하지 않습니다.',

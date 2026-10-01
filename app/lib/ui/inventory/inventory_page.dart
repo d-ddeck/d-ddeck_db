@@ -609,7 +609,7 @@ class InventoryListTabState extends State<InventoryListTab> {
                             onTap: (asset) => _detail(asset, reload),
                           )
                         : ListView(
-                            padding: EdgeInsets.zero,
+                            padding: const EdgeInsets.only(bottom: 88),
                             children: [
                               PinnedTable<Asset>(
                                 rows: assets,
