@@ -1,2 +1,2 @@
 // Verified against pubspec.yaml and backend/app/version.py by release CI.
-const appVersion = '1.0.23+23';
+const appVersion = '1.0.24+24';

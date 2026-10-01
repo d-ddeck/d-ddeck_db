@@ -235,6 +235,9 @@ jobs:
           mkdir -p ../dist
           cp build/app/outputs/flutter-apk/app-release.apk \
              "../dist/ddeck-${{ needs.meta.outputs.version }}-arm64.apk"
+      - name: Android VPN 네이티브 회귀 테스트
+        working-directory: app/android
+        run: ./gradlew :wireguard_flutter_plus:testDebugUnitTest
       - name: APK 서명 확인
         run: |
           build_tools=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)

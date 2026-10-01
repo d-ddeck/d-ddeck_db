@@ -15,7 +15,9 @@ import '../theme.dart';
 import 'vpn_qr_page.dart';
 
 class VpnControls extends StatefulWidget {
-  const VpnControls({super.key});
+  const VpnControls({super.key, this.showHelp = true});
+
+  final bool showHelp;
 
   @override
   State<VpnControls> createState() => _VpnControlsState();
@@ -125,7 +127,7 @@ class _VpnControlsState extends State<VpnControls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (vpn.isWindowsClient) ...[
+        if (widget.showHelp && vpn.isWindowsClient) ...[
           const Text(
             'Windows는 공식 WireGuard 설치가 필요합니다. 연결·해제 시 관리자 권한 창이 나타날 수 있습니다. 앱을 닫아도 연결은 유지됩니다.',
           ),
@@ -139,8 +141,10 @@ class _VpnControlsState extends State<VpnControls> {
           ),
         ],
         if (!vpn.isRegistered) ...[
-          const Text('사외에서 접속하려면 VPN 등록이 필요합니다'),
-          const SizedBox(height: 8),
+          if (widget.showHelp) ...[
+            const Text('사외에서 접속하려면 VPN 등록이 필요합니다'),
+            const SizedBox(height: 8),
+          ],
           OutlinedButton.icon(
             onPressed: locked ? null : _register,
             icon: const Icon(Icons.vpn_key_outlined),
@@ -199,7 +203,7 @@ class _VpnControlsState extends State<VpnControls> {
               ),
             ],
           ),
-        if (vpn.isWindowsClient) ...[
+        if (widget.showHelp && vpn.isWindowsClient) ...[
           const SizedBox(height: 8),
           const Text(
             '터널 실행 상태는 서버 접속 성공을 의미하지 않습니다.\n'

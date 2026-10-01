@@ -138,7 +138,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('로그인'), findsOneWidget);
-    expect(find.text('디떽 업무 서버'), findsOneWidget);
+    expect(find.text('디떽 업무 서버'), findsNothing);
+    expect(find.byTooltip('서버 연결 확인'), findsOneWidget);
+    expect(find.text('사외에서 접속하려면 VPN 등록이 필요합니다'), findsNothing);
     expect(find.textContaining('localhost'), findsNothing);
     expect(find.text('서버 주소'), findsNothing);
     expect(find.text('관리자 연결 설정 가져오기'), findsOneWidget);

@@ -258,10 +258,10 @@ if (!savedTunnelName.isNullOrEmpty() && !savedConfigString.isNullOrEmpty()) {
    
 
     private fun createBackend(): Backend {
-        if (backend == null) {
-            backend = GoBackend(context)
-        }
-        return backend as Backend
+        val shared = VpnRuntime.backend(context)
+        shared.onDisconnected = { updateStageFromState(Tunnel.State.DOWN) }
+        backend = shared
+        return shared
     }
 
     private fun flutterSuccess(result: Result, o: Any) {
@@ -381,7 +381,9 @@ if (!savedTunnelName.isNullOrEmpty() && !savedConfigString.isNullOrEmpty()) {
                     stopTrafficMonitor()
                     resetTrafficStats()
                     updateStage("disconnected")
-                    context.stopService(Intent(context, VpnForegroundService::class.java))
+                    if (!VpnForegroundService.disconnectInProgress) {
+                        context.stopService(Intent(context, VpnForegroundService::class.java))
+                    }
                 }
                 else -> updateStage("wait_connection")
             }
@@ -460,161 +462,22 @@ private fun connect(wgQuickConfig: String, result: Result) {
 
 
 private fun disconnect(result: Result) {
-    trafficMonitorActive = false
-    connectionStartTime = 0L
-
     scope.launch(Dispatchers.IO) {
         try {
-            val backend = futureBackend.await()
-            val runningTunnels = backend.runningTunnelNames
-
-            Log.i(TAG, "Running tunnels: $runningTunnels")
-            Log.i(TAG, "Current tunnelName: $tunnelName")
-            // Config may contain private keys; do not log it.
-
+            futureBackend.await()
             updateStage("disconnecting")
-
-            // Load config if not already loaded
-            if (config == null) {
-                val prefs = context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE)
-                val savedConfigString = prefs.getString("last_used_config", null)
-                if (!savedConfigString.isNullOrEmpty()) {
-                    config = com.wireguard.config.Config.parse(savedConfigString.byteInputStream())
-                    Log.i(TAG, "Loaded config from SharedPreferences for disconnect")
-                }
-            }
-
-            // If there are running tunnels, use normal disconnect
-            // If no running tunnels but we have config, use orphaned tunnel termination
-            if (runningTunnels.isNotEmpty()) {
-                val activeTunnelName = runningTunnels.first()
-                
-                Log.i(TAG, "Disconnecting tunnel: $activeTunnelName")
-                
-                // Validate config before proceeding
-                if (config == null) {
-                    Log.e(TAG, "Config is null, cannot call setState() for disconnect")
-                    throw Exception("Cannot disconnect: no configuration available")
-                }
-                
-                Log.i(TAG, "Config validated, calling setState() to bring tunnel DOWN")
-                
-                // Get or create tunnel object
-                if (tunnel == null) {
-                    Log.i(TAG, "Creating new tunnel object for disconnect")
-                    tunnelName = activeTunnelName
-                    tunnel(activeTunnelName) { state ->
-                        scope.launch(Dispatchers.Main) {
-                            Log.i(TAG, "onStateChange - $state")
-                            if (state == Tunnel.State.DOWN) {
-                                resetTrafficStats()
-                                stopTrafficMonitor()
-                                updateStageFromState(state)
-                            }
-                        }
-                    }
-                } else {
-                    Log.i(TAG, "Reusing existing tunnel object for disconnect")
-                }
-                
-                // ✅ Stop traffic monitor and reset stats BEFORE calling setState
-                stopTrafficMonitor()
-                resetTrafficStats()
-                
-                // ✅ Always call setState to bring tunnel DOWN, even if backend reports no running tunnels
-                Log.i(TAG, "About to call backend.setState() with Tunnel.State.DOWN")
-                backend.setState(
-                    tunnel!!,
-                    Tunnel.State.DOWN,
-                    config
-                )
-                Log.i(TAG, "backend.setState() call completed")
-                
-                Log.i(TAG, "Tunnel $activeTunnelName disconnected")
-                
-                // Wait for state change to propagate
-                delay(1000)
-                
-                // ✅ Explicitly update stage to disconnected
-                updateStage("disconnected")
-            } else {
-                // No running tunnels reported by backend, but we have tunnel and config
-                // This can happen after app reopen - still need to bring it DOWN
-                Log.i(TAG, "No running tunnels found, but we have tunnel and config")
-                
-                // ✅ Stop traffic monitor and reset stats BEFORE calling setState
-                stopTrafficMonitor()
-                resetTrafficStats()
-                
-                // ✅ The backend doesn't know about this tunnel, so we need to bring it UP first
-                // then immediately bring it DOWN to properly terminate it
-                if (tunnel != null && config != null) {
-                    Log.i(TAG, "Orphaned tunnel detected - bringing UP then DOWN to terminate")
-                    try {
-                        // First bring it UP so backend knows about it
-                        backend.setState(
-                            tunnel!!,
-                            Tunnel.State.UP,
-                            config
-                        )
-                        Log.i(TAG, "Tunnel brought UP temporarily")
-                        
-                        // Small delay to let it register
-                        delay(100)
-                        
-                        // Now bring it DOWN
-                        backend.setState(
-                            tunnel!!,
-                            Tunnel.State.DOWN,
-                            config
-                        )
-                        Log.i(TAG, "Tunnel brought DOWN - orphaned connection terminated")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error terminating orphaned tunnel: ${e.message}", e)
-                    }
-                }
-                
-                updateStage("disconnected")
-            }
-
-            stopForegroundService()
+            VpnRuntime.disconnect(context)
+            stopTrafficMonitor()
+            resetTrafficStats()
             clearStatsFromStorage()
-        
-            deleteActiveTunnel()
-            
-            // ✅ Nullify tunnel object to ensure clean state
-            tunnel = null
-            config = null
-            Log.i(TAG, "Tunnel object and config nullified")
-
-            Log.i(TAG, "Disconnected successfully.")
-            withContext(Dispatchers.Main) {
-                flutterSuccess(result, "")
-            }
-
-         
-
-        } catch (e: BackendException) {
-            Log.e(TAG, "BackendException during disconnect: ${e.reason}", e)
-            // ✅ Even on error, nullify tunnel to prevent ghost connections
-            tunnel = null
-            config = null
-            withContext(Dispatchers.Main) {
-                flutterError(result, e.reason.toString())
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "Exception during disconnect: ${e.message}", e)
-            // ✅ Even on error, nullify tunnel to prevent ghost connections
-            tunnel = null
-            config = null
-            withContext(Dispatchers.Main) {
-                flutterError(result, e.message.toString())
-            }
+            // The saved configuration and Flutter login remain intact.
+            flutterSuccess(result, "")
+        } catch (_: Exception) {
+            updateStage("connected")
+            flutterError(result, "VPN_DISCONNECT_FAILED")
         }
     }
 }
-
-
 
 
  private fun resetTrafficStats() {
@@ -935,11 +798,13 @@ class VpnForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "vpn_foreground_channel"
         const val NOTIFICATION_ID = 101
+        @Volatile var disconnectInProgress = false
         const val DISCONNECT = "orban.group.wireguard_flutter.DISCONNECT"
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private val updateInterval = 1000L // 1 second
+    private val disconnectScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var connectionStartTime = 0L // Store start timestamp
     private var vpnDisplayName: String = "WireGuard VPN" // Custom VPN display name
@@ -1020,17 +885,23 @@ class VpnForegroundService : Service() {
 
         when (intent?.action) {
           DISCONNECT -> {
-            // Stop this package's real WireGuard VpnService, not just its
-            // notification. GoBackend.onDestroy closes the tunnel and emits
-            // DOWN to the existing owner even after Flutter was detached.
-            try {
-                stopService(Intent(this, GoBackend.VpnService::class.java))
-                handler.removeCallbacks(updateRunnable)
-                stopForeground(true)
-                stopSelf()
-            } catch (_: Exception) {
-                handler.removeCallbacks(updateRunnable)
-                updateNotification("VPN 해제 실패 · 앱에서 다시 시도해 주세요")
+            if (disconnectInProgress) return START_NOT_STICKY
+            disconnectInProgress = true
+            handler.removeCallbacks(updateRunnable)
+            updateNotification("VPN 연결 해제 중…")
+            disconnectScope.launch {
+                try {
+                    withContext(Dispatchers.IO) { VpnRuntime.disconnect(this@VpnForegroundService) }
+                    stopForeground(true)
+                    stopSelf()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Keep the action visible for a retry; never hide a live VPN.
+                    updateNotification("VPN 해제 실패 · 다시 누르거나 앱에서 확인해 주세요")
+                } finally {
+                    disconnectInProgress = false
+                }
             }
             return START_NOT_STICKY
           }
@@ -1046,6 +917,8 @@ class VpnForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(updateRunnable)
+        disconnectScope.cancel()
+        disconnectInProgress = false
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

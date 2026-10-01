@@ -48,6 +48,8 @@ android {
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:4.11.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'com.wireguard.android:tunnel:1.0.20260102'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.2'

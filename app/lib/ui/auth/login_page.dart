@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_exception.dart';
-import '../../core/config.dart';
 import '../../state/auth_state.dart';
 import '../../services/vpn_service.dart';
 import '../../services/alarm_service.dart';
@@ -109,7 +108,17 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(actions: const [ThemeModeButton(), SizedBox(width: 8)]),
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: '서버 연결 확인',
+            onPressed: _busy ? null : _ping,
+            icon: const Icon(Icons.wifi_tethering),
+          ),
+          const ThemeModeButton(),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: PageBody(
         child: Center(
           child: SingleChildScrollView(
@@ -128,16 +137,6 @@ class _LoginPageState extends State<LoginPage> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.dns_outlined),
-                              title: const Text('디떽 업무 서버'),
-                              trailing: IconButton(
-                                tooltip: '서버 연결 확인',
-                                onPressed: _busy ? null : _ping,
-                                icon: const Icon(Icons.wifi_tethering),
-                              ),
-                            ),
                             if (_serverProbe != null)
                               Text(
                                 _serverProbe!,
@@ -148,32 +147,17 @@ class _LoginPageState extends State<LoginPage> {
                             const FormGap(),
                             Center(
                               child: Image.asset(
-                                'assets/icon/app_icon.png',
-                                width: 72,
-                                height: 72,
+                                'assets/icon/company_logo.png',
+                                width: 260,
+                                height: 260,
                                 fit: BoxFit.contain,
                                 semanticLabel: '디떽 회사 로고',
                               ),
                             ),
                             const FormGap(),
-                            Text(
-                              AppConfig.appName,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '사내 통합 DB 서버',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                            const SizedBox(height: 28),
-
                             // VPN 이 꺼져 있으면 로그인 자체가 안 되므로 로그인 전에 연결한다.
                             if (VpnService.isSupported) ...[
-                              const VpnControls(),
+                              const VpnControls(showHelp: false),
                               const FormGap(),
                             ],
 
@@ -226,15 +210,6 @@ class _LoginPageState extends State<LoginPage> {
                               title: const Text(
                                 '자동 로그인',
                                 style: TextStyle(fontSize: 14),
-                              ),
-                              subtitle: Text(
-                                _rememberMe
-                                    ? '다음부터 바로 시작합니다 (최대 14일)'
-                                    : '앱을 닫으면 다시 로그인해야 합니다',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: scheme.onSurfaceVariant,
-                                ),
                               ),
                               controlAffinity: ListTileControlAffinity.leading,
                               contentPadding: EdgeInsets.zero,
@@ -310,14 +285,6 @@ class _LoginPageState extends State<LoginPage> {
                                       ),
                                     ),
                               child: const Text('회원가입 신청'),
-                            ),
-                            const FormGap(),
-                            const SizedBox(height: 4),
-                            Text(
-                              '가입 후 관리자 승인이 완료되어야 로그인할 수 있습니다.',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: scheme.onSurfaceVariant),
                             ),
                           ],
                         ),

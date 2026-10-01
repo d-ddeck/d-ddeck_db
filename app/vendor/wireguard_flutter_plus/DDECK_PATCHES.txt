@@ -3,8 +3,11 @@ License: MIT; see LICENSE. Dart and desktop implementations are unchanged.
 
 Android changes:
 - Add an immutable, explicit service PendingIntent for VPN disconnect.
-- Stop this app's GoBackend.VpnService directly without Flutter or an Activity.
-  Its onDestroy closes the tunnel and delivers DOWN to the owning tunnel.
+- Keep one process-owned backend and original Tunnel identity across Flutter engines.
+- Notification and app disconnect explicitly call setState(DOWN, null) on that
+  original tunnel, verify shutdown, and retain a retry notification on failure.
+  stopService alone cannot guarantee a bound VPN service destroys the tunnel.
+- Serialize backend state changes and suppress premature notification teardown.
 - DOWN stops traffic updates, clears counters, updates Flutter when attached,
   and removes the foreground notification.
 - Do not restart the notification-only service after manual stop/process death.
