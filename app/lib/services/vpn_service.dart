@@ -137,7 +137,7 @@ class VpnService extends ChangeNotifier {
 
   Future<void> register(
     WireguardConfig config, {
-    bool forceSplitTunnel = true,
+    bool? forceSplitTunnel,
   }) async {
     if (!supportsTunnels) {
       throw UnsupportedError("PC에서는 공식 WireGuard 앱을 사용해 주세요.");
@@ -155,7 +155,11 @@ class VpnService extends ChangeNotifier {
         ).hasMatch(config.toIni())) {
       throw const WindowsVpnException('invalid_config');
     }
-    final effective = (forceSplitTunnel && config.isFullTunnel)
+    // Keep Windows routes/DNS identical to the working official configuration.
+    // Existing stored configurations need re-importing; their original values
+    // cannot be recovered after an older version normalized them.
+    final splitTunnel = forceSplitTunnel ?? (_windows == null);
+    final effective = (splitTunnel && config.isFullTunnel)
         ? config.toSplitTunnel()
         : config;
 

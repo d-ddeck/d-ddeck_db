@@ -55,13 +55,38 @@ void main() {
     expect(vpn.isRegistered, isTrue);
     await vpn.connect();
     expect(vpn.state, VpnConnection.connected);
-    expect(windows.received, isNot(contains('0.0.0.0/0')));
+    expect(windows.received, contains('AllowedIPs = 0.0.0.0/0'));
     await vpn.disconnect();
     expect(vpn.state, VpnConnection.disconnected);
     await vpn.unregister();
     expect(vpn.isRegistered, isFalse);
     expect(await const FlutterSecureStorage().read(key: 'wg_config'), isNull);
   });
+  test(
+    'Windows keeps working DNS and routes unless split routing is requested',
+    () async {
+      final original = config.replaceFirst(
+        'Address =',
+        'DNS = 10.153.127.1\nAddress =',
+      );
+      await vpn.register(WireguardConfig.parse(original));
+      await vpn.connect();
+      expect(windows.received, contains('DNS = 10.153.127.1'));
+      expect(windows.received, contains('AllowedIPs = 0.0.0.0/0'));
+      await vpn.disconnect();
+      await vpn.register(
+        WireguardConfig.parse(original),
+        forceSplitTunnel: true,
+      );
+      await vpn.connect();
+      expect(windows.received, isNot(contains('DNS =')));
+      expect(
+        windows.received,
+        contains('AllowedIPs = 192.168.121.0/24, 10.153.127.0/24'),
+      );
+      expect(windows.received, contains('PrivateKey = private-test-secret'));
+    },
+  );
   test(
     'UAC cancellation does not discard registration or report connected',
     () async {

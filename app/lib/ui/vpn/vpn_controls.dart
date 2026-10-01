@@ -197,6 +197,14 @@ class _VpnControlsState extends State<VpnControls> {
               ),
             ],
           ),
+        if (Platform.isWindows) ...[
+          const SizedBox(height: 8),
+          const Text(
+            '공식 WireGuard와 앱 VPN은 한쪽만 연결하세요. 공식 WireGuard로 접속 중이면 앱 VPN을 켤 필요가 없습니다.\n'
+            '이전 버전에서 등록한 VPN으로 서버에 접속되지 않으면 앱 VPN을 해제하고 정상 작동하는 .conf 파일을 다시 등록하세요.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
         if (_busy) const LinearProgressIndicator(),
         if (vpn.error != null) ...[
           const SizedBox(height: 4),
