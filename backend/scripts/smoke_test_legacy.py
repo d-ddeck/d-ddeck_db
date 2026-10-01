@@ -5,7 +5,7 @@ Run:  python scripts/smoke_test_legacy.py
 검사하는 것: 재고 상태 규칙(설치는 매장 필수 · 창고는 매장 자동 비움 · AS 는 매장 유지),
 S/N 중복 · 제조사 필수, 여러 대 등록/이동, 현황, 매장 장비 세트 설정(NG 관리 번호),
 접수의 서비스구분/증상/제조사/대응인원/렌탈 규칙, 렌탈 ↔ 재고 연동, 종결 규칙,
-검색 조건, 크로스탭 · 운영 매장 · 대시보드, 폐점 회수, 공휴일, 엑셀.
+검색 조건, 크로스탭 · 운영 매장 · 대시보드, 미운영 회수, 공휴일, 엑셀.
 """
 
 from __future__ import annotations
@@ -182,7 +182,7 @@ with TestClient(app) as c:
         "기본 그리퍼 종류(설정)", store["gripper_type"] == "전동", store["gripper_type"]
     )
     check(
-        "폐점 회수 위치 = 바른 회수 · 창고 · 사무실",
+        "미운영 회수 위치 = 바른 회수 · 창고 · 사무실",
         [o["name"] for o in store["recover_options"]]
         == ["바른 회수", "창고", "사무실"],
         store["recover_options"],
@@ -1149,7 +1149,7 @@ with TestClient(app) as c:
         r.json(),
     )
 
-    print("\n[8] 매장 상세 · 폐점 회수")
+    print("\n[8] 매장 상세 · 미운영 회수")
     r = c.get(f"/api/v1/stores/{store['id']}", headers=H)
     sd = r.json()
     check(
@@ -1178,14 +1178,14 @@ with TestClient(app) as c:
         json={"closed_date": "2026-09-01"},
     )
     check(
-        "회수 위치 없이 폐점 → 장비 그대로 + 안내",
+        "회수 위치 없이 미운영 → 장비 그대로 + 안내",
         r.status_code == 200
         and not r.json()["moved"]
         and "남아 있습니다" in r.json()["notices"][0],
         r.json(),
     )
     check(
-        "폐점 표시",
+        "미운영 표시",
         r.json()["store"]["is_closed"] is True
         and r.json()["store"]["closed_date"] == "2026-09-01",
     )
@@ -1194,7 +1194,7 @@ with TestClient(app) as c:
         headers=H,
         json={"recover_to_status_item_id": st["바른 회수"]["id"]},
     )
-    check("바른 회수로 폐점 회수 3대", len(r.json()["moved"]) == 3, r.json()["moved"])
+    check("바른 회수로 미운영 회수 3대", len(r.json()["moved"]) == 3, r.json()["moved"])
     check("회수 뒤 매장 장비 0", r.json()["store"]["asset_count"] == 0)
     a = c.get(f"/api/v1/inventory/assets/{r1['id']}", headers=H).json()
     check(
@@ -1207,12 +1207,12 @@ with TestClient(app) as c:
     )
     r = c.get(f"/api/v1/inventory/assets/{r1['id']}/movements", headers=H)
     check(
-        "폐점 회수 이력",
-        "매장 폐점" in r.json()["items"][0]["reason"],
+        "미운영 회수 이력",
+        "매장 미운영" in r.json()["items"][0]["reason"],
         r.json()["items"][0],
     )
     r = c.get("/api/v1/stores?include_closed=true", headers=H)
-    check("폐점 포함 목록", r.json()["total"] == 2)
+    check("미운영 포함 목록", r.json()["total"] == 2)
     r = c.get("/api/v1/stores", headers=H)
     check("기본 목록은 운영 매장만", r.json()["total"] == 1)
     r = c.patch(
@@ -1221,7 +1221,7 @@ with TestClient(app) as c:
         json={"is_closed": True, "recover_to_status_item_id": st["창고"]["id"]},
     )
     check(
-        "PATCH 폐점 + 회수 위치",
+        "PATCH 미운영 + 회수 위치",
         r.status_code == 200 and r.json()["is_closed"] and r.json()["asset_count"] == 0,
         r.json(),
     )

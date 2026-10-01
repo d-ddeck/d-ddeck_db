@@ -180,7 +180,7 @@ def main():
                 "/auth/login",
                 {"email": "member@example.com", "password": "Member-1234"},
             )
-            store = api("POST", "/stores", {"name": "폐점 테스트"}, 201)
+            store = api("POST", "/stores", {"name": "미운영 테스트"}, 201)
             call(
                 "POST",
                 f"/stores/{store['id']}/close",
