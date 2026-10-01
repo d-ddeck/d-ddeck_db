@@ -41,7 +41,7 @@ def main():
     conf = Path("/etc/nginx/conf.d/ddeck.conf")
     tls = Path("/etc/ddeck/tls")
     cert, key = args.cert_dir / "server.crt", args.cert_dir / "server.key"
-    ca = root / "app/assets/company_ca.crt"
+    ca = root / "deploy/trust/company_ca.crt"
     content = nginx_config(args.ip, [args.lan, args.vpn], tls / "server.crt", tls / "server.key", 8000)
     service = service_config(root, python, owner.pw_name, 8000).replace(
         "--host 0.0.0.0", "--host 127.0.0.1"

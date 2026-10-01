@@ -37,7 +37,7 @@ def main():
     os.umask(0o077)
     key = Ed25519PrivateKey.from_private_bytes(args.key.read_bytes())
     expected = (Path(__file__).resolve().parents[1] /
-                "app/assets/connection_public_key.txt").read_text().strip()
+                "deploy/trust/connection_public_key.txt").read_text().strip()
     if base64.b64encode(key.public_key().public_bytes_raw()).decode() != expected:
         raise ValueError("Key does not match the application's connection key")
     args.output.write_text(json.dumps(sign(args.url, key, args.days)) + "\n")

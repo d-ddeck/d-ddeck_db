@@ -10,6 +10,15 @@ from cryptography.x509.oid import ExtendedKeyUsageOID
 
 
 class PrivateCaTests(unittest.TestCase):
+    def test_public_trust_material_matches_app(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("company_ca.crt", "connection_public_key.txt"):
+            self.assertEqual((root / "deploy/trust" / name).read_bytes(),
+                             (root / "app/assets" / name).read_bytes())
+        self.assertEqual((root / "deploy/trust/company_ca.crt").read_bytes(),
+                         (root / "app/android/app/src/main/res/raw/company_ca.crt").read_bytes())
+
+
     def test_ca_and_leaf_constraints_and_permissions(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
