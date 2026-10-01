@@ -125,6 +125,7 @@ jobs:
           python ../deploy/test_backup_bundle.py
           python -m unittest discover -s ../deploy -p test_cloud_backup.py
           python ../deploy/test_sqlite_backup.py
+          python ../deploy/test_storage_move.py
           python ../deploy/test_update.py
           python ../deploy/test_operations.py
           python ../deploy/test_private_ca.py

@@ -203,7 +203,11 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     final results = await Future.wait<dynamic>([
       Future.wait(
         groups.map((g) async {
-          codes[g] = (await admin.codeGroup(g)).items;
+          codes[g] = (await admin.codeGroup(
+            g,
+            includeHistorical:
+                widget.ticket != null && g == 'SERVICE_RESPONDER',
+          )).items;
         }),
       ),
       stores.brands(),
@@ -752,6 +756,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                             .items('SERVICE_RESPONDER')
                                             .where(
                                               (r) =>
+                                                  widget.ticket != null ||
                                                   r.isActive ||
                                                   _responders.contains(r.id),
                                             ))

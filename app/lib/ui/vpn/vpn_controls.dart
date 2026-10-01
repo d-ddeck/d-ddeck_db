@@ -161,7 +161,9 @@ class _VpnControlsState extends State<VpnControls> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      vpn.state.label,
+                      vpn.isWindowsClient && vpn.state.isOn
+                          ? '터널 실행 중'
+                          : vpn.state.label,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
@@ -197,9 +199,10 @@ class _VpnControlsState extends State<VpnControls> {
               ),
             ],
           ),
-        if (Platform.isWindows) ...[
+        if (vpn.isWindowsClient) ...[
           const SizedBox(height: 8),
           const Text(
+            '터널 실행 상태는 서버 접속 성공을 의미하지 않습니다.\n'
             '공식 WireGuard와 앱 VPN은 한쪽만 연결하세요. 공식 WireGuard로 접속 중이면 앱 VPN을 켤 필요가 없습니다.\n'
             '이전 버전에서 등록한 VPN으로 서버에 접속되지 않으면 앱 VPN을 해제하고 정상 작동하는 .conf 파일을 다시 등록하세요.',
             style: TextStyle(fontSize: 12),

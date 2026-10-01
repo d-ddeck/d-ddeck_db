@@ -3,7 +3,7 @@ import hashlib
 import os
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -202,6 +202,42 @@ with TestClient(app) as client:
         member.role = Role.SUPERADMIN
         db.commit()
     assert len(responders()) == 1
+
+    # Existing records may retain inactive legacy personnel; new forms must not
+    # expose them, and edit validation must not mutate the code master.
+    from app.models.service import ServiceTicket, ServiceTicketResponder
+    from app.services import ticket_rules
+    with SessionLocal() as db:
+        ticket = ServiceTicket(ticket_no='HISTORY-TEST', title='Historical responders', received_at=datetime.now(timezone.utc))
+        db.add(ticket)
+        db.flush()
+        db.add(ServiceTicketResponder(ticket_id=ticket.id, seq=1, responder_id=old_id))
+        ticket_id = ticket.id
+        db.get(CodeItem, old_id).is_active = False
+        db.commit()
+        assert ticket_rules.validate_responder_ids(db, [old_id], include_historical=True) == [old_id]
+        expect_error(lambda: ticket_rules.validate_responder_ids(db, [old_id]), 'CODE_NOT_FOUND')
+    historic = client.get('/api/v1/admin/codes/SERVICE_RESPONDER?include_historical=true', headers=headers)
+    assert historic.status_code == 200, historic.text
+    assert any(i['id'] == str(old_id) for i in historic.json()['items'])
+    assert not any(i['id'] == str(old_id) for i in responders())
+    saved = client.patch(f'/api/v1/service/tickets/{ticket_id}', headers=headers,
+                         json={'responder_ids': [str(old_id)]})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['responders'][0]['id'] == str(old_id)
+
+    # Explicit alarm clock times may fall after midnight on an all-day event.
+    from datetime import timedelta
+    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=2)
+    calendars = client.get('/api/v1/calendar/calendars', headers=headers).json()
+    created = client.post('/api/v1/calendar/events', headers=headers, json={
+        'calendar_id': calendars[0]['id'], 'title': 'Clock time alarm',
+        'starts_at': start.isoformat(), 'ends_at': (start + timedelta(days=1)).isoformat(),
+        'all_day': True, 'reminders': [{'offset_minutes': -540, 'method': 'PUSH'}],
+    })
+    assert created.status_code == 201, created.text
+    reminder = created.json()['reminders'][0]
+    assert datetime.fromisoformat(reminder['scheduled_at'].replace('Z', '+00:00')) == start + timedelta(hours=9)
 
     with SessionLocal() as db:
         admin = db.scalar(select(User).where(User.email == 'admin@ddeck.local'))

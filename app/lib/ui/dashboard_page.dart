@@ -23,6 +23,7 @@ import 'service/service_page.dart';
 class _DashboardData {
   const _DashboardData({
     required this.summary,
+    required this.allTime,
     required this.myOpen,
     required this.inventory,
     required this.todayEvents,
@@ -33,6 +34,7 @@ class _DashboardData {
   final ServiceDashboard service;
   final PagedList<ServiceTicket> urgent;
   final ServiceSummary summary;
+  final ServiceSummary allTime;
   final PagedList<ServiceTicket> myOpen;
   final InventorySummary inventory;
   final List<CalendarEvent> todayEvents;
@@ -65,9 +67,11 @@ class DashboardPage extends StatelessWidget {
           ),
           serviceRepo.dashboard(limit: 5),
           serviceRepo.list(onlyOpen: true, sort: 'due_asc', size: 5),
+          serviceRepo.summary(),
         ]);
         return _DashboardData(
           summary: results[0] as ServiceSummary,
+          allTime: results[6] as ServiceSummary,
           myOpen: results[1] as PagedList<ServiceTicket>,
           inventory: results[2] as InventorySummary,
           todayEvents: results[3] as List<CalendarEvent>,
@@ -102,7 +106,7 @@ class DashboardPage extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${Fmt.date(DateTime.now())} · 이번 달 기준',
+                    '${Fmt.date(DateTime.now())} · 서비스 전체 현황 및 당월 통계',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -118,6 +122,18 @@ class DashboardPage extends StatelessWidget {
                     mainAxisExtent:
                         132 * MediaQuery.textScalerOf(context).scale(14) / 14,
                     children: [
+                      StatTile(
+                        label: '총 접수',
+                        value: '${Fmt.number(data.allTime.total)}건',
+                        hint: '전체 기간',
+                        icon: Icons.assignment_outlined,
+                      ),
+                      StatTile(
+                        label: '미종결',
+                        value: '${Fmt.number(data.allTime.openCount)}건',
+                        hint: '전체 기간',
+                        icon: Icons.pending_actions,
+                      ),
                       StatTile(
                         label: 'AS 접수 (당월)',
                         value: '${Fmt.number(data.summary.total)}건',

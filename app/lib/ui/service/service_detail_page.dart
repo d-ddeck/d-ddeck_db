@@ -755,12 +755,10 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     var responders = <CodeItem>[];
     if (requiresResult) {
       final loaded = await runGuarded(context, () async {
-        responders =
-            (await context.read<AdminRepository>().codeGroup(
-                  'SERVICE_RESPONDER',
-                )).items
-                .where((r) => r.isActive || responderIds.contains(r.id))
-                .toList();
+        responders = (await context.read<AdminRepository>().codeGroup(
+          'SERVICE_RESPONDER',
+          includeHistorical: true,
+        )).items.toList();
       });
       if (!loaded || !mounted) return;
     }
@@ -799,7 +797,9 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                       TextFormField(
                         controller: resultController,
                         maxLines: 4,
-                        decoration: const InputDecoration(labelText: '서비스 내용 *'),
+                        decoration: const InputDecoration(
+                          labelText: '서비스 내용 *',
+                        ),
                         validator: (v) => v == null || v.trim().isEmpty
                             ? '서비스 내용을 입력해 주세요.'
                             : null,

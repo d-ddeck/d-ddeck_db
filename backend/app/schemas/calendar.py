@@ -63,7 +63,7 @@ class CalendarOut(ORMModel):
 
 # ---------------------------------------------------------------- reminders
 class ReminderIn(BaseModel):
-    offset_minutes: int = Field(30, ge=0, le=20160, description="minutes before start")
+    offset_minutes: int = Field(30, ge=-20160, le=20160, description="signed minutes before start")
     method: ReminderMethod = ReminderMethod.PUSH
 
 

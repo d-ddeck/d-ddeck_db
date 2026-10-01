@@ -202,7 +202,7 @@ class _SyncedAlarmsPageState extends State<SyncedAlarmsPage>
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text('${Fmt.time(date)} · ${r.offsetMinutes}분 전'),
+                  Text('알람 시각: ${Fmt.time(date)}'),
                   Text(
                     '일정 시작: ${Fmt.dateTime(r.startsAt.toLocal())}${r.allDay ? ' · 종일' : ''}',
                   ),

@@ -148,7 +148,15 @@ class _EventDetailSheetState extends State<EventDetailSheet> {
                       _row(
                         context,
                         Icons.notifications_outlined,
-                        event.reminders.map((r) => r.label).join(', '),
+                        event.reminders
+                            .map(
+                              (r) => Fmt.dateTime(
+                                event.startsAt.subtract(
+                                  Duration(minutes: r.offsetMinutes),
+                                ),
+                              ),
+                            )
+                            .join(', '),
                       ),
                     const FormGap(),
                     Text(

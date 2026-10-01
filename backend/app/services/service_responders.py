@@ -14,7 +14,19 @@ from app.models.enums import Role, UserStatus
 from app.models.user import User
 
 
-def selectable(db, group):
+def historical(db, group_id):
+    from app.models.service import ServiceTicketResponder
+
+    return db.scalars(
+        select(CodeItem).where(
+            CodeItem.group_id == group_id,
+            CodeItem.deleted_at.is_(None),
+            CodeItem.id.in_(select(ServiceTicketResponder.responder_id)),
+        ).order_by(CodeItem.name, CodeItem.id)
+    ).all()
+
+
+def selectable(db, group, *, include_historical=False):
     users = db.scalars(
         select(User)
         .where(
@@ -65,5 +77,8 @@ def selectable(db, group):
         existing.is_active = True
         existing.deleted_at = None
         result.append(existing)
+    if include_historical:
+        seen = {item.id for item in result}
+        result.extend(item for item in historical(db, group.id) if item.id not in seen)
     db.commit()
     return result

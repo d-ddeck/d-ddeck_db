@@ -50,7 +50,10 @@ class _Boards implements BoardRepository {
 
 class _Admin implements AdminRepository {
   @override
-  Future<CodeGroup> codeGroup(String groupCode) async =>
+  Future<CodeGroup> codeGroup(
+    String groupCode, {
+    bool includeHistorical = false,
+  }) async =>
       CodeGroup.fromJson({'code': groupCode, 'name': '장비 종류', 'items': []});
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

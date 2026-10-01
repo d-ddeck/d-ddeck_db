@@ -46,6 +46,7 @@ class _EventFormPageState extends State<EventFormPage> {
   String? _rrule;
   DateTime? _recurrenceEnd;
   late List<EventReminder> _reminders;
+  late List<DateTime> _reminderTimes;
   final Set<String> _participants = {};
   bool _busy = false;
 
@@ -80,6 +81,9 @@ class _EventFormPageState extends State<EventFormPage> {
       _isPrivate = event.isPrivate;
       _participants.addAll(event.participants.map((p) => p.userId));
     }
+    _reminderTimes = _reminders
+        .map((r) => _start.subtract(Duration(minutes: r.offsetMinutes)))
+        .toList();
   }
 
   @override
@@ -181,7 +185,7 @@ class _EventFormPageState extends State<EventFormPage> {
                       _isPrivate,
                       _rrule,
                       _recurrenceEnd,
-                      _reminders.map((r) => r.offsetMinutes).toList(),
+                      _reminderTimes.map((d) => d.toIso8601String()).toList(),
                       _participants.toList(),
                     ].toString(),
                     child: Column(
@@ -400,66 +404,45 @@ class _EventFormPageState extends State<EventFormPage> {
                                         '원본 일정을 수정하면 이후 반복 일정에도 적용됩니다.',
                                       ),
                                   ],
-                                  for (final (index, reminder)
-                                      in _reminders.indexed)
+                                  for (
+                                    var index = 0;
+                                    index < _reminders.length;
+                                    index++
+                                  )
                                     Row(
                                       spacing: 12,
                                       children: [
                                         Expanded(
-                                          child: DropdownButtonFormField<int>(
-                                            key: ObjectKey(reminder),
-                                            initialValue:
-                                                reminder.offsetMinutes,
-                                            isExpanded: true,
-                                            items: [
-                                              for (final minutes in ({
-                                                0,
-                                                10,
-                                                30,
-                                                60,
-                                                1440,
-                                                reminder.offsetMinutes,
-                                              }.toList()..sort()))
-                                                DropdownMenuItem(
-                                                  value: minutes,
-                                                  child: Text(
-                                                    minutes == 0
-                                                        ? '시작 시각'
-                                                        : '$minutes분 전',
-                                                  ),
-                                                ),
-                                            ],
-                                            onChanged: (v) {
-                                              if (v == null) return;
-                                              setState(
-                                                () => _reminders[index] =
-                                                    EventReminder(
-                                                      id: reminder.id,
-                                                      offsetMinutes: v,
-                                                      method: reminder.method,
-                                                    ),
-                                              );
-                                            },
+                                          child: _DateTimeRow(
+                                            label: '알람 시각',
+                                            value: _reminderTimes[index],
+                                            allDay: false,
+                                            onChanged: (value) => setState(
+                                              () =>
+                                                  _reminderTimes[index] = value,
+                                            ),
                                           ),
                                         ),
                                         IconButton(
                                           tooltip: '알림 삭제',
                                           icon: const Icon(Icons.close),
-                                          onPressed: () => setState(
-                                            () => _reminders.removeAt(index),
-                                          ),
+                                          onPressed: () => setState(() {
+                                            _reminders.removeAt(index);
+                                            _reminderTimes.removeAt(index);
+                                          }),
                                         ),
                                       ],
                                     ),
                                   TextButton.icon(
-                                    onPressed: () => setState(
-                                      () => _reminders.add(
+                                    onPressed: () => setState(() {
+                                      _reminders.add(
                                         const EventReminder(
                                           id: '',
-                                          offsetMinutes: 30,
+                                          offsetMinutes: 0,
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                      _reminderTimes.add(_start);
+                                    }),
                                     icon: const Icon(Icons.add),
                                     label: const Text('알림 추가'),
                                   ),
@@ -555,9 +538,16 @@ class _EventFormPageState extends State<EventFormPage> {
       AppSnack.show(context, '종료는 시작보다 빠를 수 없습니다.', error: true);
       return;
     }
+    final offsets = _reminderTimes
+        .map((time) => start.difference(time).inMinutes)
+        .toList();
+    if (offsets.any((value) => value.abs() > 20160)) {
+      AppSnack.show(context, '알람 시각은 일정 시작일 전후 14일 이내로 지정해 주세요.', error: true);
+      return;
+    }
     final reminders = [
-      for (final r in _reminders)
-        {'offset_minutes': r.offsetMinutes, 'method': r.method},
+      for (final (i, r) in _reminders.indexed)
+        {'offset_minutes': offsets[i], 'method': r.method},
     ];
     setState(() => _busy = true);
     final repo = context.read<CalendarRepository>();
@@ -625,10 +615,9 @@ class _EventFormPageState extends State<EventFormPage> {
         )) {
           changes['participant_ids'] = _participants.toList();
         }
-        if (!listEquals(
-          _reminders.map((r) => (r.offsetMinutes, r.method)).toList(),
-          event.reminders.map((r) => (r.offsetMinutes, r.method)).toList(),
-        )) {
+        if (!listEquals([
+          for (final (i, r) in _reminders.indexed) (offsets[i], r.method),
+        ], event.reminders.map((r) => (r.offsetMinutes, r.method)).toList())) {
           changes['reminders'] = reminders;
         }
         final updated = changes.isEmpty

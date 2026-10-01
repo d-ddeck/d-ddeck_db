@@ -118,6 +118,10 @@ class _HomeShellState extends State<HomeShell> {
     final index = _index.clamp(0, destinations.length - 1);
     _visited.add(index);
     final wide = AppTheme.isWide(context);
+    final primaryIndices = Theme.of(context).platform == TargetPlatform.android
+        ? const [0, 1, 2, 4]
+        : const [0, 1, 2, 3];
+    final primaryIndex = primaryIndices.indexOf(index);
 
     final body = EquipmentNavigation(
       open: (tab, filters) {
@@ -157,7 +161,14 @@ class _HomeShellState extends State<HomeShell> {
     return PopScope<Object?>(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _backToSectionMain();
+        if (didPop) return;
+        if (Theme.of(context).platform == TargetPlatform.android &&
+            index == 0 &&
+            _sectionIsMain[0]) {
+          _logout(context);
+        } else {
+          _backToSectionMain();
+        }
       },
       child: CallbackShortcuts(
         bindings: {
@@ -326,20 +337,20 @@ class _HomeShellState extends State<HomeShell> {
             bottomNavigationBar: wide
                 ? null
                 : NavigationBar(
-                    selectedIndex: index < 4 ? index : 4,
+                    selectedIndex: primaryIndex < 0 ? 4 : primaryIndex,
                     onDestinationSelected: (i) {
                       if (i == 4) {
-                        _showMore(destinations);
+                        _showMore(destinations, primaryIndices);
                       } else {
-                        setState(() => _index = i);
+                        setState(() => _index = primaryIndices[i]);
                       }
                     },
                     destinations: [
-                      for (final d in destinations.take(4))
+                      for (final i in primaryIndices)
                         NavigationDestination(
-                          icon: Icon(d.icon),
-                          selectedIcon: Icon(d.selectedIcon),
-                          label: d.label,
+                          icon: Icon(destinations[i].icon),
+                          selectedIcon: Icon(destinations[i].selectedIcon),
+                          label: destinations[i].label,
                         ),
                       const NavigationDestination(
                         icon: Icon(Icons.more_horiz),
@@ -353,7 +364,10 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  Future<void> _showMore(List<_Destination> destinations) async {
+  Future<void> _showMore(
+    List<_Destination> destinations,
+    List<int> primaryIndices,
+  ) async {
     final selected = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
@@ -362,13 +376,14 @@ class _HomeShellState extends State<HomeShell> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (var i = 4; i < destinations.length; i++)
-                ListTile(
-                  leading: Icon(destinations[i].icon),
-                  title: Text(destinations[i].label),
-                  selected: _index == i,
-                  onTap: () => Navigator.pop(context, i),
-                ),
+              for (var i = 0; i < destinations.length; i++)
+                if (!primaryIndices.contains(i))
+                  ListTile(
+                    leading: Icon(destinations[i].icon),
+                    title: Text(destinations[i].label),
+                    selected: _index == i,
+                    onTap: () => Navigator.pop(context, i),
+                  ),
               ListTile(
                 leading: const Icon(Icons.alarm),
                 title: const Text('알람'),

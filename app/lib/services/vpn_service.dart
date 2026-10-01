@@ -109,9 +109,8 @@ class VpnService extends ChangeNotifier {
 
   /// QR 이나 파일에서 읽은 설정을 등록한다.
   ///
-  /// 전체 터널(0.0.0.0/0)이면 회사망만 타도록 좁혀서 저장한다. 직원 개인
-  /// 인터넷까지 회사 회선을 거치게 두지 않으려는 것이고, 구 서버가 PC 에서
-  /// 스크립트로 하던 일과 같다.
+  /// Android는 전체 터널을 기본적으로 회사망으로 좁힌다.
+  /// Windows는 정상 작동하는 원본의 접속 경로와 DNS를 유지한다.
   bool get supportsTunnels => isSupported || _windows != null;
   bool get isWindowsClient => _windows != null;
 

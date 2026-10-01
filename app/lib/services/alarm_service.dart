@@ -172,7 +172,7 @@ class AlarmService with WidgetsBindingObserver {
       AlarmSettings(
         id: id,
         dateTime: date,
-        assetAudioPath: 'assets/sounds/alarm.wav',
+        assetAudioPath: prefs.audioPath,
         loopAudio: prefs.loopAudio,
         vibrate: prefs.vibrate,
         androidFullScreenIntent: true,

@@ -924,10 +924,9 @@ packages:
   wireguard_flutter_plus:
     dependency: "direct main"
     description:
-      name: wireguard_flutter_plus
-      sha256: "6a561135efdd8b9f1b62b6aa1957e53eb7bc4603dad2a13be00d7d1c592c9e0c"
-      url: "https://pub.dev"
-    source: hosted
+      path: "vendor/wireguard_flutter_plus"
+      relative: true
+    source: path
     version: "1.0.7"
   xdg_directories:
     dependency: transitive

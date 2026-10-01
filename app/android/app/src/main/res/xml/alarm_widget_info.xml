@@ -1,5 +1,5 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="250dp" android:minHeight="180dp" android:minResizeWidth="180dp" android:minResizeHeight="140dp"
-    android:targetCellWidth="4" android:targetCellHeight="3"
+    android:minWidth="250dp" android:minHeight="360dp" android:minResizeWidth="180dp" android:minResizeHeight="360dp"
+    android:targetCellWidth="4" android:targetCellHeight="5"
     android:updatePeriodMillis="1800000" android:initialLayout="@layout/alarm_widget"
     android:previewLayout="@layout/alarm_widget" android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" />

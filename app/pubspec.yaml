@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.22+22
+version: 1.0.23+23
 
 environment:
   sdk: ^3.9.2
@@ -69,7 +69,8 @@ dependencies:
   # 공식 안드로이드 라이브러리(com.wireguard.android:tunnel)를 감싼 얇은
   # 플러그인이라, 암호화와 터널 구현은 WireGuard 프로젝트 코드 그대로다.
   # 이 패키지가 하는 일은 설정을 넘기고 VpnService 수명주기를 다루는 것뿐이다.
-  wireguard_flutter_plus: ^1.0.7
+  wireguard_flutter_plus:
+    path: vendor/wireguard_flutter_plus
 
   # WireGuard 설정 QR 촬영. 공유기가 피어마다 QR 을 발급하고, 그 QR 안에는
   # .conf 텍스트가 그대로 들어 있다. 안드로이드 전용 - 데스크톱은 카메라가
@@ -125,7 +126,7 @@ flutter:
     - assets/update_public_key.txt
     - assets/connection_public_key.txt
     - assets/company_ca.crt
-    - assets/sounds/alarm.wav
+    - assets/sounds/
     - assets/icon/app_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see

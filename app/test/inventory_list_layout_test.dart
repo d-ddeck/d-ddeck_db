@@ -20,7 +20,10 @@ class _Auth extends ChangeNotifier implements AuthState {
 
 class _Admin implements AdminRepository {
   @override
-  Future<CodeGroup> codeGroup(String code) async => CodeGroup(
+  Future<CodeGroup> codeGroup(
+    String code, {
+    bool includeHistorical = false,
+  }) async => CodeGroup(
     id: code,
     code: code,
     name: code,

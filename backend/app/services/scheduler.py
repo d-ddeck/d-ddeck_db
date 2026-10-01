@@ -91,7 +91,9 @@ def dispatch_due_reminders(db: Session, limit: int = 200) -> int:
 
 def _body(event: Event, offset_minutes: int) -> str:
     when = event.starts_at.strftime("%Y-%m-%d %H:%M")
-    lead = f"{offset_minutes}분 전" if offset_minutes else "지금"
+    lead = "지금"
+    if offset_minutes:
+        lead = f"{offset_minutes}분 전" if offset_minutes > 0 else f"{-offset_minutes}분 후"
     place = f" @ {event.location}" if event.location else ""
     return f"{when} 시작 ({lead} 알림){place}"
 

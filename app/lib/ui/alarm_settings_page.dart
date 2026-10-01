@@ -7,6 +7,7 @@ import 'common/common.dart';
 import '../data/calendar_repository.dart';
 import '../models/calendar.dart';
 import '../services/alarm_service.dart';
+import '../services/alarm_prefs.dart';
 import 'alarm_list_page.dart';
 import '../state/auth_state.dart';
 import 'async_view.dart';
@@ -158,6 +159,27 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
                                     setState(() => alarms.prefs.sound = v);
                                     _save(alarms, auth);
                                   },
+                          ),
+                          ListTile(
+                            title: const Text('알람음'),
+                            trailing: DropdownButton<String>(
+                              value: alarms.prefs.tone,
+                              items: AlarmPrefs.tones.entries
+                                  .map(
+                                    (entry) => DropdownMenuItem(
+                                      value: entry.key,
+                                      child: Text(entry.value),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _saving || !alarms.prefs.sound
+                                  ? null
+                                  : (value) {
+                                      if (value == null) return;
+                                      setState(() => alarms.prefs.tone = value);
+                                      _save(alarms, auth);
+                                    },
+                            ),
                           ),
                           SwitchListTile(
                             title: const Text('진동'),
@@ -393,8 +415,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
                                   style: const TextStyle(fontSize: 11),
                                 ),
                                 Text(
-                                  '알림 ${Fmt.dateTime(r.scheduledAt)} '
-                                  '(${r.offsetMinutes}분 전)',
+                                  '알람 시각 ${Fmt.dateTime(r.scheduledAt.toLocal())}',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: Theme.of(

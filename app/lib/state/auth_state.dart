@@ -1,3 +1,4 @@
+import '../services/widget_calendar_store.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -125,6 +126,7 @@ class AuthState extends ChangeNotifier {
       _adopt(profile);
     } on ApiException catch (e) {
       if (_isSessionRejected(e)) {
+        await _clearWidgetCalendar();
         await tokenStore.clearSession();
         _set(AuthPhase.loggedOut);
         return;
@@ -272,7 +274,39 @@ class AuthState extends ChangeNotifier {
     await (_alarmSyncQueue = _alarmSyncQueue.then((_) => _syncAlarms(owner)));
   }
 
+  int _widgetSyncRevision = 0;
+
+  Future<void> syncWidgetCalendar() async {
+    final owner = _user;
+    if (_phase != AuthPhase.ready || owner == null) {
+      throw StateError('로그인이 필요합니다.');
+    }
+    final revision = ++_widgetSyncRevision;
+    final now = DateTime.now();
+    final events = await calendarRepo.events(
+      from: DateTime(now.year, now.month, 1),
+      to: DateTime(now.year, now.month + 1, 1),
+    );
+    if (_phase != AuthPhase.ready || !identical(owner, _user)) {
+      throw StateError('로그인 상태가 변경되었습니다.');
+    }
+    await WidgetCalendarStore().save(
+      events,
+      ownerUserId: owner.id,
+      isCurrentOwner: () =>
+          _phase == AuthPhase.ready &&
+          identical(owner, _user) &&
+          revision == _widgetSyncRevision,
+    );
+  }
+
   Future<void> _syncAlarms(UserProfile owner) async {
+    if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
+    try {
+      await syncWidgetCalendar();
+    } catch (_) {
+      /* retain offline snapshot */
+    }
     if (_phase != AuthPhase.ready || !identical(owner, _user)) return;
     try {
       final reminders = await calendarRepo.upcomingReminders(days: 7);
@@ -301,7 +335,19 @@ class AuthState extends ChangeNotifier {
     }
   }
 
+  Future<void> _clearWidgetCalendar() async {
+    if (!AlarmService.isSupported) return;
+    try {
+      await WidgetCalendarStore().clear();
+    } catch (_) {
+      debugPrint('위젯 저장 내용 삭제 실패');
+    }
+  }
+
   void _adopt(UserProfile profile) {
+    if (_user?.id != profile.id) {
+      unawaited(_clearWidgetCalendar());
+    }
     _user = profile;
     if (profile.mustChangePassword) {
       _pollTimer?.cancel();
@@ -325,6 +371,7 @@ class AuthState extends ChangeNotifier {
     _scheduledAlarms = 0;
     // 폰의 예약·저장 목록과 현재 울림은 세션 종료와 무관하게 유지한다.
     _phase = AuthPhase.loggedOut;
+    await _clearWidgetCalendar();
     await tokenStore.clearSession();
     _user = null;
     _unread = 0;

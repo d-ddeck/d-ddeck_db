@@ -206,13 +206,20 @@ def sync_head_cause(db: Session, ticket: ServiceTicket) -> None:
 
 # --------------------------------------------------------------- 대응인원
 def validate_responder_ids(
-    db: Session, responder_ids: list[uuid.UUID]
+    db: Session, responder_ids: list[uuid.UUID], *, include_historical: bool = False
 ) -> list[uuid.UUID]:
+    from app.services.service_responders import historical
+
+    historical_ids = (
+        {item.id for item in historical(db, _group_id(db, "SERVICE_RESPONDER"))}
+        if include_historical else set()
+    )
     seen: list[uuid.UUID] = []
     for rid in responder_ids:
         if rid in seen:
             continue
-        _item(db, rid, "SERVICE_RESPONDER", "대응인원")
+        if rid not in historical_ids:
+            _item(db, rid, "SERVICE_RESPONDER", "대응인원")
         seen.append(rid)
     return seen
 
@@ -236,7 +243,8 @@ def set_responders(
 def apply_responders(
     db: Session, ticket: ServiceTicket, responder_ids: list[uuid.UUID], *, is_new: bool
 ) -> None:
-    set_responders(db, ticket, validate_responder_ids(db, responder_ids), is_new=is_new)
+    ids = validate_responder_ids(db, responder_ids, include_historical=not is_new)
+    set_responders(db, ticket, ids, is_new=is_new)
 
 
 def responder_count(db: Session, ticket: ServiceTicket) -> int:

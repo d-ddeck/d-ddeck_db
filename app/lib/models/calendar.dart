@@ -131,7 +131,11 @@ class EventReminder {
   final String method;
   final DateTime? sentAt;
 
-  String get label => offsetMinutes == 0 ? '시작 시각' : '$offsetMinutes분 전';
+  String get label => offsetMinutes == 0
+      ? '시작 시각'
+      : offsetMinutes < 0
+      ? '${-offsetMinutes}분 후'
+      : '$offsetMinutes분 전';
 
   factory EventReminder.fromJson(Map<String, dynamic> j) => EventReminder(
     id: asString(j['id']),
@@ -271,7 +275,9 @@ class UpcomingReminder {
         ? '오늘'
         : '${startsAt.hour.toString().padLeft(2, '0')}:'
               '${startsAt.minute.toString().padLeft(2, '0')}';
-    final lead = offsetMinutes == 0
+    final lead = offsetMinutes < 0
+        ? '${-offsetMinutes}분 전 시작'
+        : offsetMinutes == 0
         ? '지금 시작'
         : offsetMinutes >= 1440
         ? '${offsetMinutes ~/ 1440}일 뒤'

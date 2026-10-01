@@ -1,3 +1,4 @@
+import 'widget_calendar_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -23,6 +24,12 @@ class _AlarmWidgetPageState extends State<AlarmWidgetPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.reminderId == 'calendar:refresh') {
+      return const WidgetCalendarPage();
+    }
+    if (widget.reminderId.startsWith('calendar:')) {
+      return WidgetCalendarPage(eventId: widget.reminderId.substring(9));
+    }
     if (widget.reminderId.isEmpty) return const SyncedAlarmsPage();
     return Scaffold(
       appBar: AppBar(title: const Text('저장된 알람 상세')),

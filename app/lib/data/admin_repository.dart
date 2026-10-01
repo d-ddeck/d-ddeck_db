@@ -120,8 +120,17 @@ class AdminRepository {
 
   /// Classification master. Used by every form with a category dropdown, so
   /// the client never hardcodes the choices.
-  Future<CodeGroup> codeGroup(String groupCode) async =>
-      CodeGroup.fromJson(asMap(await _api.get('/admin/codes/$groupCode')));
+  Future<CodeGroup> codeGroup(
+    String groupCode, {
+    bool includeHistorical = false,
+  }) async => CodeGroup.fromJson(
+    asMap(
+      await _api.get(
+        '/admin/codes/$groupCode',
+        query: includeHistorical ? {'include_historical': true} : null,
+      ),
+    ),
+  );
 
   Future<List<CodeGroup>> codeGroups({String? module}) async {
     final res = await _api.get('/admin/codes', query: {'module': module});

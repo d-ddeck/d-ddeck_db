@@ -42,7 +42,10 @@ class _Calendar implements CalendarRepository {
 
 class _Admin implements AdminRepository {
   @override
-  Future<CodeGroup> codeGroup(String code) async =>
+  Future<CodeGroup> codeGroup(
+    String code, {
+    bool includeHistorical = false,
+  }) async =>
       CodeGroup(id: 'c', code: code, name: '분류', module: 'calendar', items: []);
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

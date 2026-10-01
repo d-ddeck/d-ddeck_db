@@ -146,10 +146,14 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                               ),
                             const FormGap(),
-                            Icon(
-                              Icons.storage_rounded,
-                              size: 52,
-                              color: scheme.primary,
+                            Center(
+                              child: Image.asset(
+                                'assets/icon/app_icon.png',
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.contain,
+                                semanticLabel: '디떽 회사 로고',
+                              ),
                             ),
                             const FormGap(),
                             Text(
