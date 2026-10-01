@@ -45,6 +45,20 @@ class _SettingsHubTab extends StatelessWidget {
               ),
             ),
           ),
+        if (context.watch<AuthState>().isAdmin)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.enhanced_encryption_outlined),
+              title: const Text('이 기기 연결 설정'),
+              subtitle: const Text('HTTPS 서버 변경 · 관리자 설정 파일 가져오기'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ConnectionSettingsPage(),
+                ),
+              ),
+            ),
+          ),
         for (final module in SettingsModule.values)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

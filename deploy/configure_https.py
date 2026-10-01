@@ -6,6 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from register_systemd import quote
+
 
 def render(domain, cidrs, cert, key, port):
     if not re.fullmatch(
@@ -17,6 +19,8 @@ def render(domain, cidrs, cert, key, port):
     networks = [
         str(ipaddress.ip_network(value.strip(), strict=False)) for value in cidrs
     ]
+    if any(ipaddress.ip_network(value).prefixlen == 0 for value in networks):
+        raise ValueError("인터넷 전체 허용 대신 사내망·VPN 대역을 지정하세요.")
     for path in (cert, key):
         if (
             not re.fullmatch(r"/[A-Za-z0-9_./-]+", str(path))
@@ -34,6 +38,8 @@ server {{
     ssl_certificate {cert};
     ssl_certificate_key {key};
     ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+    add_header X-Content-Type-Options nosniff always;
 {rules}
     deny all;
     client_max_body_size 26m;
@@ -72,13 +78,22 @@ def main():
         return
     if not Path(cert).is_file() or not Path(key).is_file():
         parser.error("인증서와 키 파일을 먼저 준비하세요.")
+    if Path(key).stat().st_mode & 0o077:
+        parser.error("서버 개인키는 소유자만 읽을 수 있어야 합니다 (chmod 600).")
+    subprocess.run(["openssl", "x509", "-in", cert, "-noout", "-checkend", "604800"], check=True)
+    try:
+        ipaddress.ip_address(domain)
+        identity_option = "-checkip"
+    except ValueError:
+        identity_option = "-checkhost"
+    subprocess.run(["openssl", "x509", "-in", cert, "-noout", identity_option, domain], check=True)
+    # nginx -t below also checks that the private key matches the certificate.
     root = args.root.resolve()
-    if not re.fullmatch(r"/[A-Za-z0-9_./-]+", str(root)):
-        parser.error("서버 설치 경로에 공백이나 특수문자를 사용할 수 없습니다.")
+    executable = quote(root / "backend/.venv/bin/python", command=True)
     override = Path("/etc/systemd/system/ddeck.service.d/https.conf")
     config = {
         args.output: content,
-        override: f"[Service]\nEnvironment=TRUSTED_PROXY_IPS=127.0.0.1/32\nExecStart=\nExecStart={root}/backend/.venv/bin/uvicorn app.main:app --no-access-log --no-proxy-headers --host 127.0.0.1 --port {args.port}\n",
+        override: f"[Service]\nEnvironment=TRUSTED_PROXY_IPS=127.0.0.1/32\nExecStart=\nExecStart={executable} -m uvicorn app.main:app --no-access-log --no-proxy-headers --host 127.0.0.1 --port {args.port}\n",
     }
     previous = {path: path.read_bytes() if path.exists() else None for path in config}
     try:

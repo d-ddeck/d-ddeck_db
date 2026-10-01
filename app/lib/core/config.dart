@@ -46,7 +46,7 @@ class AppConfig {
       final url = data['server_url'];
       if (url is String && url.trim().isNotEmpty) {
         _siteUrl = normalizeServerUrl(url);
-        debugPrint('site config: server_url=$_siteUrl');
+        debugPrint('site config loaded');
       }
     } catch (e) {
       debugPrint('site config not loaded: $e');
@@ -88,6 +88,24 @@ class AppConfig {
       url = url.substring(0, url.length - '/docs'.length);
     }
     return url;
+  }
+
+  /// Only the local server PC may use HTTP; remote credentials require TLS.
+  static String secureServerUrl(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        (uri.scheme != 'https' &&
+            !(uri.scheme == 'http' &&
+                const ['127.0.0.1', '::1'].contains(uri.host)))) {
+      throw const FormatException('HTTPS 연결 설정이 필요합니다. 관리자에게 문의하세요.');
+    }
+    return uri.replace(path: '').toString();
   }
 
   static const Duration connectTimeout = Duration(seconds: 10);

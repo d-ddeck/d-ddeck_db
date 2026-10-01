@@ -50,6 +50,7 @@ class ApiException implements Exception {
   }
 
   factory ApiException.fromDio(DioException e) {
+    if (e.error is ApiException) return e.error as ApiException;
     final response = e.response;
     dynamic data = response?.data;
     // 엑셀/첨부 다운로드도 오류일 때는 같은 JSON 오류 계약을 사용한다.

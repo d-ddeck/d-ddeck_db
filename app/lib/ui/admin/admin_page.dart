@@ -18,6 +18,7 @@ import 'accounts_tab.dart';
 import 'departments_page.dart';
 import 'settings_page.dart';
 import 'drive_backup_page.dart';
+import 'connection_settings_page.dart';
 
 part 'approval_tab.dart';
 part 'settings_hub_tab.dart';

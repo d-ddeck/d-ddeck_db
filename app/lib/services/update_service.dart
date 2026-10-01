@@ -9,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/config.dart';
+import '../core/company_tls.dart';
 import '../core/version.dart';
 
 class ClientUpdate {
@@ -102,7 +103,9 @@ class UpdateService {
               receiveTimeout: const Duration(seconds: 30),
               followRedirects: false,
             ),
-          );
+          ) {
+    if (dio == null) _dio.httpClientAdapter = CompanyTls.adapter();
+  }
   final Dio _dio;
   final Future<Directory> Function() _directory;
   static const _channel = MethodChannel('ddeck/updates');

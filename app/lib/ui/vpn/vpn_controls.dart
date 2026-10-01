@@ -161,7 +161,7 @@ class _VpnControlsState extends State<VpnControls> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${vpn.state.label}${vpn.endpoint == null ? '' : ' · ${vpn.endpoint}'}',
+                      vpn.state.label,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),

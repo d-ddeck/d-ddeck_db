@@ -20,6 +20,8 @@ class OperationsTests(unittest.TestCase):
             ("example.com; include bad", ["10.0.0.0/8"]),
             ("example.com", []),
             ("example.com", ["bad"]),
+            ("example.com", ["0.0.0.0/0"]),
+            ("example.com", ["::/0"]),
         ]:
             with self.assertRaises(ValueError):
                 configure_https.render(domain, networks, "/cert.pem", "/key.pem", 8000)

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api_exception.dart';
 import 'config.dart';
+import 'company_tls.dart';
 import 'token_store.dart';
 
 /// The single HTTP entry point.
@@ -27,9 +28,10 @@ class ApiClient {
         // to the interceptor instead of having Dio throw on 4xx first.
         validateStatus: (status) => status != null && status < 500,
         headers: {'Content-Type': 'application/json'},
+        followRedirects: false,
       ),
     );
-    if (adapter != null) _dio.httpClientAdapter = adapter;
+    _dio.httpClientAdapter = adapter ?? CompanyTls.adapter();
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: _onRequest,
@@ -91,6 +93,21 @@ class ApiClient {
   String _url(String path) => '$_serverUrl${AppConfig.apiPrefix}$path';
 
   void _onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    try {
+      AppConfig.secureServerUrl(options.uri.origin);
+      if (options.uri.userInfo.isNotEmpty) throw const FormatException();
+    } catch (_) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          error: ApiException(
+            code: 'HTTPS_REQUIRED',
+            message: '보안 연결 설정이 필요합니다. 관리자에게 HTTPS 연결 설정 파일을 요청하세요.',
+          ),
+        ),
+      );
+      return;
+    }
     final token = tokenStore.accessToken;
     if (token != null && options.extra['skipAuth'] != true) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -185,7 +202,7 @@ class ApiClient {
         return tokenStore.accessToken != null;
       }
     } catch (e) {
-      debugPrint('token refresh failed: $e');
+      debugPrint('token refresh failed');
       // 연결 실패는 세션 거부가 아니다. 폰의 오프라인 알람도 유지한다.
       if (e is DioException &&
           (e.response == null ||

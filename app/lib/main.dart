@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'core/api_client.dart';
 import 'core/config.dart';
+import 'core/company_tls.dart';
 import 'core/token_store.dart';
 import 'data/admin_repository.dart';
 import 'data/auth_repository.dart';
@@ -32,6 +33,7 @@ Future<void> main() async {
 
   // Read the site default the installer wrote next to the executable, before
   // anything asks AppConfig for a server address.
+  await CompanyTls.initialize();
   await AppConfig.loadSiteConfig();
   final themeState = ThemeState();
   await themeState.load();

@@ -12,6 +12,7 @@ import '../vpn/vpn_controls.dart';
 import '../theme.dart';
 import '../common/common.dart';
 import 'signup_page.dart';
+import '../admin/connection_settings_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -24,11 +25,9 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _server = TextEditingController();
 
   bool _busy = false;
   bool _obscure = true;
-  bool _showServerField = false;
   bool _rememberMe = true;
   String? _error;
   String? _serverProbe;
@@ -37,7 +36,6 @@ class _LoginPageState extends State<LoginPage> {
   void initState() {
     super.initState();
     final auth = context.read<AuthState>();
-    _server.text = auth.serverUrl;
     auth.tokenStore.readLastEmail().then((value) {
       if (value != null && mounted) _email.text = value;
     });
@@ -59,7 +57,6 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _email.dispose();
     _password.dispose();
-    _server.dispose();
     super.dispose();
   }
 
@@ -71,16 +68,12 @@ class _LoginPageState extends State<LoginPage> {
     });
     final auth = context.read<AuthState>();
     try {
-      if (_showServerField) await auth.setServerUrl(_server.text);
       await auth.login(_email.text, _password.text, rememberMe: _rememberMe);
       // On success the root widget swaps this page out; nothing to do here.
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.message;
-        // A connection failure is almost always a wrong address, so surface
-        // the server field instead of making the user hunt for it.
-        if (e.code == 'NETWORK_ERROR') _showServerField = true;
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -94,12 +87,10 @@ class _LoginPageState extends State<LoginPage> {
     });
     final auth = context.read<AuthState>();
     try {
-      await auth.setServerUrl(_server.text);
       final ok = await auth.pingServer();
       if (!mounted) return;
       setState(() {
-        _server.text = auth.serverUrl;
-        _serverProbe = ok ? '서버 연결 정상 (${auth.serverUrl})' : '서버에 연결할 수 없습니다.';
+        _serverProbe = ok ? '연결 정상' : '서버에 연결할 수 없습니다.';
       });
     } catch (error) {
       if (mounted) {
@@ -117,11 +108,6 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final auth = context.watch<AuthState>();
-    final serverUri = Uri.tryParse(auth.serverUrl);
-    final serverLabel = serverUri == null
-        ? '주소 확인 필요'
-        : '${serverUri.host}${serverUri.hasPort ? ":${serverUri.port}" : ""}';
     return Scaffold(
       appBar: AppBar(actions: const [ThemeModeButton(), SizedBox(width: 8)]),
       body: PageBody(
@@ -145,8 +131,7 @@ class _LoginPageState extends State<LoginPage> {
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: const Icon(Icons.dns_outlined),
-                              title: const Text('접속 서버'),
-                              subtitle: Text(serverLabel),
+                              title: const Text('디떽 업무 서버'),
                               trailing: IconButton(
                                 tooltip: '서버 연결 확인',
                                 onPressed: _busy ? null : _ping,
@@ -252,42 +237,17 @@ class _LoginPageState extends State<LoginPage> {
                               dense: true,
                             ),
 
-                            ExpansionTile(
-                              key: ValueKey(_showServerField),
-                              initiallyExpanded: _showServerField,
-                              enabled: !_busy,
-                              onExpansionChanged: (value) =>
-                                  setState(() => _showServerField = value),
-                              title: const Text('연결 설정'),
-                              tilePadding: EdgeInsets.zero,
-                              children: [
-                                const FormGap(),
-                                TextFormField(
-                                  controller: _server,
-                                  decoration: InputDecoration(
-                                    labelText: '서버 주소',
-                                    helperText: '예: http://192.168.0.10:8000',
-                                    prefixIcon: const Icon(Icons.dns_outlined),
-                                    suffixIcon: IconButton(
-                                      tooltip: '연결 확인',
-                                      icon: const Icon(Icons.wifi_tethering),
-                                      onPressed: _busy ? null : _ping,
+                            TextButton.icon(
+                              onPressed: _busy
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            const ConnectionSettingsPage(),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                if (_serverProbe != null) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _serverProbe!,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: _serverProbe!.contains('정상')
-                                          ? AppColors.success(context)
-                                          : scheme.error,
-                                    ),
-                                  ),
-                                ],
-                              ],
+                              icon: const Icon(Icons.settings_backup_restore),
+                              label: const Text('관리자 연결 설정 가져오기'),
                             ),
 
                             if (_error != null) ...[

@@ -138,6 +138,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('로그인'), findsOneWidget);
+    expect(find.text('디떽 업무 서버'), findsOneWidget);
+    expect(find.textContaining('localhost'), findsNothing);
+    expect(find.text('서버 주소'), findsNothing);
+    expect(find.text('관리자 연결 설정 가져오기'), findsOneWidget);
     expect(
       find.text('VPN 등록'),
       VpnService.isSupported ? findsOneWidget : findsNothing,
@@ -149,7 +153,7 @@ void main() {
   testWidgets('설정을 바로 등록하고 비밀키와 피어 정보를 표시하지 않는다', (tester) async {
     await import(tester);
     expect(vpn.isRegistered, isTrue);
-    expect(find.textContaining('vpn.example.com:51820'), findsOneWidget);
+    expect(find.textContaining('vpn.example.com:51820'), findsNothing);
     expect(find.textContaining('연결 안 됨'), findsOneWidget);
     for (final value in [
       'private-test-secret',
