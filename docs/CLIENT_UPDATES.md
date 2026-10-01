@@ -23,7 +23,7 @@ Ed25519로 서명된 배포 정보의 SHA-256·크기를 검증한 뒤 OS 설치
 
 1. 기존 버전 관리 절차대로 버전과 빌드 번호를 증가시키고 릴리스합니다.
 2. GitHub Actions가 Windows EXE·Android APK를 빌드하고 `update-manifest.json`을 서명합니다.
-3. Ubuntu 서버가 비공개 GitHub Release에서 세 파일을 받아 검증·게시합니다.
+3. Ubuntu 서버가 회사 저장소 `d-ddeck/d-ddeck_db`의 GitHub Release에서 세 파일을 받아 검증·게시합니다.
 4. 앱은 GitHub 인증 정보 없이 서버의 `/api/v1/updates/latest`와 해당 파일 경로를 사용합니다.
 
 릴리스 CI의 `UPDATE_SIGNING_KEY_BASE64` secret에는 32바이트 Ed25519 개인 키의

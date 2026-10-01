@@ -14,9 +14,9 @@ if [[ $# -gt 0 ]]; then
   RELEASE_ARGS+=("$1")
 fi
 # Resolve one immutable tag first so a concurrent release cannot mix files.
-TAG="$(gh release view "${RELEASE_ARGS[@]}" --repo kmeans12345-cell/d-ddeck_db --json tagName --jq .tagName)"
+TAG="$(gh release view "${RELEASE_ARGS[@]}" --repo d-ddeck/d-ddeck_db --json tagName --jq .tagName)"
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-gh release download "$TAG" --repo kmeans12345-cell/d-ddeck_db --dir "$BUNDLE_DIR" \
+gh release download "$TAG" --repo d-ddeck/d-ddeck_db --dir "$BUNDLE_DIR" \
   --pattern update-manifest.json
 if DEBUG=false "$PY" - "$BUNDLE_DIR/update-manifest.json" <<'PYCODE'
 import hashlib, json, sys
@@ -42,6 +42,6 @@ PYCODE
 then
   exit 0
 fi
-gh release download "$TAG" --repo kmeans12345-cell/d-ddeck_db --dir "$BUNDLE_DIR" \
+gh release download "$TAG" --repo d-ddeck/d-ddeck_db --dir "$BUNDLE_DIR" \
   --pattern 'ddeck-setup-*.exe' --pattern 'ddeck-*-arm64.apk'
 DEBUG=false "$PY" "$SCRIPT_DIR/publish_client_update.py" --bundle "$BUNDLE_DIR"
