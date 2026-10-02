@@ -16,16 +16,41 @@ import '../format.dart';
 import 'color_picker_field.dart';
 
 class EventFormPage extends StatefulWidget {
-  const EventFormPage({super.key, required this.initialDate, this.initialEnd})
-    : event = null,
-      onSaved = null;
+  const EventFormPage({
+    super.key,
+    required this.initialDate,
+    this.initialEnd,
+    this.initialTitle,
+    this.initialLocation,
+    this.initialDescription,
+    this.initialParticipants = const [],
+    this.serviceTicketId,
+    this.onSaved,
+    this.onDraft,
+  }) : event = null;
   const EventFormPage.edit(CalendarEvent this.event, {super.key, this.onSaved})
     : initialDate = null,
-      initialEnd = null;
+      initialEnd = null,
+      initialTitle = null,
+      initialLocation = null,
+      initialDescription = null,
+      initialParticipants = const [],
+      serviceTicketId = null,
+      onDraft = null;
   final DateTime? initialDate;
   final DateTime? initialEnd;
   final CalendarEvent? event;
   final ValueChanged<CalendarEvent>? onSaved;
+
+  /// 다른 화면(서비스 대응 건 등)에서 일정을 만들 때 미리 채울 값.
+  final String? initialTitle, initialLocation, initialDescription;
+  final List<UserBrief> initialParticipants;
+
+  /// 새 일정을 이 서비스 대응 건에 연결한다.
+  final String? serviceTicketId;
+
+  /// 있으면 서버에 저장하지 않고 입력값만 넘긴다(연결할 건이 아직 저장 전일 때).
+  final ValueChanged<EventDraft>? onDraft;
 
   @override
   State<EventFormPage> createState() => _EventFormPageState();
@@ -68,6 +93,10 @@ class _EventFormPageState extends State<EventFormPage> {
     _reminders = List.of(
       event?.reminders ?? [const EventReminder(id: '', offsetMinutes: 30)],
     );
+    _title.text = widget.initialTitle ?? '';
+    _location.text = widget.initialLocation ?? '';
+    _description.text = widget.initialDescription ?? '';
+    _participants.addAll(widget.initialParticipants.map((u) => u.id));
     if (event != null) {
       _title.text = event.title;
       _location.text = event.location ?? '';
@@ -105,9 +134,10 @@ class _EventFormPageState extends State<EventFormPage> {
         appBar: AppBar(
           title: Text(widget.event == null ? '일정 등록' : '일정 수정'),
           actions: [
-            SaveAttachmentButton(
-              onPressed: _busy ? null : () => _submit(attachments: true),
-            ),
+            if (widget.onDraft == null)
+              SaveAttachmentButton(
+                onPressed: _busy ? null : () => _submit(attachments: true),
+              ),
           ],
         ),
         body: PageBody(
@@ -131,6 +161,9 @@ class _EventFormPageState extends State<EventFormPage> {
                 builder: (context, data, reload) {
                   final (calendars, directory, categories) = data;
                   final members = {for (final m in directory) m.id: m};
+                  for (final u in widget.initialParticipants) {
+                    members.putIfAbsent(u.id, () => u);
+                  }
                   for (final p
                       in widget.event?.participants ?? <EventParticipant>[]) {
                     members.putIfAbsent(
@@ -503,7 +536,9 @@ class _EventFormPageState extends State<EventFormPage> {
                                     ),
                                   )
                                 : Text(
-                                    widget.event == null
+                                    widget.onDraft != null
+                                        ? '일정 추가 (접수 저장 시 등록)'
+                                        : widget.event == null
                                         ? '등록 (참석자에게 알림 발송)'
                                         : '저장',
                                   ),
@@ -549,6 +584,31 @@ class _EventFormPageState extends State<EventFormPage> {
       for (final (i, r) in _reminders.indexed)
         {'offset_minutes': offsets[i], 'method': r.method},
     ];
+    final onDraft = widget.onDraft;
+    if (onDraft != null) {
+      onDraft(
+        EventDraft(
+          calendarId: _calendarId!,
+          title: _title.text.trim(),
+          startsAt: start,
+          endsAt: end,
+          location: _location.text.trim().isEmpty ? null : _location.text,
+          description: _description.text.trim().isEmpty
+              ? null
+              : _description.text,
+          categoryId: _categoryId,
+          color: _color,
+          allDay: _allDay,
+          isPrivate: _isPrivate,
+          participantIds: _participants.toList(),
+          reminders: reminders,
+          rrule: _rrule,
+          recurrenceEnd: _recurrenceEnd,
+        ),
+      );
+      Navigator.of(context).pop(true);
+      return;
+    }
     setState(() => _busy = true);
     final repo = context.read<CalendarRepository>();
     final ok = await runGuarded(context, () async {
@@ -568,7 +628,9 @@ class _EventFormPageState extends State<EventFormPage> {
           reminders: reminders,
           rrule: _rrule,
           recurrenceEnd: _recurrenceEnd,
+          serviceTicketId: widget.serviceTicketId,
         );
+        widget.onSaved?.call(saved);
         if (mounted) {
           AppSnack.saved(
             context,

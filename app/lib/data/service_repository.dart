@@ -113,6 +113,7 @@ class ServiceRepository {
     ServiceStatus? initialStatus,
     String? note,
     String? resultNote,
+    DateTime? completedAt,
     String? title,
     String? storeId,
     String? faultId,
@@ -148,6 +149,8 @@ class ServiceRepository {
         'initial_status': initialStatus?.value,
         'note': note,
         'result_note': resultNote,
+        if (completedAt != null)
+          'completed_at': completedAt.toUtc().toIso8601String(),
         'title': titleFromDescription(description ?? title ?? ''),
         'store_id': storeId,
         'fault_id': faultId,

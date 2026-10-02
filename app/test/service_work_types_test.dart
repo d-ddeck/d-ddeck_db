@@ -194,19 +194,15 @@ void main() {
         expect(tester.state<FormFieldState<String>>(field).value, 'custom');
         expect(find.text('기타'), findsNothing);
         expect(find.text('첨부파일 추가'), findsOneWidget);
-        final status = find.byWidgetPredicate(
-          (w) => w is DropdownButtonFormField<ServiceStatus>,
-        );
-        await Scrollable.ensureVisible(tester.element(status), alignment: 0.25);
-        await tester.pumpAndSettle();
-        await tester.tap(status);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('종결').last);
-        await tester.pumpAndSettle();
+        // 처리 상태는 접수 단계 마지막(일정 · 처리 상태)에서 고른다.
         expect(
-          find.widgetWithText(TextFormField, '서비스 처리 내용 *'),
-          findsOneWidget,
+          find.byWidgetPredicate(
+            (w) => w is DropdownButtonFormField<ServiceStatus>,
+          ),
+          findsNothing,
         );
+        expect(find.text('접수 저장 · 다음: 견적서 작성'), findsOneWidget);
+        expect(find.text('저장 후 견적서 작성'), findsNothing);
         expect(tester.takeException(), isNull);
         if (capture.isNotEmpty) {
           Scrollable.of(tester.element(field)).position.jumpTo(0);

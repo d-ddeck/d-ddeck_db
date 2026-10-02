@@ -9,6 +9,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
+import os
 import secrets
 import sqlite3
 import subprocess
@@ -16,6 +18,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -30,6 +33,19 @@ SCOPE = "https://www.googleapis.com/auth/drive.file"
 API = "https://www.googleapis.com/drive/v3"
 TZ = ZoneInfo("Asia/Seoul")
 LEASE = 10800  # backup subprocess is bounded to two hours, upload to < one hour
+
+# 백업 후 전원 끄기. 루트 도우미(deploy/power_helper.py)가 요청 파일을 읽어 끈다.
+POWER_PATH_UNIT = Path("/etc/systemd/system/ddeck-power.path")
+POWER_HELPER = Path("/usr/local/sbin/ddeck-power-off")
+# 예약 시각보다 이만큼 넘게 늦게 시작한 백업(부팅 직후 밀린 백업 등)은 끄지 않는다.
+# 그렇지 않으면 켜짐 → 밀린 백업 → 다시 꺼짐이 반복된다.
+POWER_ON_TIME = timedelta(minutes=15)
+# 다시 켜질 때까지 최소 간격. 도우미도 5분 미만은 거부한다.
+POWER_MIN_OFF = timedelta(minutes=10)
+# 유예가 끝난 지 이보다 오래된 요청(그사이 정전·재부팅)은 버린다.
+POWER_STALE = timedelta(minutes=10)
+
+log = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -191,7 +207,154 @@ def status():
             "last_file_id": s.get("last_file_id"),
             "last_error": s.get("last_error"),
             "folder_id": s.get("folder_id"),
+            "power": _power_status(s),
         }
+
+
+def power_request():
+    return backup_root() / "backups" / ".power" / "request"
+
+
+def power_ready():
+    """루트 도우미가 설치되어 이 서버의 요청 파일을 지켜보고 있는지."""
+    if sys.platform != "linux":
+        return False
+    try:
+        unit = POWER_PATH_UNIT.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    expected = "PathExists=" + str(power_request()).replace("%", "%%")
+    return expected in unit and POWER_HELPER.is_file()
+
+
+def next_wake(s, after):
+    """[after] 에서 최소 간격을 둔 뒤 처음 오는 '다시 켤 시각'."""
+    at = after.replace(
+        hour=s.get("power_wake_hour", 7),
+        minute=s.get("power_wake_minute", 0),
+        second=0,
+        microsecond=0,
+    )
+    while at < after + POWER_MIN_OFF:
+        at += timedelta(days=1)
+    return at
+
+
+def _power_status(s):
+    return {
+        "enabled": s.get("power_enabled", False),
+        "grace_minutes": s.get("power_grace_minutes", 5),
+        "wake_hour": s.get("power_wake_hour", 7),
+        "wake_minute": s.get("power_wake_minute", 0),
+        "ready": power_ready(),
+        "pending": s.get("power_pending"),
+        "last_requested_at": s.get("power_requested_at"),
+        "last_wake_at": s.get("power_wake_at"),
+        "note": s.get("power_note"),
+    }
+
+
+def power_settings(enabled, grace_minutes, wake_hour, wake_minute):
+    if enabled and not power_ready():
+        raise AppError(
+            "POWER_HELPER_MISSING",
+            "서버 PC에 전원 제어 도우미가 설치되지 않았습니다. "
+            "서버 PC에서 sudo python3 deploy/power_helper.py --install 을 실행하세요.",
+            409,
+        )
+    with state() as s:
+        s.update(
+            power_enabled=enabled,
+            power_grace_minutes=grace_minutes,
+            power_wake_hour=wake_hour,
+            power_wake_minute=wake_minute,
+        )
+        pending = s.get("power_pending")
+        if not enabled:
+            s["power_pending"] = None
+        elif pending:
+            # 이미 카운트다운 중이면 끄는 시각은 두고 켜는 시각만 새 설정을 따른다.
+            shutdown = datetime.fromisoformat(pending["shutdown_at"])
+            pending["wake_at"] = next_wake(s, shutdown).isoformat()
+    return status()
+
+
+def power_cancel():
+    with state() as s:
+        if s.get("power_pending"):
+            s["power_pending"] = None
+            s["power_note"] = "관리자가 이번 전원 끄기를 취소했습니다."
+    return status()
+
+
+def _power_tick(now):
+    """유예가 끝난 전원 끄기 요청을 루트 도우미에게 넘긴다."""
+    with state() as s:
+        pending = s.get("power_pending")
+        if not pending or busy(s):
+            return
+        shutdown = datetime.fromisoformat(pending["shutdown_at"])
+        if shutdown > now:
+            return
+        s["power_pending"] = None
+        if not s.get("power_enabled"):
+            return
+        if now - shutdown > POWER_STALE:
+            s["power_note"] = "예정 시각이 지나(서버 재시작 등) 이번 전원 끄기를 건너뛰었습니다."
+            return
+        if not power_ready():
+            s["power_note"] = "전원 제어 도우미가 없어 전원을 끄지 않았습니다."
+            return
+        wake = next_wake(s, now)
+        request = power_request()
+        try:
+            request.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            staged = request.with_name(".request.tmp")
+            staged.write_text(str(int(wake.timestamp())), encoding="ascii")
+            os.replace(staged, request)
+        except OSError:
+            log.exception("power-off request failed")
+            s["power_note"] = "전원 끄기 요청을 기록하지 못했습니다. 서버 저장 공간과 권한을 확인하세요."
+            return
+        s.update(
+            power_requested_at=now.isoformat(),
+            power_wake_at=wake.isoformat(),
+            power_note=None,
+        )
+    log.info("power-off requested, wake at %s", wake.isoformat())
+
+
+def _notify_power(shutdown, wake):
+    """관리자에게 곧 꺼진다고 알린다. 알림 실패는 백업 결과와 무관하다."""
+    try:
+        from sqlalchemy import select
+
+        from app.core.database import SessionLocal
+        from app.models.enums import NotificationType, Role, UserStatus
+        from app.models.user import User
+        from app.services import notifications
+
+        with SessionLocal() as db:
+            admins = db.scalars(
+                select(User.id).where(
+                    User.role.in_([Role.ADMIN, Role.SUPERADMIN]),
+                    User.status == UserStatus.APPROVED,
+                )
+            ).all()
+            if not admins:
+                return
+            notifications.notify(
+                db,
+                user_ids=admins,
+                type=NotificationType.SYSTEM,
+                title="[서버] 백업 완료 후 서버 PC 전원이 꺼집니다",
+                body=f"{shutdown:%H:%M}에 꺼지고 {wake:%m/%d %H:%M}에 다시 켜집니다. "
+                "취소하려면 관리 > Google 공유 드라이브 백업에서 취소하세요.",
+                payload={"route": "/admin/drive-backup"},
+            )
+            db.commit()
+    except Exception:  # notification is best effort
+        log.exception("power-off notification failed")
 
 
 def configure(client_id, client_secret, redirect_uri):
@@ -502,6 +665,7 @@ def upload(s, archive):
 
 def tick():
     now = datetime.now(TZ)
+    _power_tick(now)
     with state() as s:
         if busy(s) or not connected(s):
             return
@@ -512,6 +676,10 @@ def tick():
         )
         if not s.get("requested") and not due:
             return
+        # 전원 끄기는 예약 시각에 제때 시작한 자동 백업에만 이어진다.
+        on_time = bool(due) and not s.get("requested") and (
+            now - datetime.fromisoformat(s["next_run_at"]) <= POWER_ON_TIME
+        )
         # The existing local backup tool has its own cross-process lock.
         if (backup_root() / "backups" / ".backup.lock").exists():
             return
@@ -544,6 +712,7 @@ def tick():
             raise RuntimeError("Invalid backup archive")
         archive = candidate
         file_id = upload(config, archive)
+        power_off = None
         with state() as s:
             if s.get("job") == job:
                 s.update(
@@ -552,6 +721,23 @@ def tick():
                     last_account=config["email"],
                     last_error=None,
                 )
+                if s.get("power_enabled") and on_time:
+                    shutdown = datetime.now(TZ) + timedelta(
+                        minutes=s.get("power_grace_minutes", 5)
+                    )
+                    power_off = (shutdown, next_wake(s, shutdown))
+                    s["power_pending"] = {
+                        "shutdown_at": power_off[0].isoformat(),
+                        "wake_at": power_off[1].isoformat(),
+                    }
+                    s["power_note"] = None
+                elif s.get("power_enabled"):
+                    s["power_note"] = (
+                        "예약 시각에 실행된 자동 백업이 아니어서(수동·지연 실행) "
+                        "전원을 끄지 않았습니다."
+                    )
+        if power_off:
+            _notify_power(*power_off)
     except (
         AppError,
         httpx.HTTPError,

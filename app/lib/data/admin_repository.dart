@@ -95,6 +95,29 @@ class AdminRepository {
     );
   }
 
+  /// 예약 자동 백업이 성공하면 [graceMinutes] 뒤 서버 PC를 끄고 [wakeHour]:[wakeMinute] 에 다시 켠다.
+  Future<void> setDrivePower({
+    required bool enabled,
+    required int graceMinutes,
+    required int wakeHour,
+    required int wakeMinute,
+  }) async {
+    await _api.put(
+      '/admin/drive-backup/power',
+      body: {
+        'enabled': enabled,
+        'grace_minutes': graceMinutes,
+        'wake_hour': wakeHour,
+        'wake_minute': wakeMinute,
+      },
+    );
+  }
+
+  /// 카운트다운 중인 이번 전원 끄기만 취소한다. 설정은 그대로 둔다.
+  Future<void> cancelDrivePower() async {
+    await _api.post('/admin/drive-backup/power/cancel');
+  }
+
   Future<void> runDriveBackup() async {
     await _api.post('/admin/drive-backup/run');
   }

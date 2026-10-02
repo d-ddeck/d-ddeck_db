@@ -3,6 +3,8 @@ import '../../data/file_repository.dart';
 import '../common/save_attachment_button.dart';
 import 'service_detail_page.dart';
 import 'quotation_page.dart';
+import 'service_intake_page.dart';
+import 'ticket_schedule.dart';
 
 import 'package:flutter/services.dart';
 
@@ -74,8 +76,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   final _model = TextEditingController();
   final _serial = TextEditingController();
   final _note = TextEditingController();
-  final _resultNote = TextEditingController();
-  ServiceStatus _initialStatus = ServiceStatus.received;
   final List<PlatformFile> _pendingFiles = [];
   ServiceTicket? _createdTicket;
   final _description = TextEditingController();
@@ -104,6 +104,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   ServiceChannel _channel = ServiceChannel.phone;
   bool _isWarranty = true;
   bool _busy = false;
+  _FormOptions? _options;
   bool get _isEdit => widget.ticket != null;
 
   @override
@@ -176,7 +177,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       _serial,
       _description,
       _note,
-      _resultNote,
     ]) {
       c.dispose();
     }
@@ -268,7 +268,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
       if (!_isEdit && selected != null) _applyStoreContact(selected);
       _storeContactDefaultsLoaded = true;
     }
-    return _FormOptions(
+    return _options = _FormOptions(
       codes,
       results[1] as List<BrandSummary>,
       (results[2] as PagedList<Customer>).items,
@@ -509,8 +509,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
               _serial.text,
               _description.text,
               _note.text,
-              _resultNote.text,
-              _initialStatus,
               _pendingFiles.map((f) => f.path).join(","),
               _rentalSerials,
               _customerId,
@@ -1013,37 +1011,6 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                       hintText: '추가 전달 사항을 입력하세요.',
                                     ),
                                   ),
-                                  DropdownButtonFormField<ServiceStatus>(
-                                    initialValue: _initialStatus,
-                                    decoration: const InputDecoration(
-                                      labelText: '저장 상태',
-                                    ),
-                                    items: [
-                                      for (final status in [
-                                        ServiceStatus.received,
-                                        ServiceStatus.inProgress,
-                                        ServiceStatus.completed,
-                                      ])
-                                        DropdownMenuItem(
-                                          value: status,
-                                          child: Text(status.label),
-                                        ),
-                                    ],
-                                    onChanged: (value) =>
-                                        setState(() => _initialStatus = value!),
-                                  ),
-                                  if (_initialStatus == ServiceStatus.completed)
-                                    TextFormField(
-                                      controller: _resultNote,
-                                      maxLines: 3,
-                                      decoration: const InputDecoration(
-                                        labelText: '서비스 처리 내용 *',
-                                      ),
-                                      validator: (value) =>
-                                          value == null || value.trim().isEmpty
-                                          ? '종결 처리 내용을 입력해 주세요.'
-                                          : null,
-                                    ),
                                   OutlinedButton.icon(
                                     onPressed: _busy
                                         ? null
@@ -1098,17 +1065,29 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                 ? '저장 중…'
                                 : _createdTicket != null
                                 ? '첨부 업로드 재시도'
-                                : '저장',
+                                : _isEdit
+                                ? '저장'
+                                : '접수 저장 · 다음: 견적서 작성',
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _busy || _storesLoading
-                              ? null
-                              : () => _submit(quotation: true),
-                          icon: const Icon(Icons.request_quote_outlined),
-                          label: const Text('저장 후 견적서 작성'),
-                        ),
+                        if (_isEdit) ...[
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _busy || _storesLoading
+                                ? null
+                                : () => _submit(quotation: true),
+                            icon: const Icon(Icons.request_quote_outlined),
+                            label: const Text('저장 후 견적서 작성'),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _busy || _storesLoading
+                                ? null
+                                : () => _submit(schedule: true),
+                            icon: const Icon(Icons.event_available_outlined),
+                            label: const Text('저장 후 일정 등록'),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1124,6 +1103,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
   Future<void> _submit({
     bool attachments = false,
     bool quotation = false,
+    bool schedule = false,
   }) async {
     if (_busy) return;
     FocusScope.of(context).unfocus();
@@ -1199,40 +1179,16 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             'is_warranty': _isWarranty,
           });
         } else {
-          saved = await repo.create(
-            initialStatus: _initialStatus,
-            note: _note.text.trim(),
-            resultNote: _resultNote.text.trim(),
-            storeId: _storeId,
-            workTypeId: _workTypeId,
-            faultId: _faultId,
-            receivedAt: _receivedAt,
-            description: _description.text.trim(),
-            causes: causes,
-            responderIds: _responders.toList(),
-            isRental: _isRental,
-            rentalTypeId: _isRental ? _rentalTypeId : null,
-            rentalSerials: _isRental ? _rentalSerials : null,
-            rentalDueDate: _isRental ? _rentalDueDate : null,
-            rentalReturned: _isRental && _rentalReturned,
-            rentalReturnDate: _isRental && _rentalReturned
-                ? _rentalReturnDate
-                : null,
-            customerId: _customerId,
-            customerName: _customerId == null
-                ? _nullIfBlank(_customerName.text)
-                : null,
-            contactName: _nullIfBlank(_contactName.text),
-            contactPhone: _nullIfBlank(_phone.text),
-            siteAddress: _nullIfBlank(_address.text),
-            productName: _nullIfBlank(_product.text),
-            modelName: _nullIfBlank(_model.text),
-            serialNo: _nullIfBlank(_serial.text),
-            assigneeId: _assigneeId,
-            priority: _priority,
-            channel: _channel,
-            isWarranty: _isWarranty,
+          // 신규 접수는 견적서 → 일정 · 처리 상태 단계를 거쳐 마지막에 저장된다.
+          final created = await Navigator.push<ServiceTicket>(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  ServiceIntakeFlowPage(draft: _intakeDraft(repo, causes)),
+            ),
           );
+          if (created == null) return;
+          saved = created;
         }
         if (!_isEdit) _createdTicket = saved;
         if (!mounted) return;
@@ -1275,6 +1231,9 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
             ),
           );
         }
+        if (mounted && schedule) {
+          await registerTicketSchedule(context, saved);
+        }
         if (mounted && attachments) {
           await FormAttachmentsPage.open(context, 'service_ticket', saved.id);
         }
@@ -1287,6 +1246,83 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (ok && submitted) Navigator.of(context).pop(true);
+  }
+
+  /// 접수 단계 화면에 넘길 저장 전 내용. 저장은 마지막 단계에서 [ServiceIntakeDraft.save] 로 한다.
+  ServiceIntakeDraft _intakeDraft(
+    ServiceRepository repo,
+    List<Map<String, dynamic>> causes,
+  ) {
+    final description = _description.text.trim();
+    final workType = _options
+        ?.items('SERVICE_WORK_TYPE')
+        .where((c) => c.id == _workTypeId)
+        .firstOrNull;
+    return ServiceIntakeDraft(
+      title: ServiceRepository.titleFromDescription(description),
+      storeId: _storeId,
+      storeName: _stores.where((s) => s.id == _storeId).firstOrNull?.name,
+      customerName: _customerId == null
+          ? _nullIfBlank(_customerName.text)
+          : _options?.customers
+                .where((c) => c.id == _customerId)
+                .firstOrNull
+                ?.name,
+      contactName: _nullIfBlank(_contactName.text),
+      contactPhone: _nullIfBlank(_phone.text),
+      siteAddress: _nullIfBlank(_address.text),
+      description: description.isEmpty ? null : description,
+      workTypeLabel: workType == null
+          ? null
+          : '${workType.code} · ${workType.name}',
+      assignee: _options?.members.where((m) => m.id == _assigneeId).firstOrNull,
+      responders: _responders,
+      save: (status, {resultNote, completedAt}) async {
+        try {
+          return await repo.create(
+            initialStatus: status,
+            note: _note.text.trim(),
+            resultNote: resultNote,
+            completedAt: completedAt,
+            storeId: _storeId,
+            workTypeId: _workTypeId,
+            faultId: _faultId,
+            receivedAt: _receivedAt,
+            description: _description.text.trim(),
+            causes: causes,
+            responderIds: _responders.toList(),
+            isRental: _isRental,
+            rentalTypeId: _isRental ? _rentalTypeId : null,
+            rentalSerials: _isRental ? _rentalSerials : null,
+            rentalDueDate: _isRental ? _rentalDueDate : null,
+            rentalReturned: _isRental && _rentalReturned,
+            rentalReturnDate: _isRental && _rentalReturned
+                ? _rentalReturnDate
+                : null,
+            customerId: _customerId,
+            customerName: _customerId == null
+                ? _nullIfBlank(_customerName.text)
+                : null,
+            contactName: _nullIfBlank(_contactName.text),
+            contactPhone: _nullIfBlank(_phone.text),
+            siteAddress: _nullIfBlank(_address.text),
+            productName: _nullIfBlank(_product.text),
+            modelName: _nullIfBlank(_model.text),
+            serialNo: _nullIfBlank(_serial.text),
+            assigneeId: _assigneeId,
+            priority: _priority,
+            channel: _channel,
+            isWarranty: _isWarranty,
+          );
+        } on ApiException catch (error) {
+          if (error.code == 'RENTAL_SERIAL_UNKNOWN') {
+            _rentalField.currentState?.markUnknown();
+            _rentalField.currentState?.showRegistrationHint();
+          }
+          rethrow;
+        }
+      },
+    );
   }
 
   static String? _nullIfBlank(String v) => v.trim().isEmpty ? null : v.trim();

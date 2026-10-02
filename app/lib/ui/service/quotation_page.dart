@@ -198,7 +198,14 @@ class QuotationEditPage extends StatefulWidget {
     required this.initial,
     required this.baseVersion,
   });
-  final String path;
+
+  /// 접수 저장 전 견적서. 서버에 보내지 않고 작성한 본문을 돌려준다.
+  const QuotationEditPage.draft({super.key, required this.initial})
+    : path = null,
+      baseVersion = 0;
+
+  /// null 이면 임시 작성: 저장하면 POST 본문을 Navigator 결과로 돌려준다.
+  final String? path;
   final Map<String, dynamic> initial;
   final int baseVersion;
   @override
@@ -380,33 +387,32 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
       AppSnack.show(context, '유효기간은 견적일자 이후여야 합니다.', error: true);
       return;
     }
-    setState(() => _busy = true);
-    final saved = await runGuarded(context, () async {
-      String day(DateTime d) =>
-          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-      await context.read<ApiClient>().post(
-        widget.path,
-        body: {
-          'base_version': widget.baseVersion,
-          'quote_date': day(_date),
-          'valid_until': day(_until),
-          for (final side in ['supplier', 'recipient'])
-            side: {
-              for (final key in [
-                'company',
-                'contact',
-                'address',
-                'phone',
-                'email',
-              ])
-                key: _fields['$side.$key']!.text.trim(),
-            },
-          for (final key in ['bank_account', 'notes', 'revision_note'])
-            key: _fields[key]!.text.trim(),
-          'items': _items.map((e) => e.json).toList(),
+    String day(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final body = {
+      'base_version': widget.baseVersion,
+      'quote_date': day(_date),
+      'valid_until': day(_until),
+      for (final side in ['supplier', 'recipient'])
+        side: {
+          for (final key in ['company', 'contact', 'address', 'phone', 'email'])
+            key: _fields['$side.$key']!.text.trim(),
         },
-      );
-    });
+      for (final key in ['bank_account', 'notes', 'revision_note'])
+        key: _fields[key]!.text.trim(),
+      'items': _items.map((e) => e.json).toList(),
+    };
+    final path = widget.path;
+    if (path == null) {
+      _dirty = false;
+      Navigator.pop(context, body);
+      return;
+    }
+    setState(() => _busy = true);
+    final saved = await runGuarded(
+      context,
+      () => context.read<ApiClient>().post(path, body: body),
+    );
     if (!mounted) return;
     setState(() => _busy = false);
     if (saved) {

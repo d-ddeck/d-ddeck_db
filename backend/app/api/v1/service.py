@@ -617,6 +617,7 @@ def create_ticket(
             "initial_status",
             "note",
             "result_note",
+            "completed_at",
         }
     )
     received_at = data.pop("received_at", None) or now_utc()
@@ -713,7 +714,9 @@ def create_ticket(
                 db,
                 ticket,
                 ServiceStatusChange(
-                    status=ServiceStatus.COMPLETED, result_note=payload.result_note
+                    status=ServiceStatus.COMPLETED,
+                    result_note=payload.result_note,
+                    completed_at=payload.completed_at,
                 ),
                 user,
                 client,

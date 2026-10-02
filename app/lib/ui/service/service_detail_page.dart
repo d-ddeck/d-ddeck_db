@@ -9,7 +9,6 @@ import 'package:provider/provider.dart';
 import '../common/common.dart';
 
 import '../../data/file_repository.dart';
-import '../../data/admin_repository.dart';
 import '../../models/common.dart';
 import '../store/store_detail_page.dart';
 import '../../data/service_repository.dart';
@@ -21,6 +20,8 @@ import '../format.dart';
 import '../theme.dart';
 import 'service_form_page.dart';
 import 'ticket_history_page.dart';
+import 'status_change_dialog.dart';
+import 'ticket_schedule.dart';
 import 'quotation_page.dart';
 
 class ServiceDetailPage extends StatefulWidget {
@@ -306,6 +307,8 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
                             ('담당자', t.assignee?.display ?? '미배정'),
                           ],
                         ),
+                        const SizedBox(height: 12),
+                        TicketScheduleSection(ticket: t),
                         const SizedBox(height: 12),
                         _InfoCard(
                           title: '대상 장비',
@@ -750,177 +753,10 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
     ServiceStatus next,
     VoidCallback reload,
   ) async {
-    final requiresResult = next == ServiceStatus.completed;
-    final responderIds = ticket.responders.map((r) => r.id).toSet();
-    var responders = <CodeItem>[];
-    if (requiresResult) {
-      final loaded = await runGuarded(context, () async {
-        responders = (await context.read<AdminRepository>().codeGroup(
-          'SERVICE_RESPONDER',
-          includeHistorical: true,
-        )).items.toList();
-      });
-      if (!loaded || !mounted) return;
-    }
-    final resultController = TextEditingController(text: ticket.resultNote);
-    final noteController = TextEditingController();
-    final minutesController = TextEditingController();
-    final form = GlobalKey<FormState>();
-    var completedAt = DateTime.now();
-    final dialog = DialogRoute<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, update) => ConfirmDialog.form(
-          constraints: AppTheme.isWide(ctx)
-              ? const BoxConstraints.tightFor(width: 560)
-              : null,
-          title: Text(
-            requiresResult
-                ? '종결 처리'
-                : ticket.status == ServiceStatus.completed
-                ? '다시 열기'
-                : '${next.label}(으)로 변경',
-          ),
-          content: ConstrainedBox(
-            constraints: BoxConstraints.tightFor(
-              width: AppTheme.isWide(ctx) ? 560 : MediaQuery.sizeOf(ctx).width,
-            ),
-            child: SingleChildScrollView(
-              padding: fieldLabelInsets(ctx),
-              child: Form(
-                key: form,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (requiresResult) ...[
-                      TextFormField(
-                        controller: resultController,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          labelText: '서비스 내용 *',
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? '서비스 내용을 입력해 주세요.'
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      FormField<bool>(
-                        validator: (_) =>
-                            responderIds.isEmpty ? '서비스인원을 선택해 주세요.' : null,
-                        builder: (field) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('서비스인원 *'),
-                            const FormGap(),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: AppSpace.md,
-                              children: [
-                                for (final r in responders)
-                                  FilterChip(
-                                    label: Text(r.name),
-                                    selected: responderIds.contains(r.id),
-                                    onSelected: (v) => update(() {
-                                      v
-                                          ? responderIds.add(r.id)
-                                          : responderIds.remove(r.id);
-                                    }),
-                                  ),
-                              ],
-                            ),
-                            if (field.hasError)
-                              Text(
-                                field.errorText!,
-                                style: TextStyle(
-                                  color: Theme.of(ctx).colorScheme.error,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const FormGap(),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text('서비스일: ${Fmt.date(completedAt)}'),
-                          onPressed: () async {
-                            final date = await pickDate(
-                              ctx,
-                              completedAt,
-                              firstDate: DateTime(1900),
-                              lastDate: DateTime(2100, 12, 31),
-                            );
-                            if (date != null && ctx.mounted) {
-                              update(() => completedAt = date);
-                            }
-                          },
-                        ),
-                      ),
-                      const FormGap(),
-                    ],
-                    TextFormField(
-                      controller: noteController,
-                      decoration: const InputDecoration(labelText: '변경 메모'),
-                    ),
-                    const FormGap(),
-                    TextFormField(
-                      controller: minutesController,
-                      decoration: const InputDecoration(labelText: '작업 시간 (분)'),
-                      keyboardType: TextInputType.number,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (form.currentState!.validate()) Navigator.of(ctx).pop(true);
-              },
-              child: const Text('저장'),
-            ),
-          ],
-        ),
-      ),
-    );
-    final confirmed = await Navigator.of(
-      context,
-      rootNavigator: true,
-    ).push(dialog);
-    await dialog.completed;
-    final note = noteController.text.trim();
-    final resultNote = resultController.text.trim();
-    final minutes = int.tryParse(minutesController.text);
-    noteController.dispose();
-    resultController.dispose();
-    minutesController.dispose();
-    if (confirmed != true || !mounted) return;
-    final ok = await runGuarded(context, () async {
-      final saved = await context.read<ServiceRepository>().changeStatus(
-        ticket.id,
-        next,
-        note: note.isEmpty ? null : note,
-        resultNote: requiresResult ? resultNote : null,
-        responderIds: requiresResult ? responderIds.toList() : null,
-        completedAt: requiresResult ? completedAt : null,
-        workMinutes: minutes,
-      );
-      if (!mounted) return;
-      AppSnack.show(
-        context,
-        saved.notices.isEmpty
-            ? (requiresResult ? '종결 처리되었습니다.' : '상태가 변경되었습니다.')
-            : saved.notices.join('\n'),
-      );
-    });
-    if (ok && mounted) {
+    final input = await askStatusChange(context, ticket, next);
+    if (input == null || !mounted) return;
+    final saved = await applyStatusChange(context, ticket.id, next, input);
+    if (saved != null && mounted) {
       _changed = true;
       reload();
     }

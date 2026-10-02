@@ -46,6 +46,31 @@ class _Admin implements AdminRepository {
     requested = true;
   }
 
+  final powerCalls = <Map<String, dynamic>>[];
+  bool powerCanceled = false;
+  @override
+  Future<void> setDrivePower({
+    required bool enabled,
+    required int graceMinutes,
+    required int wakeHour,
+    required int wakeMinute,
+  }) async {
+    final values = {
+      'enabled': enabled,
+      'grace_minutes': graceMinutes,
+      'wake_hour': wakeHour,
+      'wake_minute': wakeMinute,
+    };
+    powerCalls.add(values);
+    data['power'] = {...data['power'] as Map<String, dynamic>, ...values};
+  }
+
+  @override
+  Future<void> cancelDrivePower() async {
+    powerCanceled = true;
+    data['power'] = {...data['power'] as Map<String, dynamic>, 'pending': null};
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -93,7 +118,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('연결 계정: backup@example.com'), findsOneWidget);
       expect(find.text('연동 계정 변경'), findsOneWidget);
-      await tester.tap(find.byType(SwitchListTile));
+      await tester.tap(find.widgetWithText(SwitchListTile, '매일 자동 백업'));
       await tester.pumpAndSettle();
       expect(repo.data['enabled'], isTrue);
       await tester.ensureVisible(find.text('지금 백업'));
@@ -104,4 +129,84 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  group('백업 후 PC 전원 끄기', () {
+    Future<_Admin> open(WidgetTester tester, Map<String, dynamic> power) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _Admin()..data.addAll({'enabled': true, 'power': power});
+      await tester.pumpWidget(
+        Provider<AdminRepository>.value(
+          value: repo,
+          child: const MaterialApp(home: DriveBackupPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    Finder powerSwitch() =>
+        find.widgetWithText(SwitchListTile, '백업 후 PC 전원 끄기');
+
+    testWidgets('꺼져 있으면 유예·켤 시각을 숨기고, 켜면 저장한다', (tester) async {
+      final repo = await open(tester, {
+        'enabled': false,
+        'ready': true,
+        'grace_minutes': 5,
+        'wake_hour': 7,
+        'wake_minute': 0,
+      });
+      expect(find.text('끄기 전 유예  '), findsNothing);
+      expect(find.text('다시 켤 시각 (한국)  '), findsNothing);
+      await tester.tap(powerSwitch());
+      await tester.pumpAndSettle();
+      expect(repo.powerCalls.single, {
+        'enabled': true,
+        'grace_minutes': 5,
+        'wake_hour': 7,
+        'wake_minute': 0,
+      });
+      expect(find.text('끄기 전 유예  '), findsOneWidget);
+      expect(find.text('07:00'), findsOneWidget);
+
+      await tester.tap(find.text('5분'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('15분').last);
+      await tester.pumpAndSettle();
+      expect(repo.powerCalls.last['grace_minutes'], 15);
+      expect(repo.powerCalls.last['enabled'], isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('도우미가 없으면 켤 수 없고 설치 방법을 안내한다', (tester) async {
+      final repo = await open(tester, {'enabled': false, 'ready': false});
+      expect(tester.widget<SwitchListTile>(powerSwitch()).onChanged, isNull);
+      expect(find.textContaining('power_helper.py --install'), findsOneWidget);
+      expect(repo.powerCalls, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('카운트다운 중이면 이번만 취소할 수 있다', (tester) async {
+      final repo = await open(tester, {
+        'enabled': true,
+        'ready': true,
+        'grace_minutes': 5,
+        'wake_hour': 6,
+        'wake_minute': 30,
+        'pending': {
+          'shutdown_at': '2026-10-03T03:05:00+09:00',
+          'wake_at': '2026-10-03T06:30:00+09:00',
+        },
+      });
+      expect(find.textContaining('다시 켜집니다'), findsOneWidget);
+      expect(find.text('06:30'), findsOneWidget);
+      await tester.tap(find.text('이번만 취소'));
+      await tester.pumpAndSettle();
+      expect(repo.powerCanceled, isTrue);
+      expect(find.text('이번만 취소'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
 }

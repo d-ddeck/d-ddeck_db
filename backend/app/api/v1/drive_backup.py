@@ -73,6 +73,25 @@ def schedule(payload: Schedule, _: AdminUser):
     return service.schedule(payload.enabled, payload.hour)
 
 
+class PowerSettings(BaseModel):
+    enabled: bool
+    grace_minutes: int = Field(5, ge=1, le=60, description="백업 성공 후 끄기까지 유예")
+    wake_hour: int = Field(7, ge=0, le=23, description="다시 켤 시각 (한국)")
+    wake_minute: int = Field(0, ge=0, le=59)
+
+
+@router.put("/power")
+def power(payload: PowerSettings, _: AdminUser):
+    return service.power_settings(
+        payload.enabled, payload.grace_minutes, payload.wake_hour, payload.wake_minute
+    )
+
+
+@router.post("/power/cancel")
+def power_cancel(_: AdminUser):
+    return service.power_cancel()
+
+
 @router.post("/run", status_code=202)
 def run(_: AdminUser):
     return service.request_backup()

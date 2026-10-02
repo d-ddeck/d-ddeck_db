@@ -267,6 +267,24 @@ sudo ./deploy/backup.sh                              # 지금 한 번
 sudo ./deploy/backup.sh --restore /경로/ddeck_*.tar.gz   # 복구
 ```
 
+### 백업 후 PC 전원 끄기 (선택)
+
+앱의 **관리 > Google 공유 드라이브 백업 > 백업 후 PC 전원 끄기**를 켜면, 예약된
+자동 백업이 성공한 뒤 유예 시간이 지나 서버 PC를 끄고 설정한 시각에 다시 켭니다.
+서버는 일반 계정으로 실행되므로 전원 제어용 루트 도우미를 한 번 설치해야 합니다.
+
+```bash
+python3 deploy/power_helper.py                   # 설치될 내용 미리 보기
+sudo python3 deploy/power_helper.py --install    # 설치 (BACKUP_ROOT를 쓰면 --root 지정)
+sudo python3 deploy/power_helper.py --uninstall  # 제거
+```
+
+- 수동 백업, PC가 켜진 직후 밀려서 실행된 백업 뒤에는 끄지 않습니다.
+- 유예 중에는 관리자에게 알림이 가고, 같은 화면에서 이번 회차만 취소할 수 있습니다.
+- 꺼져 있는 동안 앱 접속과 VPN이 끊깁니다.
+- 처음 사용할 때 실제로 켜지는지 확인하세요. 켜지지 않으면 BIOS에서 RTC 켜짐
+  (Wake on RTC, Resume by Alarm 등) 설정을 켜야 합니다.
+
 ## 클라이언트 연결
 
 Windows 앱과 안드로이드 앱의 **로그인 화면 → "서버 주소 설정"** 에 위에서 나온 주소를 입력합니다.

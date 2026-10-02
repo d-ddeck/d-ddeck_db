@@ -140,6 +140,9 @@ class ServiceTicketCreate(_RentalFields):
     initial_status: Literal["RECEIVED", "IN_PROGRESS", "COMPLETED"] | None = None
     note: str | None = Field(None, max_length=10000)
     result_note: str | None = None
+    completed_at: datetime | None = Field(
+        None, description="initial_status=COMPLETED 일 때 대응일. 비우면 지금"
+    )
     title: str = Field(min_length=1, max_length=250)
     customer_id: uuid.UUID | None = None
     customer_name: str | None = Field(None, max_length=150)

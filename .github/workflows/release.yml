@@ -109,6 +109,7 @@ jobs:
           python scripts/test_service_work_types.py
           python scripts/test_quotations.py
           python scripts/test_drive_backup.py
+          python scripts/test_drive_power.py
           python scripts/test_rclone_backup.py
           python scripts/test_drive_setup.py
           python scripts/test_drive_restore.py
@@ -130,6 +131,7 @@ jobs:
           python ../deploy/test_operations.py
           python ../deploy/test_private_ca.py
           python ../deploy/test_register_systemd.py
+          python ../deploy/test_power_helper.py
           python ../deploy/test_restart_with_backup.py
           python -m unittest discover -s ../deploy -p test_prepare_legacy_sqlite.py
           bash -n ../deploy/install.sh ../deploy/update.sh ../deploy/backup.sh ../deploy/restart-with-backup.sh

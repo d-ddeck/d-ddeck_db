@@ -59,10 +59,36 @@ def out(row, detail=False, user=None):
     return result
 
 
+# 접수 저장 전에 견적서를 미리 쓰는 화면용. 대응 건 대신 접수 폼 값으로 기본값을 만든다.
+draft_router = APIRouter(prefix="/service/quotations", tags=["quotations"])
+
+
 @router.get("/defaults")
 def defaults(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
     t = ticket(db, ticket_id)
     store = db.get(Store, t.store_id) if t.store_id else None
+    return _defaults(
+        db, store, t.customer_name, t.contact_name, t.contact_phone, t.site_address
+    )
+
+
+@draft_router.get("/defaults")
+def draft_defaults(
+    db: DbSession,
+    _: CurrentUser,
+    store_id: uuid.UUID | None = None,
+    customer_name: str | None = None,
+    contact_name: str | None = None,
+    contact_phone: str | None = None,
+    site_address: str | None = None,
+):
+    store = db.get(Store, store_id) if store_id else None
+    return _defaults(
+        db, store, customer_name, contact_name, contact_phone, site_address
+    )
+
+
+def _defaults(db, store, customer_name, contact_name, contact_phone, site_address):
     empty = {"company": "", "contact": "", "address": "", "phone": "", "email": ""}
     supplier = settings_store.get(db, ModuleKey.SERVICE, "quotation_supplier", {})
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
@@ -73,10 +99,10 @@ def defaults(ticket_id: uuid.UUID, db: DbSession, _: CurrentUser):
         },
         "recipient": {
             **empty,
-            "company": store.name if store else (t.customer_name or ""),
-            "contact": t.contact_name or (store.contact_name if store else None) or "",
-            "phone": t.contact_phone or (store.contact_phone if store else None) or "",
-            "address": t.site_address or (store.address if store else None) or "",
+            "company": store.name if store else (customer_name or ""),
+            "contact": contact_name or (store.contact_name if store else None) or "",
+            "phone": contact_phone or (store.contact_phone if store else None) or "",
+            "address": site_address or (store.address if store else None) or "",
         },
         "bank_account": settings_store.get(
             db, ModuleKey.SERVICE, "quotation_bank_account", ""

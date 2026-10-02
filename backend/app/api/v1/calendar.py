@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
@@ -32,6 +33,7 @@ from app.models.enums import (
     ReminderMethod,
     Role,
 )
+from app.models.service import ServiceTicket
 from app.models.user import User
 from app.schemas.calendar import (
     BroadcastRequest,
@@ -215,7 +217,40 @@ def list_events(
                 )
             )
         )
-    rows = db.scalars(stmt).all()
+    return _masked_events(db, user, db.scalars(stmt).all())
+
+
+@router.get("/service-tickets/{ticket_id}/events", response_model=list[EventOut])
+def ticket_events(
+    ticket_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> list[EventOut]:
+    """Schedules registered from one 서비스 대응 건, oldest first.
+
+    Only the series root is returned for a recurring event so the ticket does
+    not list every expanded occurrence.
+    """
+    stmt = (
+        select(Event)
+        .where(
+            Event.deleted_at.is_(None),
+            Event.service_ticket_id == ticket_id,
+            Event.recurrence_parent_id.is_(None),
+            or_(
+                Event.calendar_id.in_(_visible_calendar_ids(db, user)),
+                Event.created_by_id == user.id,
+                Event.id.in_(
+                    select(EventParticipant.event_id).where(
+                        EventParticipant.user_id == user.id
+                    )
+                ),
+            ),
+        )
+        .order_by(Event.starts_at)
+    )
+    return _masked_events(db, user, db.scalars(stmt).all())
+
+
+def _masked_events(db: Session, user: User, rows: Sequence[Event]) -> list[EventOut]:
     involved_ids = (
         set(
             db.scalars(
@@ -252,6 +287,18 @@ def create_event(
     if calendar.id not in _visible_calendar_ids(db, user):
         raise AppError(
             "FORBIDDEN", "접근할 수 없는 캘린더입니다.", status.HTTP_403_FORBIDDEN
+        )
+    if payload.service_ticket_id is not None and (
+        db.scalar(
+            select(ServiceTicket.id).where(
+                ServiceTicket.id == payload.service_ticket_id,
+                ServiceTicket.deleted_at.is_(None),
+            )
+        )
+        is None
+    ):
+        raise AppError(
+            "NOT_FOUND", "연결할 서비스 건을 찾을 수 없습니다.", status.HTTP_404_NOT_FOUND
         )
 
     data = payload.model_dump(exclude={"participant_ids", "reminders"})

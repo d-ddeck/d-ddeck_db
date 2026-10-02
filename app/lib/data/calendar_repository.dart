@@ -63,6 +63,14 @@ class CalendarRepository {
         .toList();
   }
 
+  /// 서비스 대응 건에 연결된 일정. 반복 일정은 원본 하나만 온다.
+  Future<List<CalendarEvent>> ticketEvents(String ticketId) async {
+    final res = await _api.get('/calendar/service-tickets/$ticketId/events');
+    return (res as List? ?? [])
+        .map((e) => CalendarEvent.fromJson(asMap(e)))
+        .toList();
+  }
+
   Future<CalendarEvent> event(String id) async =>
       CalendarEvent.fromJson(asMap(await _api.get('/calendar/events/$id')));
 
@@ -85,6 +93,7 @@ class CalendarRepository {
     DateTime? recurrenceEnd,
     int? reminderMinutes,
     List<Map<String, dynamic>>? reminders,
+    String? serviceTicketId,
   }) async {
     final res = await _api.post(
       '/calendar/events',
@@ -102,6 +111,7 @@ class CalendarRepository {
         'all_day': allDay,
         'is_private': isPrivate,
         'participant_ids': participantIds,
+        if (serviceTicketId != null) 'service_ticket_id': serviceTicketId,
         if (reminders != null)
           'reminders': reminders
         else if (reminderMinutes != null)
@@ -112,6 +122,25 @@ class CalendarRepository {
     );
     return CalendarEvent.fromJson(asMap(res));
   }
+
+  Future<CalendarEvent> createDraft(EventDraft d, {String? serviceTicketId}) =>
+      createEvent(
+        calendarId: d.calendarId,
+        title: d.title,
+        startsAt: d.startsAt,
+        endsAt: d.endsAt,
+        description: d.description,
+        location: d.location,
+        categoryId: d.categoryId,
+        color: d.color,
+        allDay: d.allDay,
+        isPrivate: d.isPrivate,
+        participantIds: d.participantIds,
+        reminders: d.reminders,
+        rrule: d.rrule,
+        recurrenceEnd: d.recurrenceEnd,
+        serviceTicketId: serviceTicketId,
+      );
 
   Future<CalendarEvent> updateEvent(
     String id,

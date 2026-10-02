@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/admin_repository.dart';
+import '../../models/common.dart';
 import '../common/common.dart';
 import 'drive_setup_dialog.dart';
 import 'drive_restore_page.dart';
@@ -100,6 +101,148 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
   String _date(dynamic value) {
     final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
     return date == null ? '없음' : date.toString().split('.').first;
+  }
+
+  static const _graceOptions = [1, 3, 5, 10, 15, 30, 60];
+
+  String _clock(int hour, int minute) =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  /// 백업 후 PC 전원 끄기. 켜져 있을 때만 유예 시간과 다시 켤 시각을 고른다.
+  Widget _powerCard(
+    Map<String, dynamic> power,
+    bool backupEnabled,
+    bool canAct,
+  ) {
+    final on = power['enabled'] == true;
+    final ready = power['ready'] == true;
+    final grace = (power['grace_minutes'] as num?)?.toInt() ?? 5;
+    final wakeHour = (power['wake_hour'] as num?)?.toInt() ?? 7;
+    final wakeMinute = (power['wake_minute'] as num?)?.toInt() ?? 0;
+    final pending = power['pending'] is Map ? asMap(power['pending']) : null;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final error = Theme.of(context).colorScheme.error;
+
+    void save({bool? enabled, int? graceMinutes, int? hour, int? minute}) =>
+        _act(
+          (r) => r.setDrivePower(
+            enabled: enabled ?? on,
+            graceMinutes: graceMinutes ?? grace,
+            wakeHour: hour ?? wakeHour,
+            wakeMinute: minute ?? wakeMinute,
+          ),
+        );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('백업 후 PC 전원 끄기'),
+              subtitle: const Text(
+                '예약된 자동 백업이 성공하면 서버 PC를 끄고, 설정한 시각에 다시 켭니다.',
+              ),
+              value: on,
+              // 도우미가 없으면 켤 수는 없지만, 이미 켜져 있으면 끌 수는 있어야 한다.
+              onChanged: canAct && (ready || on)
+                  ? (v) => save(enabled: v)
+                  : null,
+            ),
+            if (!ready)
+              Text(
+                '서버 PC에 전원 제어 도우미가 설치되지 않았습니다. 서버 PC 터미널에서 '
+                'sudo python3 deploy/power_helper.py --install 을 실행하세요.',
+                style: TextStyle(color: error),
+              ),
+            if (on) ...[
+              Row(
+                children: [
+                  const Text('끄기 전 유예  '),
+                  DropdownButton<int>(
+                    value: grace,
+                    items: [
+                      for (final m in {
+                        ..._graceOptions,
+                        grace,
+                      }.toList()..sort())
+                        DropdownMenuItem(value: m, child: Text('$m분')),
+                    ],
+                    onChanged: canAct ? (v) => save(graceMinutes: v) : null,
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Text('다시 켤 시각 (한국)  '),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.schedule),
+                    label: Text(_clock(wakeHour, wakeMinute)),
+                    onPressed: canAct
+                        ? () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay(
+                                hour: wakeHour,
+                                minute: wakeMinute,
+                              ),
+                            );
+                            if (picked != null && mounted) {
+                              save(hour: picked.hour, minute: picked.minute);
+                            }
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+              if (!backupEnabled)
+                Text(
+                  '매일 자동 백업이 꺼져 있어 전원 끄기도 실행되지 않습니다.',
+                  style: TextStyle(color: error),
+                ),
+              if (pending != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.power_settings_new, color: error),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${_date(pending['shutdown_at'])}에 꺼지고 '
+                          '${_date(pending['wake_at'])}에 다시 켜집니다.',
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: canAct
+                            ? () => _act((r) => r.cancelDrivePower())
+                            : null,
+                        child: const Text('이번만 취소'),
+                      ),
+                    ],
+                  ),
+                ),
+              if (power['last_requested_at'] != null)
+                Text(
+                  '마지막 전원 끄기: ${_date(power['last_requested_at'])} '
+                  '(다시 켜짐 ${_date(power['last_wake_at'])})',
+                ),
+              if (power['note'] != null)
+                Text(power['note'].toString(), style: TextStyle(color: muted)),
+              const SizedBox(height: 8),
+              Text(
+                '수동 백업이나 PC가 켜진 직후 밀려서 실행된 백업 뒤에는 끄지 않습니다. '
+                '꺼져 있는 동안 앱 접속과 VPN이 끊깁니다. 처음 사용할 때 PC가 '
+                '설정한 시각에 실제로 켜지는지 확인하세요(BIOS의 RTC 켜짐 설정 필요).',
+                style: TextStyle(fontSize: 12, color: muted),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -266,6 +409,7 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                         ),
                       ),
                     ),
+                    _powerCard(asMap(data['power']), enabled, canAct),
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),

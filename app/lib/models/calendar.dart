@@ -166,6 +166,7 @@ class CalendarEvent {
     this.rrule,
     this.recurrenceEnd,
     this.recurrenceParentId,
+    this.serviceTicketId,
   });
 
   final String id;
@@ -186,6 +187,9 @@ class CalendarEvent {
   final AppCalendar? calendar;
   final String? rrule, recurrenceParentId;
   final DateTime? recurrenceEnd;
+
+  /// 서비스 대응 건에서 등록한 일정이면 그 건의 id.
+  final String? serviceTicketId;
 
   /// Event colour wins over the calendar's; falls back to a neutral blue.
   Color displayColor([Color? calendarColor]) {
@@ -208,6 +212,7 @@ class CalendarEvent {
       rrule: j['rrule'] as String?,
       recurrenceParentId: j['recurrence_parent_id'] as String?,
       recurrenceEnd: asDate(j['recurrence_end']),
+      serviceTicketId: j['service_ticket_id'] as String?,
       title: asString(j['title']),
       startsAt: start,
       endsAt: asDate(j['ends_at']) ?? start,
@@ -226,6 +231,38 @@ class CalendarEvent {
           : null,
     );
   }
+}
+
+/// 아직 서버에 보내지 않은 새 일정. 연결할 서비스 건이 저장된 뒤
+/// [CalendarRepository.createDraft] 로 만든다.
+class EventDraft {
+  const EventDraft({
+    required this.calendarId,
+    required this.title,
+    required this.startsAt,
+    required this.endsAt,
+    this.description,
+    this.location,
+    this.categoryId,
+    this.color,
+    this.allDay = false,
+    this.isPrivate = false,
+    this.participantIds = const [],
+    this.reminders,
+    this.rrule,
+    this.recurrenceEnd,
+  });
+
+  final String calendarId;
+  final String title;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final String? description, location, categoryId, color, rrule;
+  final bool allDay;
+  final bool isPrivate;
+  final List<String> participantIds;
+  final List<Map<String, dynamic>>? reminders;
+  final DateTime? recurrenceEnd;
 }
 
 /// One alarm the device should schedule locally.
