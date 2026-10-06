@@ -922,21 +922,31 @@ class _EventBarState extends State<_EventBar> {
         ),
       ),
     );
-    if (!selected || !editable) return bar;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: Theme.of(context).colorScheme.primary,
-          width: 2,
-        ),
-      ),
-      child: Row(
-        children: [
-          if (!segment.continuesLeft) handle(true),
-          Expanded(child: bar),
-          if (!segment.continuesRight) handle(false),
-        ],
-      ),
+    // 선택한 막대 바깥(빈 칸, 다른 일정, 다른 화면 요소)을 누르면 선택을 푼다.
+    return TapRegion(
+      onTapOutside: selected
+          ? (_) => setState(() {
+              selected = false;
+              preview = null;
+            })
+          : null,
+      child: !selected || !editable
+          ? bar
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2,
+                ),
+              ),
+              child: Row(
+                children: [
+                  if (!segment.continuesLeft) handle(true),
+                  Expanded(child: bar),
+                  if (!segment.continuesRight) handle(false),
+                ],
+              ),
+            ),
     );
   }
 }

@@ -45,7 +45,14 @@ class _ProfilePageState extends State<ProfilePage> {
             ])
               TextField(
                 controller: field.$1,
-                decoration: InputDecoration(labelText: field.$2),
+                keyboardType: field.$1 == _phone ? TextInputType.phone : null,
+                inputFormatters: field.$1 == _phone
+                    ? const [PhoneNumberFormatter()]
+                    : null,
+                decoration: InputDecoration(
+                  labelText: field.$2,
+                  hintText: field.$1 == _phone ? '010-0000-0000' : null,
+                ),
               ),
             FilledButton(
               onPressed: _busy

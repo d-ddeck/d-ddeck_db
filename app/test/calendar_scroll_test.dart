@@ -168,6 +168,44 @@ void main() {
     auth.dispose();
   });
 
+  testWidgets('tapping outside a selected event clears the selection', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = _ResizeAuth();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthState>.value(value: auth),
+          Provider<CalendarRepository>.value(value: _ResizeCalendar()),
+          Provider<AdminRepository>.value(value: _Admin()),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const CalendarPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final grid = find.byType(CalendarRangeSelection);
+    await tester.tap(
+      find
+          .descendant(of: grid, matching: find.textContaining('기간 변경 테스트'))
+          .first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('종료일 드래그'), findsOneWidget);
+
+    await tester.tap(find.descendant(of: grid, matching: find.text('20')));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('종료일 드래그'), findsNothing);
+    expect(find.byTooltip('시작일 드래그'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
   for (final width in [1000.0, 1440.0]) {
     for (final scale in [1.0, 1.5, 2.0]) {
       for (final dark in [false, true]) {

@@ -278,7 +278,7 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
 
   void _applyStoreContact(Store? store) {
     _contactName.text = store?.contactName ?? '';
-    _phone.text = store?.contactPhone ?? '';
+    _phone.text = formatPhoneNumber(store?.contactPhone ?? '');
     _address.text = store?.address ?? '';
   }
 
@@ -645,13 +645,23 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   onChanged: _storesLoading
                                       ? null
                                       : (v) => setState(() {
-                                          if (_storeId != v) {
-                                            _storeId = v;
-                                            _applyStoreContact(
-                                              _stores
-                                                  .where((s) => s.id == v)
-                                                  .firstOrNull,
-                                            );
+                                          if (_storeId == v) return;
+                                          final store = _stores
+                                              .where((s) => s.id == v)
+                                              .firstOrNull;
+                                          _storeId = v;
+                                          _applyStoreContact(store);
+                                          // 브랜드 없이 매장부터 고르면 그 매장의 브랜드를
+                                          // 채우고, 목록도 그 브랜드 매장으로 좁힌다.
+                                          final brand = store?.brandId;
+                                          if (_brandId == null &&
+                                              brand != null) {
+                                            _brandId = brand;
+                                            _stores = _stores
+                                                .where(
+                                                  (s) => s.brandId == brand,
+                                                )
+                                                .toList();
                                           }
                                         }),
                                   validator: (v) =>
@@ -668,8 +678,12 @@ class _ServiceFormPageState extends State<ServiceFormPage> {
                                   controller: _phone,
                                   maxLength: 50,
                                   keyboardType: TextInputType.phone,
+                                  inputFormatters: const [
+                                    PhoneNumberFormatter(),
+                                  ],
                                   decoration: const InputDecoration(
                                     labelText: '연락처',
+                                    hintText: '010-0000-0000',
                                   ),
                                 ),
                                 TextFormField(

@@ -4,6 +4,9 @@ import '../../core/api_exception.dart';
 import '../theme.dart';
 
 abstract final class AppSnack {
+  /// 저장·삭제 알림은 3초 뒤 아래로 내려가며 사라진다.
+  static const noticeDuration = Duration(seconds: 3);
+
   static void saved(
     BuildContext context, {
     required String label,
@@ -13,6 +16,10 @@ abstract final class AppSnack {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$label 저장되었습니다.'),
+        // 동작 버튼이 있는 SnackBar 는 기본값이 '계속 표시'라 직접 끈다.
+        persist: false,
+        duration: noticeDuration,
+        behavior: SnackBarBehavior.fixed,
         action: SnackBarAction(
           label: '상세 보기',
           onPressed: () {
@@ -30,6 +37,9 @@ abstract final class AppSnack {
     final scheme = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        // 오류는 읽을 시간을 조금 더 준다.
+        duration: error ? const Duration(seconds: 4) : noticeDuration,
+        behavior: SnackBarBehavior.fixed,
         content: Text(
           message,
           style: TextStyle(

@@ -585,7 +585,12 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
       if (!deleted || !mounted) return;
       _changed = true;
       Navigator.pop(context, true);
-      messenger.showSnackBar(const SnackBar(content: Text('삭제되었습니다')));
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('삭제되었습니다'),
+          duration: AppSnack.noticeDuration,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _deleting = false);
     }

@@ -420,6 +420,7 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
     int maxLength = 200,
     int lines = 1,
     String? number,
+    bool phone = false,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16, top: 4),
     child: TextFormField(
@@ -428,7 +429,10 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
       maxLength: maxLength,
       minLines: lines,
       maxLines: lines,
-      keyboardType: number != null
+      inputFormatters: phone ? const [PhoneNumberFormatter()] : null,
+      keyboardType: phone
+          ? TextInputType.phone
+          : number != null
           ? const TextInputType.numberWithOptions(decimal: true)
           : (lines > 1 ? TextInputType.multiline : TextInputType.text),
       onChanged: (_) => setState(() => _dirty = true),
@@ -471,7 +475,7 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
           ),
           _input(side == 'supplier' ? '대표자' : '담당자', _fields['$side.contact']!),
           _input('주소', _fields['$side.address']!, maxLength: 300, lines: 2),
-          _input('연락처', _fields['$side.phone']!),
+          _input('연락처', _fields['$side.phone']!, phone: true),
           _input('E-mail', _fields['$side.email']!),
         ],
       ),

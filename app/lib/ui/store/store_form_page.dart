@@ -312,8 +312,12 @@ class _StoreFormPageState extends State<StoreFormPage> {
                                   controller: _contactPhone,
                                   maxLength: 50,
                                   keyboardType: TextInputType.phone,
+                                  inputFormatters: const [
+                                    PhoneNumberFormatter(),
+                                  ],
                                   decoration: const InputDecoration(
                                     labelText: '연락처',
+                                    hintText: '010-0000-0000',
                                   ),
                                 ),
                                 TextFormField(

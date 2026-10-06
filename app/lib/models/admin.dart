@@ -29,6 +29,7 @@ enum SettingsModule {
   system('SYSTEM', '시스템'),
   auth('AUTH', '계정 / 인증'),
   service('SERVICE', '서비스(AS)'),
+  store('STORE', '매장'),
   inventory('INVENTORY', '재고관리'),
   board('BOARD', '게시판'),
   calendar('CALENDAR', '캘린더');

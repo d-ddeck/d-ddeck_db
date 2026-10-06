@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../common/common.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/latin_input.dart';
 import '../../state/auth_state.dart';
 import 'login_page.dart';
 
@@ -59,7 +61,7 @@ class _SignupPageState extends State<SignupPage> {
     try {
       final message = await context.read<AuthState>().signup(
         email: _email.text,
-        password: _password.text,
+        password: hangulToQwerty(_password.text),
         fullName: _name.text,
         employeeNo: _employeeNo.text,
         phone: _phone.text,
@@ -163,6 +165,9 @@ class _SignupPageState extends State<SignupPage> {
                       ),
                       TextFormField(
                         controller: _password,
+                        // 로그인과 같은 규칙: 한/영이 한글이어도 영문으로 들어간다.
+                        keyboardType: TextInputType.visiblePassword,
+                        inputFormatters: const [LatinInputFormatter()],
                         decoration: InputDecoration(
                           labelText: '비밀번호 *',
                           helperText: '8자 이상, 영문과 숫자를 포함해야 합니다.',
@@ -183,6 +188,9 @@ class _SignupPageState extends State<SignupPage> {
                       const FormGap(),
                       TextFormField(
                         controller: _confirm,
+                        // 로그인과 같은 규칙: 한/영이 한글이어도 영문으로 들어간다.
+                        keyboardType: TextInputType.visiblePassword,
+                        inputFormatters: const [LatinInputFormatter()],
                         decoration: const InputDecoration(
                           labelText: '비밀번호 확인 *',
                           prefixIcon: Icon(Icons.lock_reset_outlined),
@@ -204,6 +212,8 @@ class _SignupPageState extends State<SignupPage> {
                         label: '연락처',
                         icon: Icons.phone_outlined,
                         keyboard: TextInputType.phone,
+                        inputFormatters: const [PhoneNumberFormatter()],
+                        hint: '010-0000-0000',
                       ),
                       _field(
                         controller: _position,
@@ -263,6 +273,8 @@ class _SignupPageState extends State<SignupPage> {
     required String label,
     required IconData icon,
     TextInputType? keyboard,
+    List<TextInputFormatter>? inputFormatters,
+    String? hint,
     String? Function(String?)? validator,
   }) {
     return Padding(
@@ -270,7 +282,12 @@ class _SignupPageState extends State<SignupPage> {
       child: TextFormField(
         controller: controller,
         keyboardType: keyboard,
-        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+        inputFormatters: inputFormatters,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          prefixIcon: Icon(icon),
+        ),
         validator: validator,
       ),
     );
@@ -313,7 +330,10 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     });
     try {
       // This revokes every session, so AuthState drops back to the login page.
-      await context.read<AuthState>().changePassword(_current.text, _next.text);
+      await context.read<AuthState>().changePassword(
+        hangulToQwerty(_current.text),
+        hangulToQwerty(_next.text),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -367,6 +387,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       const FormGap(),
                       TextFormField(
                         controller: _current,
+                        // 로그인과 같은 규칙: 한/영이 한글이어도 영문으로 들어간다.
+                        keyboardType: TextInputType.visiblePassword,
+                        inputFormatters: const [LatinInputFormatter()],
                         decoration: const InputDecoration(
                           labelText: '현재 비밀번호',
                           prefixIcon: Icon(Icons.lock_outline),
@@ -379,6 +402,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       const FormGap(),
                       TextFormField(
                         controller: _next,
+                        // 로그인과 같은 규칙: 한/영이 한글이어도 영문으로 들어간다.
+                        keyboardType: TextInputType.visiblePassword,
+                        inputFormatters: const [LatinInputFormatter()],
                         decoration: const InputDecoration(
                           labelText: '새 비밀번호',
                           helperText: '8자 이상, 영문과 숫자를 포함해야 합니다.',
@@ -402,6 +428,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       const FormGap(),
                       TextFormField(
                         controller: _confirm,
+                        // 로그인과 같은 규칙: 한/영이 한글이어도 영문으로 들어간다.
+                        keyboardType: TextInputType.visiblePassword,
+                        inputFormatters: const [LatinInputFormatter()],
                         decoration: const InputDecoration(
                           labelText: '새 비밀번호 확인',
                           prefixIcon: Icon(Icons.check_circle_outline),

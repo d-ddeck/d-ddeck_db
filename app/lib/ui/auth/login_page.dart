@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/latin_input.dart';
 import '../../state/auth_state.dart';
 import '../../services/vpn_service.dart';
 import '../../services/alarm_service.dart';
@@ -24,6 +25,17 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  // 아이디·비밀번호 칸에 들어가면 Windows IME 를 영문으로 바꾼다.
+  late final _emailFocus = _latinFocus();
+  late final _passwordFocus = _latinFocus();
+
+  static FocusNode _latinFocus() {
+    final node = FocusNode();
+    node.addListener(() {
+      if (node.hasFocus) switchImeToLatin();
+    });
+    return node;
+  }
 
   bool _busy = false;
   bool _obscure = true;
@@ -56,6 +68,8 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -67,7 +81,12 @@ class _LoginPageState extends State<LoginPage> {
     });
     final auth = context.read<AuthState>();
     try {
-      await auth.login(_email.text, _password.text, rememberMe: _rememberMe);
+      // 조합 중이던 한글이 남아 있어도 영문으로 보낸다.
+      await auth.login(
+        hangulToQwerty(_email.text),
+        hangulToQwerty(_password.text),
+        rememberMe: _rememberMe,
+      );
       // On success the root widget swaps this page out; nothing to do here.
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -163,11 +182,16 @@ class _LoginPageState extends State<LoginPage> {
 
                             TextFormField(
                               controller: _email,
+                              focusNode: _emailFocus,
                               decoration: const InputDecoration(
                                 labelText: '이메일',
                                 prefixIcon: Icon(Icons.mail_outline),
                               ),
-                              keyboardType: TextInputType.emailAddress,
+                              // 모바일 한글 키보드도 영문 자판으로 열린다.
+                              keyboardType: TextInputType.visiblePassword,
+                              inputFormatters: const [LatinInputFormatter()],
+                              autocorrect: false,
+                              enableSuggestions: false,
                               autofillHints: const [AutofillHints.username],
                               textInputAction: TextInputAction.next,
                               validator: (v) => (v == null || v.trim().isEmpty)
@@ -177,6 +201,9 @@ class _LoginPageState extends State<LoginPage> {
                             const FormGap(),
                             TextFormField(
                               controller: _password,
+                              focusNode: _passwordFocus,
+                              keyboardType: TextInputType.visiblePassword,
+                              inputFormatters: const [LatinInputFormatter()],
                               decoration: InputDecoration(
                                 labelText: '비밀번호',
                                 prefixIcon: const Icon(Icons.lock_outline),
