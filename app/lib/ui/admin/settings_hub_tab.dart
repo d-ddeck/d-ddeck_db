@@ -62,6 +62,26 @@ class _SettingsHubTab extends StatelessWidget {
               ),
             ),
           ),
+        if (context.watch<AuthState>().isAdmin)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Card(
+              child: ListTile(
+                leading: const Icon(Icons.checklist),
+                title: const Text('견적서 체크리스트'),
+                subtitle: const Text(
+                  '체크하면 안내사항·품목을 자동으로 채울 항목 관리',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const QuotationChecklistPage(),
+                  ),
+                ),
+              ),
+            ),
+          ),
         for (final module in SettingsModule.values)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

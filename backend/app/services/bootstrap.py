@@ -284,6 +284,14 @@ DEFAULT_SETTINGS: list[tuple[ModuleKey, str, object, str, str, bool]] = [
     ),
     (
         ModuleKey.SERVICE,
+        "quotation_checklist",
+        [],
+        "json",
+        "견적서 체크리스트 (견적서 화면에서 편집)",
+        False,
+    ),
+    (
+        ModuleKey.SERVICE,
         "quotation_bank_account",
         "",
         "string",

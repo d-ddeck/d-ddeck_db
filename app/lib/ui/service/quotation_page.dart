@@ -13,6 +13,19 @@ import '../common/common.dart';
 import '../common/download.dart';
 import '../format.dart';
 
+/// 견적서 작성 화면에 보여 줄 체크리스트. 못 읽으면(예전 서버 등) 체크리스트 없이 쓴다.
+Future<List<QuoteChecklistEntry>> loadQuoteChecklist(ApiClient api) async {
+  try {
+    final res = await api.get('/service/quotations/checklist');
+    return [
+      for (final e in res as List? ?? const [])
+        QuoteChecklistEntry.fromJson(asMap(e)),
+    ];
+  } catch (_) {
+    return const [];
+  }
+}
+
 /// Saved versions are immutable; editing always starts from the latest snapshot.
 class QuotationPage extends StatefulWidget {
   const QuotationPage({super.key, required this.ticketId});
@@ -36,6 +49,7 @@ class _QuotationPageState extends State<QuotationPage> {
               : '$_path/${versions.first['id']}',
         ),
       );
+      final checklist = await loadQuoteChecklist(api);
       if (!mounted) return;
       final saved = await Navigator.push<bool>(
         context,
@@ -46,6 +60,7 @@ class _QuotationPageState extends State<QuotationPage> {
             baseVersion: versions.isEmpty
                 ? 0
                 : asInt(versions.first['version']),
+            checklist: checklist,
           ),
         ),
       );
@@ -197,12 +212,19 @@ class QuotationEditPage extends StatefulWidget {
     required this.path,
     required this.initial,
     required this.baseVersion,
+    this.checklist = const [],
   });
 
   /// 접수 저장 전 견적서. 서버에 보내지 않고 작성한 본문을 돌려준다.
-  const QuotationEditPage.draft({super.key, required this.initial})
-    : path = null,
-      baseVersion = 0;
+  const QuotationEditPage.draft({
+    super.key,
+    required this.initial,
+    this.checklist = const [],
+  }) : path = null,
+       baseVersion = 0;
+
+  /// 체크하면 안내사항과 품목을 채워 주는 항목들.
+  final List<QuoteChecklistEntry> checklist;
 
   /// null 이면 임시 작성: 저장하면 POST 본문을 Navigator 결과로 돌려준다.
   final String? path;
@@ -229,6 +251,17 @@ class _QuoteItem {
   final Map<String, TextEditingController> fields;
   Map<String, String> get json =>
       fields.map((k, v) => MapEntry(k, v.text.trim()));
+
+  /// 새로 추가한 그대로의 빈 칸(수량 기본값 1 외에는 비어 있음).
+  bool get isBlank => json.entries.every(
+    (e) => e.key == 'quantity'
+        ? e.value == '1' || e.value.isEmpty
+        : e.value.isEmpty,
+  );
+
+  /// 체크리스트가 넣은 품목을 손대지 않은 채 그대로 두었는지.
+  bool matches(Map<String, String> template) => QuoteChecklistEntry.itemKeys
+      .every((k) => (template[k] ?? '').trim() == json[k]);
   void dispose() {
     for (final c in fields.values) {
       c.dispose();
@@ -240,6 +273,7 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
   final _form = GlobalKey<FormState>();
   late final Map<String, TextEditingController> _fields;
   late final List<_QuoteItem> _items;
+  late final Set<String> _checks;
   bool _busy = false;
   bool _dirty = false;
   late DateTime _date, _until;
@@ -266,7 +300,96 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
         .map((e) => _QuoteItem(asMap(e)))
         .toList();
     if (_items.isEmpty) _items.add(_QuoteItem({}));
+    _checks = {
+      for (final id in data['checks'] as List? ?? const []) asString(id),
+    };
   }
+
+  /// 체크하면 안내사항·품목을 채우고, 풀면 손대지 않은 것만 다시 뺀다.
+  void _toggleCheck(QuoteChecklistEntry entry, bool on) {
+    final notes = _fields['notes']!;
+    final kept = <String>[];
+    final removed = <_QuoteItem>[];
+    setState(() {
+      _dirty = true;
+      if (on) {
+        _checks.add(entry.id);
+        notes.text = addNotesBlock(notes.text, entry.notes);
+        // 처음 열었을 때의 빈 품목 칸은 채워 넣을 품목으로 대신한다.
+        if (entry.items.isNotEmpty &&
+            _items.length == 1 &&
+            _items.first.isBlank) {
+          removed.add(_items.removeAt(0));
+        }
+        for (final item in entry.items) {
+          if (_items.length >= 100) break;
+          _items.add(_QuoteItem(item));
+        }
+      } else {
+        _checks.remove(entry.id);
+        final next = removeNotesBlock(notes.text, entry.notes);
+        if (next == null) {
+          kept.add('안내사항');
+        } else {
+          notes.text = next;
+        }
+        for (final template in entry.items) {
+          final index = _items.indexWhere((i) => i.matches(template));
+          if (index < 0) {
+            kept.add('품목 ${template['name']}');
+          } else {
+            removed.add(_items.removeAt(index));
+          }
+        }
+        if (_items.isEmpty) _items.add(_QuoteItem({}));
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final item in removed) {
+        item.dispose();
+      }
+    });
+    if (kept.isNotEmpty) {
+      AppSnack.show(context, '직접 고친 ${kept.join(', ')}은(는) 그대로 두었습니다.');
+    }
+  }
+
+  Widget _checklist() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('체크리스트', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            '체크하면 안내사항과 품목이 자동으로 채워집니다.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in widget.checklist)
+                FilterChip(
+                  label: Text(e.label),
+                  tooltip: [
+                    if (e.notes.isNotEmpty) e.notes,
+                    if (e.items.isNotEmpty) '품목 ${e.items.length}개 추가',
+                  ].join('\n'),
+                  selected: _checks.contains(e.id),
+                  onSelected: (v) => _toggleCheck(e, v),
+                ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   void dispose() {
@@ -401,6 +524,7 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
       for (final key in ['bank_account', 'notes', 'revision_note'])
         key: _fields[key]!.text.trim(),
       'items': _items.map((e) => e.json).toList(),
+      'checks': _checks.toList(),
     };
     final path = widget.path;
     if (path == null) {
@@ -497,6 +621,10 @@ class _QuotationEditPageState extends State<QuotationEditPage> {
                   _party('recipient', '수신자 정보'),
                   const SizedBox(height: 16),
                   _input('입금계좌', _fields['bank_account']!),
+                  if (widget.checklist.isNotEmpty) ...[
+                    _checklist(),
+                    const SizedBox(height: 16),
+                  ],
                   for (var i = 0; i < _items.length; i++)
                     Card(
                       key: ObjectKey(_items[i]),

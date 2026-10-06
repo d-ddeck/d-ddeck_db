@@ -37,6 +37,10 @@ class QuoteCreate(BaseModel):
     items: list[QuoteLine] = Field(min_length=1, max_length=100)
     notes: str = Field(default="", max_length=4000)
     revision_note: str = Field(default="", max_length=500)
+    # 체크한 견적서 체크리스트 항목 id. 다음 버전을 쓸 때 체크 상태를 잇는다.
+    checks: list[Annotated[str, Field(max_length=40)]] = Field(
+        default_factory=list, max_length=50
+    )
 
     @model_validator(mode="after")
     def check_dates(self):

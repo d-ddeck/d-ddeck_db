@@ -108,6 +108,7 @@ jobs:
           python scripts/test_migrations.py
           python scripts/test_service_work_types.py
           python scripts/test_quotations.py
+          python scripts/test_quotation_checklist.py
           python scripts/test_drive_backup.py
           python scripts/test_drive_power.py
           python scripts/test_rclone_backup.py

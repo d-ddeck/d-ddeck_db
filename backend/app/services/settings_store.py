@@ -44,6 +44,15 @@ def normalize(key: str, value: Any, value_type: str) -> Any:
     """
     if value is None:
         return None
+    if key == "quotation_checklist":
+        from app.core.errors import AppError
+        from app.services import quotation_checklist
+
+        # 어느 항목의 무엇이 틀렸는지 그대로 보여 준다.
+        try:
+            return quotation_checklist.normalize(value)
+        except (TypeError, ValueError) as exc:
+            raise AppError("INVALID_SETTING_VALUE", str(exc)) from None
     if value_type == "int":
         if isinstance(value, bool):
             raise ValueError(f"{key}: 정수가 필요합니다")

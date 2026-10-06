@@ -243,6 +243,11 @@ class _SettingRowState extends State<SettingRow> {
           },
         ),
       ),
+      // 구조가 있는 값은 글자로 고치면 깨진다. 전용 화면에서만 편집한다.
+      'json' => Text(
+        '전용 화면에서 편집',
+        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+      ),
       'list' => SizedBox(
         width: 200,
         child: TextField(

@@ -20,7 +20,7 @@ from app.models.quotation import QuotationRevision
 from app.models.service import ServiceTicket
 from app.models.store import Store
 from app.schemas.quotation import QuoteCreate, QuoteDetail, QuoteSummary
-from app.services import audit, settings_store
+from app.services import audit, quotation_checklist, settings_store
 from app.services.quotation_pdf import render
 
 router = APIRouter(
@@ -85,6 +85,14 @@ def draft_defaults(
     store = db.get(Store, store_id) if store_id else None
     return _defaults(
         db, store, customer_name, contact_name, contact_phone, site_address
+    )
+
+
+@draft_router.get("/checklist")
+def checklist(db: DbSession, _: CurrentUser):
+    """견적서 작성 화면의 체크리스트. 관리자가 사용 중지한 항목은 뺀다."""
+    return quotation_checklist.active(
+        settings_store.get(db, ModuleKey.SERVICE, quotation_checklist.KEY, [])
     )
 
 

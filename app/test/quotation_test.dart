@@ -51,6 +51,7 @@ class QuoteApi implements ApiClient {
   }) async {
     if (path.endsWith('/v1')) return {'snapshot': snapshot};
     if (path.endsWith('/defaults')) return snapshot;
+    if (path.endsWith('/checklist')) return [];
     return versions;
   }
 

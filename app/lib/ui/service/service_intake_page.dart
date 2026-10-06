@@ -101,9 +101,12 @@ class _ServiceIntakeFlowPageState extends State<ServiceIntakeFlowPage> {
       });
       if (!ok || !mounted) return;
     }
+    final checklist = await loadQuoteChecklist(context.read<ApiClient>());
+    if (!mounted) return;
     final body = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (_) => QuotationEditPage.draft(initial: initial!),
+        builder: (_) =>
+            QuotationEditPage.draft(initial: initial!, checklist: checklist),
       ),
     );
     if (body != null && mounted) setState(() => _quotation = body);
