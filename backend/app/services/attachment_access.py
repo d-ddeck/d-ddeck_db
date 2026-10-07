@@ -20,12 +20,13 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.models.board import Board, Post
 from app.models.calendar import Event, EventParticipant
-from app.models.enums import ROLE_LEVEL, PostStatus, Role, WorkLogVisibility
+from app.models.enums import ROLE_LEVEL, PostStatus, Role
 from app.models.inventory import Asset
 from app.models.service import ServiceTicket
 from app.models.store import Store
 from app.models.user import User
 from app.models.worklog import WorkLog
+from app.services import worklog_access
 
 
 def check(
@@ -105,17 +106,12 @@ def _post(db: Session, user: User, entity_id: uuid.UUID, write: bool) -> None:
 
 def _worklog(db: Session, user: User, entity_id: uuid.UUID, write: bool) -> None:
     log = _live(db, WorkLog, entity_id)
-    can_edit = (
-        _at_least(user, Role.ADMIN)
-        or log.author_id == user.id
-        or log.created_by_id == user.id
-    )
     if write:
-        if not can_edit:
+        if not worklog_access.can_edit(log, user):
             raise _forbidden("본인 근무일지에만 첨부할 수 있습니다.")
         return
-    if not (can_edit or log.visibility == WorkLogVisibility.TEAM):
-        raise _forbidden("비공개 근무일지입니다.")
+    if not worklog_access.can_view(db, log, user):
+        raise _forbidden("작성자, 같은 부서 팀장, 관리자만 볼 수 있는 근무일지입니다.")
 
 
 def _event(db: Session, user: User, entity_id: uuid.UUID, write: bool) -> None:

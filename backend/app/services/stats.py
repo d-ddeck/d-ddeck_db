@@ -433,7 +433,8 @@ def summary(db: Session, **filters) -> ServiceSummary:
         completed_count=int(done_c or 0),
         canceled_count=int(cancel_c or 0),
         overdue_count=overdue,
-        completion_rate=round((done_c or 0) / total, 4) if total else 0.0,
+        # 종결률 = (전체 - 미종결) / 전체. 취소도 미종결이 아니므로 종결 쪽에 든다.
+        completion_rate=round((total - int(open_c or 0)) / total, 4) if total else 0.0,
         avg_resolution_minutes=round(float(avg_res), 1)
         if avg_res is not None
         else None,

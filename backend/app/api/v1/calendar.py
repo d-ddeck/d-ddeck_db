@@ -580,6 +580,18 @@ def mark_all_read(db: DbSession, user: CurrentUser) -> Message:
     return Message(message=f"{len(rows)}건을 읽음 처리했습니다.")
 
 
+@router.delete("/notifications", response_model=Message)
+def clear_notifications(db: DbSession, user: CurrentUser) -> Message:
+    """알림 화면의 초기화: 내 알림을 모두 지운다 (다른 사람 알림은 그대로)."""
+    rows = db.scalars(
+        select(Notification).where(Notification.user_id == user.id)
+    ).all()
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return Message(message=f"알림 {len(rows)}건을 지웠습니다.")
+
+
 @router.post("/notifications/broadcast", response_model=Message)
 def broadcast(payload: BroadcastRequest, db: DbSession, admin: AdminUser) -> Message:
     if payload.user_ids:

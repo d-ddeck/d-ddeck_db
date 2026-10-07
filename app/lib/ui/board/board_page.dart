@@ -1,7 +1,8 @@
 import '../common/section_main_reporter.dart';
-import '../common/save_attachment_button.dart';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../common/form_attachments_page.dart';
 import 'board_settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -252,7 +253,9 @@ class _PostListTabState extends State<_PostListTab> {
                         if (page.items.isNotEmpty)
                           Expanded(
                             child: ListView.separated(
-                              padding: EdgeInsets.only(bottom: canWrite ? 72 : 0),
+                              padding: EdgeInsets.only(
+                                bottom: canWrite ? 72 : 0,
+                              ),
                               itemCount: page.items.length,
                               separatorBuilder: (_, __) =>
                                   const Divider(height: 1),
@@ -652,6 +655,129 @@ class _PostFormPageState extends State<PostFormPage> {
   bool _pinned = false;
   bool _secret = false;
   bool _busy = false;
+  // New posts keep picked files here and upload them right after saving.
+  final List<PlatformFile> _pending = [];
+  String? _uploading;
+
+  static const _imageExtensions = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
+
+  bool _isImage(PlatformFile file) =>
+      _imageExtensions.contains((file.extension ?? '').toLowerCase());
+
+  Future<void> _pick({required bool images}) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: images ? FileType.image : FileType.any,
+    );
+    if (result == null || !mounted) return;
+    setState(
+      () => _pending.addAll(
+        result.files.where(
+          (f) => f.path != null && !_pending.any((p) => p.path == f.path),
+        ),
+      ),
+    );
+  }
+
+  Widget _attachments() {
+    final post = widget.post;
+    if (post != null) {
+      // Editing: files go straight to the saved post, same as the detail view.
+      return AttachmentSection(
+        entityType: FileRepository.post,
+        entityId: post.id,
+      );
+    }
+    final images = _pending.where(_isImage).toList();
+    final others = _pending.where((f) => !_isImage(f)).toList();
+    return SectionCard(
+      title: '첨부',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _pick(images: true),
+          icon: const Icon(Icons.image_outlined, size: 18),
+          label: const Text('이미지'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _pick(images: false),
+          icon: const Icon(Icons.attach_file, size: 18),
+          label: const Text('파일'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_pending.isEmpty) const Text('이미지나 파일을 고르면 등록할 때 함께 올라갑니다'),
+          if (images.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final file in images)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(file.path!),
+                          width: 110,
+                          height: 110,
+                          fit: BoxFit.cover,
+                          cacheWidth: 220,
+                          errorBuilder: (_, _, _) => const SizedBox(
+                            width: 110,
+                            height: 110,
+                            child: Icon(Icons.broken_image_outlined),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: IconButton.filledTonal(
+                          tooltip: '빼기',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() => _pending.remove(file)),
+                          icon: const Icon(Icons.close, size: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          for (final file in others)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.insert_drive_file_outlined),
+              title: Text(
+                file.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                file.size < 1024 * 1024
+                    ? '${(file.size / 1024).toStringAsFixed(0)} KB'
+                    : '${(file.size / (1024 * 1024)).toStringAsFixed(1)} MB',
+              ),
+              trailing: IconButton(
+                tooltip: '빼기',
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _pending.remove(file)),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          if (_uploading != null) ...[
+            const SizedBox(height: 8),
+            Text(_uploading!),
+            const LinearProgressIndicator(),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -684,10 +810,6 @@ class _PostFormPageState extends State<PostFormPage> {
             '${widget.board.name} ${widget.post == null ? '글쓰기' : '수정'}',
           ),
           actions: [
-            if (widget.board.allowAttachment)
-              SaveAttachmentButton(
-                onPressed: _busy ? null : () => _submit(attachments: true),
-              ),
             FilledButton(
               onPressed: _busy ? null : _submit,
               child: Text(widget.post == null ? '등록' : '저장'),
@@ -736,6 +858,10 @@ class _PostFormPageState extends State<PostFormPage> {
                     ),
                 ],
               ),
+              if (widget.board.allowAttachment) ...[
+                const SizedBox(height: AppSpace.md),
+                _attachments(),
+              ],
             ],
           ),
         ),
@@ -743,12 +869,13 @@ class _PostFormPageState extends State<PostFormPage> {
     );
   }
 
-  Future<void> _submit({bool attachments = false}) async {
+  Future<void> _submit() async {
     if (_title.text.trim().isEmpty) {
       AppSnack.show(context, '제목을 입력해 주세요.');
       return;
     }
     setState(() => _busy = true);
+    final files = context.read<FileRepository>();
     final ok = await runGuarded(context, () async {
       final saved = await (widget.post != null
           ? context.read<BoardRepository>().updatePost(widget.post!.id, {
@@ -764,8 +891,34 @@ class _PostFormPageState extends State<PostFormPage> {
               isPinned: _pinned,
               isSecret: _secret,
             ));
-      if (mounted && attachments && widget.board.allowAttachment) {
-        await FormAttachmentsPage.open(context, 'post', saved.id);
+      final failed = <String>[];
+      if (widget.board.allowAttachment) {
+        for (var i = 0; i < _pending.length; i++) {
+          final file = _pending[i];
+          if (mounted) {
+            setState(
+              () => _uploading =
+                  '첨부 올리는 중 ${i + 1} / ${_pending.length} · ${file.name}',
+            );
+          }
+          try {
+            await files.upload(
+              entityType: FileRepository.post,
+              entityId: saved.id,
+              filePath: file.path!,
+              fileName: file.name,
+            );
+          } catch (_) {
+            failed.add(file.name);
+          }
+        }
+      }
+      if (mounted && failed.isNotEmpty) {
+        AppSnack.show(
+          context,
+          '게시글은 저장했지만 첨부 ${failed.length}개를 올리지 못했습니다: ${failed.join(', ')}. 게시글에서 다시 첨부해 주세요.',
+        );
+        return;
       }
       if (mounted) {
         AppSnack.saved(
@@ -776,7 +929,10 @@ class _PostFormPageState extends State<PostFormPage> {
       }
     });
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() {
+      _busy = false;
+      _uploading = null;
+    });
     if (ok) Navigator.of(context).pop(true);
   }
 }

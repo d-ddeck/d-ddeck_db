@@ -74,9 +74,10 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
   WorkLog? _original;
   Map<String, dynamic> _baseline = {};
   String _date = Fmt.date(DateTime.now()), _start = '09:00', _end = '18:00';
-  String _position = '', _visibility = 'PRIVATE';
-  bool _overtime = false, _loading = true, _busy = false, _dirty = false;
+  String _position = '';
+  bool _loading = true, _busy = false, _dirty = false;
   bool _allowPop = false, _leaving = false;
+  bool get _overtime => overtimeMinutes(_start, _end) > 0;
   String? _error;
   bool _draftFailed = false;
   DateTime? _savedAt, _restoredAt;
@@ -152,12 +153,9 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     _position = ownLog && _lookups!.fixedPosition.isNotEmpty
         ? _lookups!.fixedPosition
         : asString(data['position']);
-    _visibility = data['visibility'] == 'TEAM' ? 'TEAM' : 'PRIVATE';
-    _overtime = asBool(data['overtime']);
     for (final field in _fields.entries) {
       field.value.text = asString(data[field.key]);
     }
-    if (!_overtime) _fields['overtime_note']!.clear();
   }
 
   Map<String, dynamic> get _data => {
@@ -165,8 +163,6 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     'work_start': _start,
     'work_end': _end,
     'position': _position,
-    'visibility': _visibility,
-    'overtime': _overtime,
     for (final field in _fields.entries) field.key: field.value.text,
     if (!_overtime) 'overtime_note': '',
   };
@@ -322,6 +318,13 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     }
   }
 
+  /// 받침이 있으면 '을', 없으면 '를' (예: 요약을, 사유를).
+  static String _objectParticle(String word) {
+    final code = word.isEmpty ? 0 : word.codeUnitAt(word.length - 1);
+    if (code < 0xAC00 || code > 0xD7A3) return '을';
+    return (code - 0xAC00) % 28 == 0 ? '를' : '을';
+  }
+
   Widget _text(
     String name,
     String label, {
@@ -343,7 +346,7 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                   .replaceAll(RegExp(r'^\s*\d+\.\s*', multiLine: true), '')
                   .trim()
                   .isEmpty
-              ? '$label을 입력해 주세요.'
+              ? '$label${_objectParticle(label)} 입력해 주세요.'
               : null
         : null,
     onChanged: (_) => _changed(),
@@ -529,53 +532,22 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                                       required: true,
                                       lines: 5,
                                     ),
-                                    const Text('공개 범위'),
-                                    RadioGroup<String>(
-                                      groupValue: _visibility,
-                                      onChanged: (v) {
-                                        setState(() => _visibility = v!);
-                                        _changed();
-                                      },
-                                      child: const Column(
-                                        children: [
-                                          RadioListTile<String>(
-                                            title: Text('비공개 = 나와 관리자만'),
-                                            value: 'PRIVATE',
-                                          ),
-                                          RadioListTile<String>(
-                                            title: Text('팀 공개 = 로그인한 모두'),
-                                            value: 'TEAM',
-                                          ),
-                                        ],
+                                    if (_overtime) ...[
+                                      Text(
+                                        '연장 근무 ${overtimeLabel(overtimeMinutes(_start, _end))} · 18:00 이후 근무가 자동으로 연장 처리됩니다',
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
-                                    const Text('연장 근무'),
-                                    RadioGroup<bool>(
-                                      groupValue: _overtime,
-                                      onChanged: (v) {
-                                        setState(() {
-                                          _overtime = v!;
-                                          if (!v) {
-                                            _fields['overtime_note']!.clear();
-                                          }
-                                        });
-                                        _changed();
-                                      },
-                                      child: const Column(
-                                        children: [
-                                          RadioListTile<bool>(
-                                            title: Text('X'),
-                                            value: false,
-                                          ),
-                                          RadioListTile<bool>(
-                                            title: Text('O'),
-                                            value: true,
-                                          ),
-                                        ],
+                                      _text(
+                                        'overtime_note',
+                                        '연장 근무 사유',
+                                        required: true,
                                       ),
-                                    ),
-                                    if (_overtime)
-                                      _text('overtime_note', '연장 근무 내용'),
+                                    ],
                                     _text('plan', '예정 업무'),
                                     _text('needs', '필요/요청사항'),
                                   ],

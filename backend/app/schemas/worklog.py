@@ -74,6 +74,23 @@ class WorkLogOut(ORMModel):
     updated_at: datetime
     attachment_count: int = 0
     can_edit: bool = False
+    overtime_minutes: int = 0
+
+
+class OvertimeDay(BaseModel):
+    id: uuid.UUID
+    work_date: date
+    work_start: str
+    work_end: str
+    minutes: int
+    reason: str | None = None
+
+
+class OvertimeSummary(BaseModel):
+    year: int
+    month: int
+    items: list[OvertimeDay]
+    total_minutes: int
 
 
 class WorkLogDetail(WorkLogOut):

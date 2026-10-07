@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../common/download.dart';
 import 'worklog_detail_page.dart';
 import 'worklog_form_page.dart';
+import 'worklog_overtime_page.dart';
 
 class WorkLogPage extends StatefulWidget {
   const WorkLogPage({super.key});
@@ -159,50 +160,74 @@ class _WorkLogPageState extends State<WorkLogPage> {
 
   @override
   Widget build(BuildContext context) {
-    final admin = context.watch<AuthState>().isAdmin;
+    final auth = context.watch<AuthState>();
+    final admin = auth.isAdmin;
+    // 열람은 고정: 일반 사원은 내 일지만, 팀장은 부서원 일지, 관리자는 전체.
+    final canSeeOthers = auth.isManager;
     final years = {...?_lookups?.years, if (_year != null) _year!}.toList()
       ..sort((a, b) => b.compareTo(a));
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: TextButton.icon(
-          onPressed: () => _open(),
-          icon: const Icon(Icons.add),
-          label: Text(
-            _lookups?.draft == null ? '오늘 근무일지 쓰기' : '임시 저장 이어서 쓰기',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '엑셀',
-            onPressed: _exporting ? null : _export,
-            icon: const Icon(Icons.download_outlined),
-          ),
-        ],
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'write-worklog',
+        tooltip: _lookups?.draft == null ? '오늘 근무일지 쓰기' : '임시 저장 이어서 쓰기',
+        onPressed: () => _open(),
+        icon: const Icon(Icons.edit_outlined),
+        label: const Text('+'),
       ),
       body: SingleChildScrollView(
         child: PageBody.workspace(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SegmentedButton<String>(
-                segments: [
-                  const ButtonSegment(value: 'mine', label: Text('내 일지')),
-                  ButtonSegment(
-                    value: admin ? 'all' : 'team',
-                    label: Text(admin ? '전체 보기' : '팀 공개 일지'),
+              Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: !canSeeOthers
+                          ? Text(
+                              '내 일지',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            )
+                          : SegmentedButton<String>(
+                              segments: [
+                                const ButtonSegment(
+                                  value: 'mine',
+                                  label: Text('내 일지'),
+                                ),
+                                ButtonSegment(
+                                  value: admin ? 'all' : 'team',
+                                  label: Text(admin ? '전체 보기' : '부서 일지'),
+                                ),
+                              ],
+                              selected: {_scope},
+                              onSelectionChanged: (values) {
+                                setState(() {
+                                  _scope = values.first;
+                                  _author = null;
+                                });
+                                _load(refreshLookups: true);
+                              },
+                            ),
+                    ),
+                  ),
+                  if (_scope == 'mine')
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WorkLogOvertimePage(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.bar_chart),
+                      label: const Text('연장근무 종합'),
+                    ),
+                  IconButton(
+                    tooltip: '엑셀',
+                    onPressed: _exporting ? null : _export,
+                    icon: const Icon(Icons.download_outlined),
                   ),
                 ],
-                selected: {_scope},
-                onSelectionChanged: (values) {
-                  setState(() {
-                    _scope = values.first;
-                    _author = null;
-                  });
-                  _load(refreshLookups: true);
-                },
               ),
               const SizedBox(height: AppSpace.sm),
               FilterBar(
@@ -323,9 +348,12 @@ class _WorkLogPageState extends State<WorkLogPage> {
                         runSpacing: 12,
                         spacing: 4,
                         children: [
-                          if (w.overtime) const Chip(label: Text('연장')),
-                          if (w.visibility == 'TEAM')
-                            const Chip(label: Text('팀 공개')),
+                          if (w.overtime)
+                            Chip(
+                              label: Text(
+                                '연장 ${overtimeLabel(w.overtimeMinutes)}',
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -341,6 +369,8 @@ class _WorkLogPageState extends State<WorkLogPage> {
                   onPressed: _loading ? null : () => _load(more: true),
                   child: const Text('더 보기'),
                 ),
+              // Keep the last row and "더 보기" clear of the write button.
+              const SizedBox(height: 80),
             ],
           ),
         ),

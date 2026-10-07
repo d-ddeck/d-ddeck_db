@@ -196,4 +196,5 @@ class CalendarRepository {
       _api.post('/calendar/notifications/$id/read');
 
   Future<void> markAllRead() => _api.post('/calendar/notifications/read-all');
+  Future<void> clearNotifications() => _api.delete('/calendar/notifications');
 }

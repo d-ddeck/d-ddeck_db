@@ -142,12 +142,12 @@ class DashboardPage extends StatelessWidget {
                       ),
                       StatTile(
                         label: '종결률',
+                        // 전체 기간: (전체 - 미종결) / 전체
                         value: Fmt.percent(
-                          data.summary.completionRate,
+                          data.allTime.completionRate,
                           digits: 0,
                         ),
-                        hint:
-                            '평균 ${Fmt.duration(data.summary.avgResolutionMinutes)}',
+                        hint: '전체 기간',
                         icon: Icons.check_circle_outline,
                         color: AppColors.success(context),
                       ),

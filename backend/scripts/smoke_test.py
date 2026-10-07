@@ -1126,6 +1126,19 @@ with TestClient(app) as c:
     check(
         "전체 공지 발송", r.status_code == 200 and "2명" in r.json()["message"], r.text
     )
+    r = c.delete("/api/v1/calendar/notifications", headers=bearer(user_token))
+    check("알림 초기화", r.status_code == 200, r.text)
+    check(
+        "내 알림만 지워짐",
+        c.get("/api/v1/calendar/notifications", headers=bearer(user_token)).json()[
+            "total"
+        ]
+        == 0
+        and c.get(
+            "/api/v1/calendar/notifications", headers=bearer(admin_token)
+        ).json()["total"]
+        > 0,
+    )
 
     # ============================================================ worklog
     print("\n[6b] 근무일지: 규칙 · 임시 저장 · 공개 범위 · 엑셀")
@@ -1186,7 +1199,13 @@ with TestClient(app) as c:
         wl["summary"] == "1. 강남역점 점검\n2. 신규 매장 설치 준비\n3. 창고 정리",
         wl["summary"],
     )
-    check("연장 근무 X 면 내용 비움", wl["overtime_note"] is None)
+    check(
+        "18:00 까지면 연장 아님 + 사유 비움",
+        wl["overtime"] is False
+        and wl["overtime_minutes"] == 0
+        and wl["overtime_note"] is None,
+        wl,
+    )
     check(
         "작성자 = 로그인 사용자",
         wl["author_name"] == "김테스트" and wl["can_edit"] is True,
@@ -1219,7 +1238,7 @@ with TestClient(app) as c:
 
     r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(admin_token))
     check("관리자는 비공개도 봄", r.status_code == 200, r.text)
-    # 다른 일반 사용자: 비공개는 못 보고, 팀 공개면 봄
+    # 열람 고정: 작성자, 같은 부서 팀장, 관리자만. 일반 사원은 남의 일지를 못 본다.
     r = c.post(
         "/api/v1/auth/signup",
         json={
@@ -1245,7 +1264,17 @@ with TestClient(app) as c:
         json={"email": "peer@ddeck.local", "password": "peerpass1"},
     ).json()["access_token"]
     r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
-    check("다른 사용자는 비공개 못 봄", r.status_code == 403, r.status_code)
+    check("다른 일반 사원은 못 봄", r.status_code == 403, r.status_code)
+    r = c.get(f"/api/v1/worklogs/{wl['id']}/pdf", headers=bearer(user_token))
+    check(
+        "근무일지 PDF 다운로드",
+        r.status_code == 200
+        and r.headers["content-type"] == "application/pdf"
+        and r.content.startswith(b"%PDF"),
+        r.status_code,
+    )
+    r = c.get(f"/api/v1/worklogs/{wl['id']}/pdf", headers=bearer(peer_token))
+    check("다른 일반 사원 PDF 차단", r.status_code == 403, r.status_code)
     # 첨부도 본문 규칙을 따른다 (id 만 알면 열리던 구멍)
     r = c.post(
         "/api/v1/files",
@@ -1256,9 +1285,9 @@ with TestClient(app) as c:
     check("근무일지 첨부 업로드", r.status_code == 201, r.text)
     att_id = r.json()["id"]
     r = c.get(f"/api/v1/files/by-entity/worklog/{wl['id']}", headers=bearer(peer_token))
-    check("비공개 일지 첨부 목록 차단", r.status_code == 403, r.status_code)
+    check("다른 일반 사원 첨부 목록 차단", r.status_code == 403, r.status_code)
     r = c.get(f"/api/v1/files/{att_id}", headers=bearer(peer_token))
-    check("비공개 일지 첨부 다운로드 차단", r.status_code == 403, r.status_code)
+    check("다른 일반 사원 첨부 다운로드 차단", r.status_code == 403, r.status_code)
     r = c.post(
         "/api/v1/files",
         headers=bearer(peer_token),
@@ -1287,56 +1316,142 @@ with TestClient(app) as c:
         r.status_code,
     )
     r = c.get("/api/v1/worklogs?scope=team", headers=bearer(peer_token))
-    check("팀 공개 목록에 비공개 없음", r.json()["total"] == 0, r.json())
+    check("일반 사원 목록에 남의 일지 없음", r.json()["total"] == 0, r.json())
+    r = c.patch(
+        f"/api/v1/worklogs/{wl['id']}",
+        headers=bearer(user_token),
+        json={"work_start": "08:00", "work_end": "20:30"},
+    )
+    check(
+        "18:00 이후 근무는 연장 사유 필수",
+        r.status_code == 400
+        and r.json()["error"]["code"] == "OVERTIME_REASON_REQUIRED",
+        r.text,
+    )
     r = c.patch(
         f"/api/v1/worklogs/{wl['id']}",
         headers=bearer(user_token),
         json={
-            "visibility": "TEAM",
-            "overtime": True,
-            "overtime_note": "18:00~20:00 출동",
+            "visibility": "TEAM",  # 공개 범위는 고정이라 무시된다
+            "work_start": "08:00",
+            "work_end": "20:30",
+            "overtime": False,
+            "overtime_note": "18:00~20:30 출동",
         },
     )
     check(
-        "팀 공개로 수정 + 연장 근무",
+        "공개 범위 요청 무시 + 자동 연장 (09:00 이전은 제외)",
         r.status_code == 200
-        and r.json()["visibility"] == "TEAM"
-        and r.json()["overtime_note"] == "18:00~20:00 출동",
+        and r.json()["visibility"] == "PRIVATE"
+        and r.json()["overtime"] is True
+        and r.json()["overtime_minutes"] == 150
+        and r.json()["overtime_note"] == "18:00~20:30 출동",
         r.text,
     )
-    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
+    r = c.get(
+        "/api/v1/worklogs/overtime-summary?year=2026&month=9",
+        headers=bearer(user_token),
+    )
     check(
-        "팀 공개는 다른 사용자도 봄 (수정 불가)",
+        "연장 근무 월 종합",
+        r.status_code == 200
+        and r.json()["total_minutes"] == 150
+        and [(i["work_date"], i["minutes"], i["reason"]) for i in r.json()["items"]]
+        == [("2026-09-25", 150, "18:00~20:30 출동")],
+        r.text,
+    )
+    r = c.get(
+        "/api/v1/worklogs/overtime-summary?year=2026&month=9",
+        headers=bearer(peer_token),
+    )
+    check("연장 종합은 내 일지만", r.json()["total_minutes"] == 0, r.text)
+    r = c.get(
+        "/api/v1/worklogs/overtime-summary.pdf?year=2026&month=9",
+        headers=bearer(user_token),
+    )
+    check(
+        "연장 근무 종합 PDF",
+        r.status_code == 200 and r.content.startswith(b"%PDF"),
+        r.status_code,
+    )
+    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
+    check("팀 공개 요청해도 일반 사원은 못 봄", r.status_code == 403, r.status_code)
+
+    def leader(email: str, department: str | None) -> str:
+        r = c.post(
+            "/api/v1/auth/signup",
+            json={"email": email, "password": "leadpass1", "full_name": email[:6]},
+        )
+        leader_id = r.json().get("id") or next(
+            u["id"]
+            for u in c.get(
+                "/api/v1/users/pending", headers=bearer(admin_token)
+            ).json()["items"]
+            if u["email"] == email
+        )
+        c.post(
+            f"/api/v1/users/{leader_id}/approve",
+            headers=bearer(admin_token),
+            json={"role": "MANAGER", "department_id": department},
+        )
+        return c.post(
+            "/api/v1/auth/login", json={"email": email, "password": "leadpass1"}
+        ).json()["access_token"]
+
+    r = c.patch(
+        f"/api/v1/users/{user_id}",
+        headers=bearer(admin_token),
+        json={"department_id": dept_id},
+    )
+    check("작성자 부서 지정", r.status_code == 200, r.text)
+    other_dept = c.post(
+        "/api/v1/admin/departments",
+        headers=bearer(admin_token),
+        json={"name": "영업팀", "code": "SALES"},
+    ).json()["id"]
+    lead_token = leader("lead1@ddeck.local", dept_id)
+    other_lead_token = leader("lead2@ddeck.local", other_dept)
+    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(lead_token))
+    check(
+        "같은 부서 팀장은 봄 (수정 불가)",
         r.status_code == 200 and r.json()["can_edit"] is False,
         r.text,
     )
-    r = c.get(f"/api/v1/files/by-entity/worklog/{wl['id']}", headers=bearer(peer_token))
+    r = c.get(f"/api/v1/worklogs/{wl['id']}", headers=bearer(other_lead_token))
+    check("다른 부서 팀장은 못 봄", r.status_code == 403, r.status_code)
+    r = c.get(f"/api/v1/worklogs/{wl['id']}/pdf", headers=bearer(lead_token))
+    check("같은 부서 팀장 PDF", r.status_code == 200, r.status_code)
+    r = c.get(f"/api/v1/files/by-entity/worklog/{wl['id']}", headers=bearer(lead_token))
     check(
-        "팀 공개면 첨부 목록도 보임",
+        "같은 부서 팀장은 첨부 목록도 보임",
         r.status_code == 200 and len(r.json()) == 1,
         r.text,
     )
+    r = c.get(
+        f"/api/v1/files/by-entity/worklog/{wl['id']}", headers=bearer(other_lead_token)
+    )
+    check("다른 부서 팀장 첨부 차단", r.status_code == 403, r.status_code)
     r = c.post(
         "/api/v1/files",
-        headers=bearer(peer_token),
+        headers=bearer(lead_token),
         data={"entity_type": "worklog", "entity_id": wl["id"]},
         files={"file": ("x.txt", b"x", "text/plain")},
     )
-    check(
-        "팀 공개라도 남의 일지에 첨부 추가는 차단", r.status_code == 403, r.status_code
-    )
+    check("팀장이라도 남의 일지에 첨부 추가는 차단", r.status_code == 403, r.status_code)
     r = c.patch(
         f"/api/v1/worklogs/{wl['id']}",
-        headers=bearer(peer_token),
+        headers=bearer(lead_token),
         json={"detail": "가로채기"},
     )
-    check("남의 일지 수정 차단", r.status_code == 403, r.status_code)
-    r = c.get("/api/v1/worklogs?scope=team", headers=bearer(peer_token))
+    check("팀장이라도 남의 일지 수정 차단", r.status_code == 403, r.status_code)
+    r = c.get("/api/v1/worklogs?scope=team", headers=bearer(lead_token))
     check(
-        "팀 공개 목록에 보임",
+        "같은 부서 팀장 목록에 부서원 일지",
         r.json()["total"] == 1 and r.json()["items"][0]["attachment_count"] == 1,
         r.json(),
     )
+    r = c.get("/api/v1/worklogs?scope=team", headers=bearer(other_lead_token))
+    check("다른 부서 팀장 목록에 없음", r.json()["total"] == 0, r.json())
     r = c.get(
         "/api/v1/worklogs?year=2026&month=9&overtime=true&q=강남",
         headers=bearer(user_token),
@@ -1428,7 +1543,11 @@ with TestClient(app) as c:
     r = c.get("/api/v1/admin/stats", headers=bearer(admin_token))
     st = r.json()
     check("시스템 통계", r.status_code == 200, r.text)
-    check("계정 수 (관리자·김테스트·동료)", st["users_active"] == 3, st["users_active"])
+    check(
+        "계정 수 (관리자·김테스트·동료·팀장 2)",
+        st["users_active"] == 5,
+        st["users_active"],
+    )
     check("AS 건수", st["tickets_total"] == 4, st["tickets_total"])
     check("자산 건수", st["assets_total"] == 2, st["assets_total"])
     check("테이블 목록", len(st["tables"]) == 32, len(st["tables"]))
@@ -1485,8 +1604,8 @@ with TestClient(app) as c:
 
     r = c.get("/api/v1/admin/audit-logs?action=APPROVE", headers=bearer(admin_token))
     check(
-        "감사로그 필터 (승인 2건: 김테스트·동료)",
-        len(r.json()) == 2 and all("가입 승인" in x["summary"] for x in r.json()),
+        "감사로그 필터 (승인 4건: 김테스트·동료·팀장 2)",
+        len(r.json()) == 4 and all("가입 승인" in x["summary"] for x in r.json()),
         r.json(),
     )
 

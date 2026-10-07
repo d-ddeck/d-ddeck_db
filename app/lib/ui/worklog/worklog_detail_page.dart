@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api_client.dart';
 import '../../core/api_exception.dart';
 import '../../data/file_repository.dart';
 import '../../data/worklog_repository.dart';
 import '../../models/worklog.dart';
 import '../common/attachment_section.dart';
 import '../common/common.dart';
+import '../common/download.dart';
 import '../format.dart';
 import '../theme.dart';
 import 'worklog_form_page.dart';
@@ -70,6 +72,25 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
     }
   }
 
+  Future<void> _pdf(bool save) async {
+    final log = _log!;
+    setState(() => _busy = true);
+    await runGuarded(context, () async {
+      final bytes = await context.read<ApiClient>().getBytes(
+        '/worklogs/${log.id}/pdf',
+      );
+      final name = '근무일지_${log.workDate}_${log.authorName}.pdf';
+      if (!save) {
+        await saveAndOpenDownload(bytes, name);
+        return;
+      }
+      if (await savePdfAs(bytes, name, dialogTitle: '근무일지 PDF 저장') && mounted) {
+        AppSnack.show(context, 'PDF를 저장했습니다.');
+      }
+    });
+    if (mounted) setState(() => _busy = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final log = _log;
@@ -77,6 +98,17 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
       appBar: AppBar(
         title: Text(log == null ? '근무일지' : '${log.workDate} 근무일지'),
         actions: [
+          if (log != null && !_loading && _error == null)
+            PopupMenuButton<bool>(
+              tooltip: 'PDF',
+              enabled: !_busy,
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onSelected: _pdf,
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: false, child: Text('PDF 열기')),
+                PopupMenuItem(value: true, child: Text('PDF 저장')),
+              ],
+            ),
           if (log?.canEdit == true && !_loading && _error == null) ...[
             TextButton(
               onPressed: _busy
@@ -116,9 +148,12 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
                       runSpacing: 12,
                       spacing: 8,
                       children: [
-                        if (log.overtime) const Chip(label: Text('연장')),
-                        if (log.visibility == 'TEAM')
-                          const Chip(label: Text('팀 공개')),
+                        if (log.overtime)
+                          Chip(
+                            label: Text(
+                              '연장 ${overtimeLabel(log.overtimeMinutes)}',
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
@@ -135,7 +170,7 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
                           SelectableText(log.detail),
                           if (log.overtime) ...[
                             const FormGap(),
-                            const Text('연장 근무 내용'),
+                            const Text('연장 근무 사유'),
                             SelectableText(log.overtimeNote),
                           ],
                         ],

@@ -39,6 +39,15 @@ class WorkLogRepository {
         asMap(await _api.put('/worklogs/draft', body: {'data': data})),
       );
   Future<void> deleteDraft() => _api.delete('/worklogs/draft');
+  Future<OvertimeSummary> overtimeSummary(int year, int month) async =>
+      OvertimeSummary.fromJson(
+        asMap(
+          await _api.get(
+            '/worklogs/overtime-summary',
+            query: {'year': year, 'month': month},
+          ),
+        ),
+      );
   Future<List<int>> exportXlsx(Map<String, dynamic> filters) => _api.getBytes(
     Uri(
       path: '/worklogs/export.xlsx',

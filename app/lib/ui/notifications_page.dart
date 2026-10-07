@@ -62,9 +62,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
           children: [
             FilterBar(
               appliedFilters: [if (_unreadOnly) '읽지 않음만'],
-              onReset: () {
+              onReset: () async {
+                final confirmed = await ConfirmDialog.show(
+                  context,
+                  title: '알림 초기화',
+                  message: '받은 알림을 모두 지우시겠습니까? 지운 알림은 되돌릴 수 없습니다.',
+                  confirmLabel: '모두 지우기',
+                  destructive: true,
+                );
+                if (!context.mounted || !confirmed) return;
+                final ok = await runGuarded(
+                  context,
+                  repo.clearNotifications,
+                  successMessage: '알림을 모두 지웠습니다.',
+                );
+                if (!mounted) return;
                 setState(() => _unreadOnly = false);
-                _refresh();
+                if (ok) _refresh();
               },
               children: [
                 FilterChip(
