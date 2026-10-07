@@ -59,8 +59,8 @@ def render(
             [
                 p("연장 근무"),
                 p(duration(log["overtime_minutes"])),
-                p("열람 범위"),
-                p("작성자 · 부서 팀장 · 관리자"),
+                p("문서번호"),
+                p(log["document_no"]),
             ],
         ],
         colWidths=[24 * mm, 61 * mm, 24 * mm, 61 * mm],
@@ -80,6 +80,8 @@ def render(
 
     story = [heading_row(p("근무일지", title), logo), Spacer(1, 6 * mm), info]
     story.append(Spacer(1, 4 * mm))
+    if (log["morning"] or "").strip() or (log["afternoon"] or "").strip():
+        story += [p("오전 · 오후 업무", heading), half_day_chart(log, p)]
     sections = [
         ("금일 업무 내용 요약", log["summary"]),
         ("금일 근무 내용 상세", log["detail"]),
@@ -267,3 +269,32 @@ def render_overtime(summary: dict, printed_at: str, logo: bytes | None = None) -
         title=f"연장근무 종합 {period} - {summary['author_name']}",
     ).build(story, onFirstPage=footer, onLaterPages=footer)
     return buffer.getvalue()
+
+
+def half_day_chart(log: dict, p) -> LongTable:
+    """오전·오후 업무를 나란히 놓은 표. 한 줄이 한 행이라 길어도 쪽을 넘길 수 있다."""
+    morning = (log["morning"] or "").strip().split("\n")
+    afternoon = (log["afternoon"] or "").strip().split("\n")
+    count = max(len(morning), len(afternoon))
+    rows = [[p("오전 업무"), p("오후 업무")]] + [
+        [
+            p(morning[i] if i < len(morning) else ""),
+            p(afternoon[i] if i < len(afternoon) else ""),
+        ]
+        for i in range(count)
+    ]
+    table = LongTable(rows, colWidths=[85 * mm, 85 * mm], repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.4, colors.black),
+                ("LINEAFTER", (0, 0), (0, -1), 0.4, colors.black),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.94, 0.94, 0.94)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    return table

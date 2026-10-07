@@ -15,13 +15,13 @@ from __future__ import annotations
 import base64
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import Client, CurrentUser, DbSession, PageParams
@@ -441,6 +441,8 @@ def export_worklogs(
         "직급",
         "근무 시작",
         "근무 종료",
+        "오전 업무",
+        "오후 업무",
         "금일 업무 내용 요약",
         "금일 근무 내용 상세",
         "연장 근무",
@@ -457,6 +459,8 @@ def export_worklogs(
             w.position or "",
             w.work_start,
             w.work_end,
+            w.morning or "",
+            w.afternoon or "",
             w.summary,
             w.detail,
             "O" if (minutes := overtime_minutes(w.work_start, w.work_end)) else "X",
@@ -473,8 +477,8 @@ def export_worklogs(
         wb.create_sheet("근무일지"),
         head,
         lines,
-        [11, 10, 8, 9, 9, 36, 50, 8, 8, 24, 36, 30, 7],
-        wrap_cols=(5, 6, 9, 10, 11),
+        [11, 10, 8, 9, 9, 30, 30, 36, 50, 8, 8, 24, 36, 30, 7],
+        wrap_cols=(5, 6, 7, 8, 11, 12, 13),
     )
     tag = (rows[0].author_name if author_id and rows else "전체") + (
         f"_{year}" + (f"-{month:02d}" if month else "") if year else ""
@@ -590,6 +594,25 @@ def get_worklog(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> WorkLogD
     return _detail(db, log, user)
 
 
+def _document_no(db: Session, log: WorkLog) -> str:
+    """작성일(등록 시각, 한국 시간) 기준 WL-YYYYMMDD-순번.
+
+    순번은 그날 등록된 순서다. 지운 일지도 세어 번호가 바뀌지 않는다.
+    """
+    created = log.created_at.astimezone(KST)
+    start = datetime(created.year, created.month, created.day, tzinfo=KST)
+    order = db.scalar(
+        select(func.count(WorkLog.id)).where(
+            WorkLog.created_at >= start,
+            or_(
+                WorkLog.created_at < log.created_at,
+                and_(WorkLog.created_at == log.created_at, WorkLog.id <= log.id),
+            ),
+        )
+    )
+    return f"WL-{created:%Y%m%d}-{order or 1:03d}"
+
+
 def _company_logo(db: Session) -> bytes | None:
     """견적서에 등록한 회사 로고를 근무일지 PDF 에도 쓴다."""
     configured = settings_store.get(db, ModuleKey.SERVICE, "quotation_logo", {})
@@ -628,6 +651,9 @@ def worklog_pdf(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Response
             "position": log.position,
             "overtime_minutes": overtime_minutes(log.work_start, log.work_end),
             "overtime_note": log.overtime_note,
+            "document_no": _document_no(db, log),
+            "morning": log.morning,
+            "afternoon": log.afternoon,
             "summary": log.summary,
             "detail": log.detail,
             "plan": log.plan,

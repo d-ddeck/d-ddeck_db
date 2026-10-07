@@ -20,6 +20,8 @@ class WorkLogCreate(BaseModel):
         min_length=1, description="한 줄에 하나씩. 서버가 1. 2. 번호를 다시 매긴다"
     )
     detail: str = Field(min_length=1)
+    morning: str | None = None
+    afternoon: str | None = None
     overtime: bool = False
     overtime_note: str | None = Field(None, max_length=200)
     plan: str | None = None
@@ -45,6 +47,8 @@ class WorkLogUpdate(PatchModel):
     work_end: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
     summary: str | None = Field(None, min_length=1)
     detail: str | None = Field(None, min_length=1)
+    morning: str | None = None
+    afternoon: str | None = None
     overtime: bool | None = None
     overtime_note: str | None = Field(None, max_length=200)
     plan: str | None = None
@@ -63,6 +67,8 @@ class WorkLogOut(ORMModel):
     work_end: str
     summary: str
     detail: str
+    morning: str | None = None
+    afternoon: str | None = None
     overtime: bool
     overtime_note: str | None = None
     plan: str | None = None

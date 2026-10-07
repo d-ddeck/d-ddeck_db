@@ -1176,6 +1176,8 @@ with TestClient(app) as c:
         "work_end": "18:00",
         "summary": "강남역점 점검\n- 신규 매장 설치 준비\n\n3) 창고 정리",
         "detail": "시간 순서대로 한 일",
+        "morning": "09:00 강남점 점검\n11:00 보고",
+        "afternoon": "14:00 창고 정리",
         "overtime": False,
         "overtime_note": "지워져야 함",
         "plan": "내일 할 일",
@@ -1198,6 +1200,12 @@ with TestClient(app) as c:
         "요약 자동 번호",
         wl["summary"] == "1. 강남역점 점검\n2. 신규 매장 설치 준비\n3. 창고 정리",
         wl["summary"],
+    )
+    check(
+        "오전·오후 업무 저장",
+        wl["morning"] == "09:00 강남점 점검\n11:00 보고"
+        and wl["afternoon"] == "14:00 창고 정리",
+        wl,
     )
     check(
         "18:00 까지면 연장 아님 + 사유 비움",

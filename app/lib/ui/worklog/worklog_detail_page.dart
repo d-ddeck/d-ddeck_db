@@ -157,6 +157,30 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
+                    if (log.morning.isNotEmpty || log.afternoon.isNotEmpty) ...[
+                      SectionCard(
+                        title: '오전 · 오후 업무',
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final (label, text) in [
+                              ('오전 업무', log.morning),
+                              ('오후 업무', log.afternoon),
+                            ])
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(label),
+                                    SelectableText(text.isEmpty ? '-' : text),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpace.md),
+                    ],
                     SectionCard(
                       title: '금일 업무',
                       child: Column(

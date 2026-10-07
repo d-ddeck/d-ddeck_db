@@ -33,6 +33,8 @@ class WorkLog {
       workDate = asString(j['work_date']),
       workStart = asString(j['work_start']),
       workEnd = asString(j['work_end']),
+      morning = asString(j['morning']),
+      afternoon = asString(j['afternoon']),
       summary = asString(j['summary']),
       detail = asString(j['detail']),
       overtime = asBool(j['overtime']),
@@ -56,6 +58,7 @@ class WorkLog {
           : null;
 
   final String id, authorId, authorName, position, workDate, workStart, workEnd;
+  final String morning, afternoon;
   final String summary, detail, overtimeNote, plan, needs, visibility;
   final bool overtime, canEdit;
   final int attachmentCount, overtimeMinutes;
@@ -67,6 +70,8 @@ class WorkLog {
     'work_start': workStart,
     'work_end': workEnd,
     'position': position,
+    'morning': morning,
+    'afternoon': afternoon,
     'summary': summary,
     'detail': detail,
     'overtime': overtime,

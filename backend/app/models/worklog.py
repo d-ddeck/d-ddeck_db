@@ -46,6 +46,8 @@ class WorkLog(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     work_start: Mapped[str] = mapped_column(String(5), nullable=False)  # HH:MM
     work_end: Mapped[str] = mapped_column(String(5), nullable=False)
 
+    morning: Mapped[str | None] = mapped_column(Text)  # 오전 업무
+    afternoon: Mapped[str | None] = mapped_column(Text)  # 오후 업무
     summary: Mapped[str] = mapped_column(
         Text, nullable=False
     )  # 금일 업무 내용 요약 (번호 매김)

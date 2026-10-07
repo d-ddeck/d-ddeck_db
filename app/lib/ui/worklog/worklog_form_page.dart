@@ -67,7 +67,15 @@ class WorkLogFormPage extends StatefulWidget {
 class _WorkLogFormPageState extends State<WorkLogFormPage> {
   final _form = GlobalKey<FormState>();
   final _fields = <String, TextEditingController>{
-    for (final name in ['summary', 'detail', 'overtime_note', 'plan', 'needs'])
+    for (final name in [
+      'morning',
+      'afternoon',
+      'summary',
+      'detail',
+      'overtime_note',
+      'plan',
+      'needs',
+    ])
       name: TextEditingController(),
   };
   WorkLogLookups? _lookups;
@@ -521,6 +529,37 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                                 FormSection(
                                   title: '금일 업무',
                                   children: [
+                                    // 오전·오후 업무는 PDF 에 나란히 놓인 표로 나간다.
+                                    LayoutBuilder(
+                                      builder: (context, box) {
+                                        final morning = _text(
+                                          'morning',
+                                          '오전 업무',
+                                        );
+                                        final afternoon = _text(
+                                          'afternoon',
+                                          '오후 업무',
+                                        );
+                                        if (box.maxWidth < 600) {
+                                          return Column(
+                                            children: [
+                                              morning,
+                                              const SizedBox(height: 12),
+                                              afternoon,
+                                            ],
+                                          );
+                                        }
+                                        return Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(child: morning),
+                                            const SizedBox(width: 12),
+                                            Expanded(child: afternoon),
+                                          ],
+                                        );
+                                      },
+                                    ),
                                     _text(
                                       'summary',
                                       '금일 업무 내용 요약',
