@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../data/admin_repository.dart';
 import '../../core/api_exception.dart';
 
@@ -24,9 +25,11 @@ class _DriveSetupDialogState extends State<DriveSetupDialog> {
   bool _busy = false;
   bool _polling = false;
   bool _create = true;
+  String? _openedLogin;
   Timer? _timer;
   String get _id => _data!['id'] as String;
   String? get _stage => _data?['stage'] as String?;
+  String? get _loginUrl => _data?['auth_url'] as String?;
 
   @override
   void initState() {
@@ -58,6 +61,25 @@ class _DriveSetupDialogState extends State<DriveSetupDialog> {
       }
     });
     if (old != 'ready' && _stage == 'ready') _browse('');
+    // The server runs without a desktop session, so this app opens the
+    // loopback login link that rclone is waiting on.
+    final login = _loginUrl;
+    if (_stage == 'working' && login != null && login != _openedLogin) {
+      _openedLogin = login;
+      _openLogin();
+    }
+  }
+
+  Future<void> _openLogin() async {
+    final login = _loginUrl;
+    if (login == null) return;
+    final opened = await launchUrl(
+      Uri.parse(login),
+      mode: LaunchMode.externalApplication,
+    ).catchError((_) => false);
+    if (!opened && mounted) {
+      setState(() => _error = '브라우저를 열지 못했습니다. 아래 버튼을 다시 눌러 주세요.');
+    }
   }
 
   Future<void> _run(Future<void> Function() fn) async {
@@ -160,6 +182,17 @@ class _DriveSetupDialogState extends State<DriveSetupDialog> {
                   const Text(
                     '서버 PC의 브라우저에서 Google 로그인을 완료하세요. 인증 후 공유 드라이브를 선택할 수 있습니다.',
                   ),
+                  if (_loginUrl != null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _openLogin,
+                        icon: const Icon(Icons.open_in_browser),
+                        label: const Text('Google 로그인 열기'),
+                      ),
+                    ),
+                  ],
                 ],
                 if (_stage == 'question') ...[
                   Text(

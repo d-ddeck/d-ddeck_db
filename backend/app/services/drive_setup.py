@@ -19,6 +19,7 @@ from app.services import drive_backup as backup
 from app.services import rclone_backup as rclone
 
 TIMEOUT = 600
+AUTH_URL = re.compile(r"http://127\.0\.0\.1:\d+/auth\?state=[A-Za-z0-9_-]+")
 
 
 def local_console(request):
@@ -72,6 +73,7 @@ def public(w):
             )
         },
         "folder": w.get("folder", ""),
+        "auth_url": w.get("auth_url") if w["stage"] == "working" else None,
     }
 
 
@@ -119,7 +121,9 @@ def answer(ident, value):
             opt.get("Exclusive") and choices and value not in choices
         ):
             raise AppError("SETUP_ANSWER", "선택 항목을 확인하세요.", 422)
-        w.update(stage="working", error=None, expires=time.time() + 1800)
+        w.update(
+            stage="working", error=None, auth_url=None, expires=time.time() + 1800
+        )
     threading.Thread(target=work, args=(ident, value), daemon=True).start()
     return get(ident)
 
@@ -144,6 +148,13 @@ def command(ident, args):
         stderr=subprocess.PIPE,
         text=True,
     )
+    output = []
+    readers = [
+        threading.Thread(target=lambda: output.append(proc.stdout.read()), daemon=True),
+        threading.Thread(target=publish_auth_url, args=(ident, proc.stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
     deadline = time.monotonic() + TIMEOUT
     try:
         while True:
@@ -157,25 +168,40 @@ def command(ident, args):
                     408,
                 )
             try:
-                output, _ = proc.communicate(timeout=1)
+                proc.wait(timeout=1)
                 break
             except subprocess.TimeoutExpired:
                 continue
+        for reader in readers:
+            reader.join(timeout=3)
         if proc.returncode:
             raise AppError(
                 "SETUP_FAILED",
                 "Google 연결에 실패했습니다. 브라우저 인증, OAuth 앱 설정 및 공유 드라이브 권한을 확인하세요.",
                 502,
             )
-        return json.loads(output)
+        return json.loads(output[0] if output else "")
     finally:
         if proc.poll() is None:
             proc.terminate()
             try:
-                proc.communicate(timeout=3)
+                proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.communicate()
+                proc.wait()
+
+
+def publish_auth_url(ident, stream):
+    # A service account has no desktop session, so rclone cannot open the
+    # browser itself. Its loopback login link is shown in the server PC app.
+    for line in stream:
+        match = AUTH_URL.search(line)
+        if not match:
+            continue
+        with backup.state() as s:
+            w = s.get("drive_setup", {})
+            if w.get("id") == ident and w.get("stage") == "working":
+                w["auth_url"] = match.group(0)
 
 
 def work(ident, value):
@@ -223,6 +249,7 @@ def work(ident, value):
                 w.update(
                     state=result.get("State", ""),
                     option=opt,
+                    auth_url=None,
                     stage="question" if result.get("State") else "ready",
                     error="입력값 또는 계정 권한을 확인하고 다시 선택하세요."
                     if result.get("Error")

@@ -129,6 +129,36 @@ class SetupTest(unittest.TestCase):
         with d.backup.state() as s:
             self.assertEqual(s["rclone_target"], "other:Backup")
 
+    def test_login_link_shown_while_waiting(self):
+        url = "http://127.0.0.1:53682/auth?state=Ab_9-z"
+        fake = Path(TEMP.name) / "rclone"
+        fake.write_text(
+            "#!/bin/sh\n"
+            f"echo '<5>NOTICE: If your browser does not open go to: {url}' >&2\n"
+            "sleep 2\n"
+            'echo \'{"State": ""}\'\n'
+        )
+        fake.chmod(0o700)
+        seen = []
+
+        def watch():
+            for _ in range(30):
+                data = d.get(self.ident)
+                if data["auth_url"]:
+                    seen.append(data["auth_url"])
+                    return
+                time.sleep(0.1)
+
+        watcher = d.threading.Thread(target=watch)
+        with patch.object(d.shutil, "which", return_value=str(fake)):
+            watcher.start()
+            self.assertEqual(d.command(self.ident, ["config"]), {"State": ""})
+            watcher.join()
+        self.assertEqual(seen, [url])
+        with d.backup.state() as s:
+            s["drive_setup"]["stage"] = "ready"
+        self.assertIsNone(d.get(self.ident)["auth_url"])
+
 
 if __name__ == "__main__":
     unittest.main()

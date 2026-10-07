@@ -3,7 +3,7 @@
 ; 직접 컴파일하지 말고 build.ps1 을 사용하세요. Flutter 빌드와 버전 주입을
 ; 함께 처리합니다.
 ;
-;   .\installer\build.ps1 -ServerUrl "https://192.168.121.2"
+;   .\installer\build.ps1 -ServerUrl "https://192.168.121.6"
 
 #ifndef AppVersion
   #define AppVersion "0.1.0"
@@ -12,7 +12,7 @@
   #define SourceDir "..\app\build\windows\x64\runner\Release"
 #endif
 #ifndef DefaultServerUrl
-  #define DefaultServerUrl "https://192.168.121.2"
+  #define DefaultServerUrl "https://192.168.121.6"
 #endif
 
 #define AppName "d-ddeck"
@@ -55,13 +55,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [CustomMessages]
 korean.ServerPageTitle=서버 주소 설정
 korean.ServerPageSubtitle=이 프로그램이 접속할 사내 서버 주소를 입력하세요.
-korean.ServerPageLabel=사내 서버 주소를 입력하세요. 모르시면 관리자에게 문의하세요.%n%n예) https://192.168.121.2  또는  https://192.168.121.2
+korean.ServerPageLabel=사내 서버 주소를 입력하세요. 모르시면 관리자에게 문의하세요.%n%n예) https://192.168.121.6  또는  https://192.168.121.6
 korean.ServerPageHint=나중에 프로그램의 로그인 화면에서도 변경할 수 있습니다.
 korean.ServerInvalid=서버 주소를 입력해 주세요.
 korean.LaunchApp={#AppName} 실행
 english.ServerPageTitle=Server address
 english.ServerPageSubtitle=Enter the address of your company server.
-english.ServerPageLabel=Enter the company server address. Ask your administrator if unsure.%n%ne.g. https://192.168.121.2
+english.ServerPageLabel=Enter the company server address. Ask your administrator if unsure.%n%ne.g. https://192.168.121.6
 english.ServerPageHint=You can change this later on the app's login screen.
 english.ServerInvalid=Please enter a server address.
 english.LaunchApp=Launch {#AppName}

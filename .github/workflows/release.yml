@@ -29,7 +29,7 @@ concurrency:
 env:
   FLUTTER_VERSION: "3.47.5"
   # 설치 프로그램이 기본값으로 보여 주는 서버 주소. 설치 중 바꿀 수 있다.
-  DEFAULT_SERVER_URL: "https://192.168.121.2"
+  DEFAULT_SERVER_URL: "https://192.168.121.6"
 
 jobs:
   # ------------------------------------------------------------ 버전 결정

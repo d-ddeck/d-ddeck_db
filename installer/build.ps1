@@ -16,14 +16,14 @@
   Flutter 빌드를 건너뛰고 기존 Release 폴더로 패키징만 합니다.
 
 .EXAMPLE
-  .\installer\build.ps1 -ServerUrl "https://192.168.121.2"
+  .\installer\build.ps1 -ServerUrl "https://192.168.121.6"
 
 .EXAMPLE
-  .\installer\build.ps1 -ServerUrl "https://192.168.121.2" -Version 0.2.0
+  .\installer\build.ps1 -ServerUrl "https://192.168.121.6" -Version 0.2.0
 #>
 [CmdletBinding()]
 param(
-  [string]$ServerUrl = "https://192.168.121.2",
+  [string]$ServerUrl = "https://192.168.121.6",
   [string]$Version = "",
   [switch]$SkipFlutterBuild
 )

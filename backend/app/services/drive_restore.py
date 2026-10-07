@@ -4,6 +4,7 @@ import csv
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -23,6 +24,8 @@ from app.core.errors import AppError
 from app.services import drive_backup as backup
 from app.services import rclone_backup as rclone
 from app.services import restore_gate as gate
+
+log = logging.getLogger(__name__)
 
 
 def fail(message):
@@ -413,6 +416,8 @@ def work(ident, target, name, restore):
             apply(ident, folder / "staged")
         update(ident, stage="restored" if restore else "downloaded")
     except Exception as exc:  # noqa: BLE001 - worker reports all failures without exposing secrets
+        if not isinstance(exc, AppError):
+            log.error("Backup download/restore failed: %s: %s", type(exc).__name__, exc)
         update(
             ident,
             stage="error",
