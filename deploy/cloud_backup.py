@@ -1,6 +1,7 @@
 """Operator backups use the same verified Google destination as the application."""
 
 import argparse
+import atexit
 import json
 import os
 import sys
@@ -8,6 +9,29 @@ import tempfile
 from pathlib import Path
 
 from backup_bundle import backup
+
+_guarded = set()
+
+
+def config_owner_guard(path):
+    """root 로 돌린 rclone 이 토큰을 갱신하면 설정 파일을 root 소유로 새로 쓴다.
+
+    그러면 서버 계정이 읽지 못해 이후 모든 Google 백업이 실패한다. 끝날 때 설정
+    폴더 소유자로 되돌린다. root 가 아니면 할 일이 없다.
+    """
+    if os.name == "nt" or os.geteuid() != 0:
+        return None
+    path = Path(path)
+
+    def restore():
+        try:
+            folder, current = os.stat(path.parent), os.stat(path)
+            if (current.st_uid, current.st_gid) != (folder.st_uid, folder.st_gid):
+                os.chown(path, folder.st_uid, folder.st_gid)
+        except OSError:
+            pass
+
+    return restore
 
 
 def service(root):
@@ -30,6 +54,11 @@ def service(root):
             config_path = str(candidate)
     if config_path:
         os.environ["RCLONE_CONFIG"] = config_path
+        restore = config_owner_guard(config_path)
+        if restore and config_path not in _guarded:
+            _guarded.add(config_path)
+            restore()  # Heal a file left root-owned by an earlier operator run.
+            atexit.register(restore)
     return drive_backup
 
 

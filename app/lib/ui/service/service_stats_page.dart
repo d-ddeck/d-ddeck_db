@@ -87,6 +87,7 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                   repo.crosstab(t.$2, t.$3, filters: filters),
               ]),
               admin.codeGroup('SERVICE_WORK_TYPE'),
+              repo.responderYears(filters: filters),
               if (_category == null && _workTypeId == null) repo.storeYears(),
             ]);
             return _StatsData(
@@ -98,7 +99,8 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
               tables: tables,
               crosses: results[5] as List<Crosstab>,
               workTypes: (results[6] as CodeGroup).items,
-              stores: results.length > 7 ? results[7] as StoreYears : null,
+              responders: results[7] as ResponderYears,
+              stores: results.length > 8 ? results[8] as StoreYears : null,
             );
           } on ApiException catch (e) {
             if (context.mounted) AppSnack.show(context, e.message, error: true);
@@ -322,6 +324,8 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                         ],
                       ),
                       const SizedBox(height: AppSpace.lg),
+                      _ResponderYearsCard(data: data.responders),
+                      const SizedBox(height: AppSpace.lg),
                     ],
                     if (_section == '분류 분석') ...[
                       _ChartCard(
@@ -361,9 +365,9 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
                                 '한 서비스에 여러 원인이 포함될 수 있으며, 차트와 비율은 전체 원인 수 기준입니다.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -678,7 +682,9 @@ class _ServiceStatsTabState extends State<ServiceStatsTab> {
 
   List<Widget> _storeTables(StoreYears data) => [
     const SizedBox(height: AppSpace.md),
-    Text('운영 매장 · 전체 브랜드 기준 · 총 ${data.totalStores} / 미운영 ${data.closedStores}'),
+    Text(
+      '운영 매장 · 전체 브랜드 기준 · 총 ${data.totalStores} / 미운영 ${data.closedStores}',
+    ),
     const Text('개점일이 없으면 첫 서비스·장비 설치일로 추정합니다.', style: TextStyle(fontSize: 12)),
     if (data.unknownOpen.isNotEmpty)
       Text('개점 연도 미상: ${data.unknownOpen.join(', ')}'),

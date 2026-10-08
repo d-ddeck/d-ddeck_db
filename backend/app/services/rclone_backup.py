@@ -33,6 +33,59 @@ def run(*args, timeout=300):
         ) from None
 
 
+def run_with_progress(*args, on_progress, timeout=300):
+    """rclone 의 1초 간격 JSON 통계(bytes/totalBytes)로 진행률(%)을 알린다."""
+    binary = shutil.which("rclone") or str(Path.home() / ".local/bin/rclone")
+    deadline = time.monotonic() + timeout
+    try:
+        proc = subprocess.Popen(
+            [
+                binary,
+                *args,
+                "--ask-password=false",
+                "--stats",
+                "1s",
+                "--stats-log-level",
+                "NOTICE",
+                "--use-json-log",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError:
+        raise _failed() from None
+    try:
+        # Stats arrive every second, so readline never waits long.
+        for line in proc.stderr:
+            if time.monotonic() > deadline:
+                raise _failed()
+            try:
+                stats = json.loads(line).get("stats") or {}
+            except ValueError:
+                continue
+            total = stats.get("totalBytes") or 0
+            if total:
+                on_progress(min(100.0, stats.get("bytes", 0) * 100 / total))
+        if proc.wait(timeout=max(1, deadline - time.monotonic())):
+            raise _failed()
+    except subprocess.TimeoutExpired:
+        raise _failed() from None
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+
+def _failed():
+    return AppError(
+        "RCLONE_FAILED",
+        "서버 PC의 rclone 설치, Google 로그인, 공유 드라이브 접근·삭제 권한을 확인하세요.",
+        502,
+    )
+
+
 def validate(target):
     name, sep, folder = target.partition(":")
     if (
@@ -67,7 +120,8 @@ def validate(target):
     return name
 
 
-def upload(target, archive, *, pattern=BACKUP_NAME):
+def upload(target, archive, *, pattern=BACKUP_NAME, on_progress=None):
+    """on_progress(stage, percent): "uploading" 0~100, 이어서 "verifying"."""
     deadline = time.monotonic() + 3000
 
     def command(*args, timeout=300):
@@ -82,7 +136,22 @@ def upload(target, archive, *, pattern=BACKUP_NAME):
     if not pattern.fullmatch(archive.name):
         raise ValueError("Unexpected backup filename")
     destination = target + "/" + archive.name
-    command("copyto", str(archive), destination, timeout=1800)
+    if on_progress is None:
+        command("copyto", str(archive), destination, timeout=1800)
+    else:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AppError(
+                "RCLONE_TIMEOUT", "백업 업로드·정리 시간이 초과되었습니다.", 502
+            )
+        run_with_progress(
+            "copyto",
+            str(archive),
+            destination,
+            on_progress=lambda percent: on_progress("uploading", percent),
+            timeout=min(1800, remaining),
+        )
+        on_progress("verifying", None)
     command(
         "check",
         str(archive.parent),

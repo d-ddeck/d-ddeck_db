@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/api_client.dart';
+import '../ui/common/download.dart';
 import '../models/attachment.dart';
 import '../models/common.dart';
 
@@ -51,6 +52,7 @@ class FileRepository {
     required String filePath,
     required String fileName,
     String? photoCategory,
+    String? comment,
     void Function(int sent, int total)? onProgress,
   }) async {
     final extension = fileName.toLowerCase().split('.').last;
@@ -68,6 +70,7 @@ class FileRepository {
         'photo_category': photoCategory,
       'entity_type': entityType,
       'entity_id': entityId,
+      if (comment != null && comment.trim().isNotEmpty) 'comment': comment.trim(),
       'file': upload,
     });
     final res = await _api.postMultipart(
@@ -80,9 +83,14 @@ class FileRepository {
 
   /// 내려받아 로컬 파일로 저장하고 그 경로를 돌려준다.
   ///
-  /// 저장 위치는 OS 가 정하는 임시/문서 폴더다. 앱이 파일을 들고 있을 이유가
-  /// 없으므로 열어 보고 나면 OS 가 치우게 둔다.
-  Future<File> download(Attachment attachment) async {
+  /// 사용자가 연 첨부는 다운로드 폴더(PC)에 원래 이름으로 남긴다. 미리보기용
+  /// 썸네일([preview])은 임시 폴더에 두어 OS 가 치우게 한다.
+  Future<File> download(Attachment attachment) async => saveToDownloads(
+    await _api.getBytes('/files/${attachment.id}'),
+    attachment.originalName,
+  );
+
+  Future<File> preview(Attachment attachment) async {
     final bytes = await _api.getBytes('/files/${attachment.id}');
     final dir = await getTemporaryDirectory();
     final safe = attachment.originalName.replaceAll(RegExp(r'[/\\]'), '_');
@@ -90,6 +98,9 @@ class FileRepository {
     await file.writeAsBytes(bytes);
     return file;
   }
+
+  Future<void> updateComment(String attachmentId, String comment) =>
+      _api.patch('/files/$attachmentId', body: {'comment': comment.trim()});
 
   Future<void> delete(String attachmentId) =>
       _api.delete('/files/$attachmentId');

@@ -82,9 +82,13 @@ class _WorkLogOvertimePageState extends State<WorkLogOvertimePage> {
       final name = '연장근무_$year-${month.toString().padLeft(2, '0')}.pdf';
       if (!save) {
         await saveAndOpenDownload(bytes, name);
-      } else if (await savePdfAs(bytes, name, dialogTitle: '연장근무 종합 PDF 저장') &&
-          mounted) {
-        AppSnack.show(context, 'PDF를 저장했습니다.');
+      } else {
+        final path = await savePdfAs(
+          bytes,
+          name,
+          dialogTitle: '연장근무 종합 PDF 저장',
+        );
+        if (path != null && mounted) AppSnack.show(context, savedMessage(path));
       }
     });
     if (mounted) setState(() => _busy = false);

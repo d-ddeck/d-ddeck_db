@@ -11,6 +11,7 @@ import '../common/common.dart';
 import '../common/download.dart';
 import '../format.dart';
 import '../theme.dart';
+import 'task_photo.dart';
 import 'worklog_form_page.dart';
 
 class WorkLogDetailPage extends StatefulWidget {
@@ -84,9 +85,8 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
         await saveAndOpenDownload(bytes, name);
         return;
       }
-      if (await savePdfAs(bytes, name, dialogTitle: '근무일지 PDF 저장') && mounted) {
-        AppSnack.show(context, 'PDF를 저장했습니다.');
-      }
+      final path = await savePdfAs(bytes, name, dialogTitle: '근무일지 PDF 저장');
+      if (path != null && mounted) AppSnack.show(context, savedMessage(path));
     });
     if (mounted) setState(() => _busy = false);
   }
@@ -157,7 +157,9 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    if (log.morning.isNotEmpty || log.afternoon.isNotEmpty) ...[
+                    if (log.tasks.isEmpty &&
+                        (log.morning.isNotEmpty ||
+                            log.afternoon.isNotEmpty)) ...[
                       SectionCard(
                         title: '오전 · 오후 업무',
                         child: Row(
@@ -186,12 +188,72 @@ class _WorkLogDetailPageState extends State<WorkLogDetailPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SelectableText(
-                            log.summary,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const FormGap(),
-                          SelectableText(log.detail),
+                          if (log.tasks.isEmpty) ...[
+                            SelectableText(
+                              log.summary,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const FormGap(),
+                            SelectableText(log.detail),
+                          ],
+                          for (final (i, t) in log.tasks.indexed) ...[
+                            if (i > 0) const Divider(height: 24),
+                            SelectableText(
+                              '${i + 1}. ${t.title}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '${t.periodLabel} · ${t.kindLabel}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            if (t.detail.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              SelectableText(t.detail),
+                            ],
+                            if (t.images.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  for (final image in t.images)
+                                    SizedBox(
+                                      width: 160,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          TaskPhotoThumb(
+                                            attachmentId: image.attachmentId,
+                                          ),
+                                          if (image.comment.isNotEmpty)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 4,
+                                              ),
+                                              child: Text(
+                                                image.comment,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ],
                           if (log.overtime) ...[
                             const FormGap(),
                             const Text('연장 근무 사유'),

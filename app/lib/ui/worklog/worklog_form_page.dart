@@ -1,5 +1,8 @@
 import 'worklog_detail_page.dart';
 import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +17,7 @@ import '../../state/auth_state.dart';
 import '../common/attachment_section.dart';
 import '../common/common.dart';
 import '../format.dart';
+import 'task_photo.dart';
 
 /// Number only after IME composition has committed; keep edits and selection in place.
 class WorkLogSummaryFormatter extends TextInputFormatter {
@@ -67,17 +71,12 @@ class WorkLogFormPage extends StatefulWidget {
 class _WorkLogFormPageState extends State<WorkLogFormPage> {
   final _form = GlobalKey<FormState>();
   final _fields = <String, TextEditingController>{
-    for (final name in [
-      'morning',
-      'afternoon',
-      'summary',
-      'detail',
-      'overtime_note',
-      'plan',
-      'needs',
-    ])
+    for (final name in ['overtime_note', 'plan', 'needs'])
       name: TextEditingController(),
   };
+  final List<_TaskEntry> _tasks = [];
+  // 업무에서 뺀 저장된 사진. 저장에 성공하면 첨부에서도 지운다.
+  final Set<String> _removedPhotos = {};
   WorkLogLookups? _lookups;
   WorkLog? _original;
   Map<String, dynamic> _baseline = {};
@@ -105,6 +104,9 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     _timer?.cancel();
     for (final controller in _fields.values) {
       controller.dispose();
+    }
+    for (final task in _tasks) {
+      task.dispose();
     }
     super.dispose();
   }
@@ -164,6 +166,162 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     for (final field in _fields.entries) {
       field.value.text = asString(data[field.key]);
     }
+    _tasks.forEach(_disposeLater);
+    _tasks
+      ..clear()
+      ..addAll([
+        for (final t in data['tasks'] as List? ?? [])
+          _TaskEntry(WorkLogTask.fromJson(asMap(t))),
+      ]);
+    if (_tasks.isEmpty) _tasks.addAll(_legacyTasks(data));
+    if (_tasks.isEmpty) _tasks.add(_TaskEntry());
+  }
+
+  /// 저장한 일지에 새 사진을 올려 업무에 연결하고, 뺀 사진은 첨부에서 지운다.
+  /// 사진이 실패해도 일지는 이미 저장됐으므로 알리고 넘어간다.
+  Future<WorkLog> _attachPhotos(WorkLog log) async {
+    final files = context.read<FileRepository>();
+    final repo = context.read<WorkLogRepository>();
+    final failed = <String>[];
+    var uploaded = false;
+    for (final task in _tasks) {
+      for (final photo in task.images.where((p) => p.attachmentId == null)) {
+        try {
+          final attachment = await files.upload(
+            entityType: FileRepository.worklog,
+            entityId: log.id,
+            filePath: photo.localPath!,
+            fileName: photo.name,
+          );
+          photo.attachmentId = attachment.id;
+          uploaded = true;
+        } catch (_) {
+          failed.add(photo.name);
+        }
+      }
+    }
+    if (uploaded) {
+      log = await repo.update(log.id, {
+        'tasks': [for (final t in _tasks) t.value.toJson()],
+      });
+    }
+    for (final id in _removedPhotos) {
+      try {
+        await files.delete(id);
+      } catch (_) {
+        // 이미 지워졌거나 권한이 없으면 첨부 목록에 남는다. 일지에는 영향 없음.
+      }
+    }
+    _removedPhotos.clear();
+    if (failed.isNotEmpty && mounted) {
+      AppSnack.show(
+        context,
+        '일지는 저장했지만 사진 ${failed.length}장을 올리지 못했습니다: ${failed.join(', ')}',
+        error: true,
+      );
+    }
+    return log;
+  }
+
+  Future<void> _pickPhotos(_TaskEntry task) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.image,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      for (final file in result.files) {
+        if (file.path == null || task.images.length >= 20) continue;
+        task.images.add(_PhotoEntry(localPath: file.path, name: file.name));
+      }
+    });
+    _changed();
+  }
+
+  Widget _photoTile(_TaskEntry task, _PhotoEntry photo) => SizedBox(
+    width: 160,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Stack(
+          children: [
+            photo.attachmentId != null
+                ? TaskPhotoThumb(attachmentId: photo.attachmentId!)
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(photo.localPath!),
+                      width: 160,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      cacheWidth: 320,
+                      errorBuilder: (_, _, _) => const SizedBox(
+                        width: 160,
+                        height: 120,
+                        child: Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                  ),
+            Positioned(
+              top: 2,
+              right: 2,
+              child: IconButton.filledTonal(
+                tooltip: '사진 빼기',
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() {
+                    task.images.remove(photo);
+                    if (photo.attachmentId != null) {
+                      _removedPhotos.add(photo.attachmentId!);
+                    }
+                  });
+                  _disposeLaterPhoto(photo);
+                  _changed();
+                },
+                icon: const Icon(Icons.close, size: 16),
+              ),
+            ),
+          ],
+        ),
+        TextField(
+          controller: photo.comment,
+          maxLength: 500,
+          maxLines: 2,
+          minLines: 1,
+          decoration: const InputDecoration(
+            hintText: '사진 코멘트',
+            isDense: true,
+            counterText: '',
+          ),
+          onChanged: (_) => _changed(),
+        ),
+      ],
+    ),
+  );
+
+  void _disposeLaterPhoto(_PhotoEntry photo) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => photo.dispose());
+
+  /// 지운 입력칸이 화면에서 빠진 뒤에 입력기를 정리한다.
+  void _disposeLater(_TaskEntry task) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => task.dispose());
+
+  /// 업무 목록 이전에 쓴 일지: 요약 줄마다 업무 하나, 예전 상세는 첫 업무에.
+  List<_TaskEntry> _legacyTasks(Map<String, dynamic> data) {
+    final titles = asString(data['summary'])
+        .split('\n')
+        .map((l) => l.replaceFirst(RegExp(r'^\s*\d+\.\s*'), '').trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    return [
+      for (var i = 0; i < titles.length; i++)
+        _TaskEntry(
+          WorkLogTask(
+            title: titles[i],
+            detail: i == 0 ? asString(data['detail']) : '',
+          ),
+        ),
+    ];
   }
 
   Map<String, dynamic> get _data => {
@@ -172,6 +330,7 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     'work_end': _end,
     'position': _position,
     for (final field in _fields.entries) field.key: field.value.text,
+    'tasks': [for (final t in _tasks) t.value.toJson()],
     if (!_overtime) 'overtime_note': '',
   };
 
@@ -273,12 +432,14 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
     await _draftInFlight;
     if (!mounted) return;
     try {
-      final log = _creating
+      var log = _creating
           ? await repo.create(data)
           : await repo.update(widget.id!, {
               for (final entry in data.entries)
                 if (entry.value != _baseline[entry.key]) entry.key: entry.value,
             });
+      if (!mounted) return;
+      log = await _attachPhotos(log);
       if (!mounted) return;
       _dirty = false;
       _savedAt = null;
@@ -324,6 +485,133 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  Widget _taskCard(int index) {
+    final task = _tasks[index];
+    String? required(String? v, String label) => (v ?? '').trim().isEmpty
+        ? '$label${_objectParticle(label)} 입력해 주세요.'
+        : null;
+    void update(VoidCallback change) {
+      setState(change);
+      _changed();
+    }
+
+    return Card(
+      key: task.key,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '업무 ${index + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                if (_tasks.length > 1)
+                  IconButton(
+                    tooltip: '이 업무 삭제',
+                    onPressed: () => update(() {
+                      _disposeLater(_tasks.removeAt(index));
+                    }),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
+              ],
+            ),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'AM', label: Text('오전')),
+                    ButtonSegment(value: 'PM', label: Text('오후')),
+                  ],
+                  selected: {task.period},
+                  onSelectionChanged: (v) =>
+                      update(() => task.period = v.first),
+                ),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'OFFICE',
+                      label: Text('사무'),
+                      icon: Icon(Icons.apartment_outlined),
+                    ),
+                    ButtonSegment(
+                      value: 'TRIP',
+                      label: Text('출장'),
+                      icon: Icon(Icons.directions_car_outlined),
+                    ),
+                  ],
+                  selected: {task.kind},
+                  onSelectionChanged: (v) => update(() => task.kind = v.first),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (task.kind == 'TRIP') ...[
+              TextFormField(
+                controller: task.location,
+                maxLength: 200,
+                decoration: const InputDecoration(labelText: '출장지 *'),
+                validator: (v) => required(v, '출장지'),
+                onChanged: (_) => _changed(),
+              ),
+            ],
+            TextFormField(
+              controller: task.title,
+              maxLength: 200,
+              decoration: const InputDecoration(labelText: '업무 제목 *'),
+              validator: (v) => required(v, '업무 제목'),
+              onChanged: (_) => _changed(),
+            ),
+            TextFormField(
+              controller: task.detail,
+              minLines: 3,
+              maxLines: null,
+              maxLength: 4000,
+              decoration: const InputDecoration(
+                labelText: '업무 상세 내용',
+                alignLabelWithHint: true,
+              ),
+              onChanged: (_) => _changed(),
+            ),
+            Row(
+              children: [
+                Text(
+                  '사진 ${task.images.length}장',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: task.images.length >= 20
+                      ? null
+                      : () => _pickPhotos(task),
+                  icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                  label: const Text('사진 추가'),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+            if (task.images.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final photo in task.images) _photoTile(task, photo),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   /// 받침이 있으면 '을', 없으면 '를' (예: 요약을, 사유를).
@@ -529,47 +817,29 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
                                 FormSection(
                                   title: '금일 업무',
                                   children: [
-                                    // 오전·오후 업무는 PDF 에 나란히 놓인 표로 나간다.
-                                    LayoutBuilder(
-                                      builder: (context, box) {
-                                        final morning = _text(
-                                          'morning',
-                                          '오전 업무',
-                                        );
-                                        final afternoon = _text(
-                                          'afternoon',
-                                          '오후 업무',
-                                        );
-                                        if (box.maxWidth < 600) {
-                                          return Column(
-                                            children: [
-                                              morning,
-                                              const SizedBox(height: 12),
-                                              afternoon,
-                                            ],
-                                          );
-                                        }
-                                        return Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Expanded(child: morning),
-                                            const SizedBox(width: 12),
-                                            Expanded(child: afternoon),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                    _text(
-                                      'summary',
-                                      '금일 업무 내용 요약',
-                                      required: true,
-                                    ),
-                                    _text(
-                                      'detail',
-                                      '금일 근무 내용 상세',
-                                      required: true,
-                                      lines: 5,
+                                    for (var i = 0; i < _tasks.length; i++)
+                                      _taskCard(i),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: OutlinedButton.icon(
+                                        onPressed: _tasks.length >= 30
+                                            ? null
+                                            : () {
+                                                setState(
+                                                  () => _tasks.add(
+                                                    _TaskEntry(
+                                                      WorkLogTask(
+                                                        period:
+                                                            _tasks.last.period,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                                _changed();
+                                              },
+                                        icon: const Icon(Icons.add),
+                                        label: const Text('업무 추가'),
+                                      ),
                                     ),
                                     if (_overtime) ...[
                                       Text(
@@ -660,4 +930,67 @@ class _WorkLogFormPageState extends State<WorkLogFormPage> {
       ),
     );
   }
+}
+
+/// 입력 중인 업무 하나. 칸마다 입력기를 따로 둔다.
+class _TaskEntry {
+  _TaskEntry([WorkLogTask task = const WorkLogTask()])
+    : period = task.period,
+      kind = task.kind,
+      location = TextEditingController(text: task.location),
+      title = TextEditingController(text: task.title),
+      detail = TextEditingController(text: task.detail) {
+    images.addAll([
+      for (final i in task.images)
+        _PhotoEntry(attachmentId: i.attachmentId, comment: i.comment),
+    ]);
+  }
+
+  String period, kind;
+  final TextEditingController location, title, detail;
+  late final List<_PhotoEntry> images = [];
+  final key = UniqueKey();
+
+  /// 아직 올리지 않은 사진은 빼고 보낸다(저장 뒤 올려서 다시 연결한다).
+  WorkLogTask get value => WorkLogTask(
+    period: period,
+    kind: kind,
+    location: location.text.trim(),
+    title: title.text.trim(),
+    detail: detail.text.trim(),
+    images: [
+      for (final p in images)
+        if (p.attachmentId != null)
+          WorkLogTaskImage(
+            attachmentId: p.attachmentId!,
+            comment: p.comment.text.trim(),
+          ),
+    ],
+  );
+
+  void dispose() {
+    location.dispose();
+    title.dispose();
+    detail.dispose();
+    for (final p in images) {
+      p.dispose();
+    }
+  }
+}
+
+/// 업무 사진 하나: 저장된 첨부이거나, 저장할 때 올릴 기기 파일.
+class _PhotoEntry {
+  _PhotoEntry({
+    this.attachmentId,
+    this.localPath,
+    this.name = 'photo.jpg',
+    String comment = '',
+  }) : comment = TextEditingController(text: comment);
+
+  String? attachmentId;
+  final String? localPath;
+  final String name;
+  final TextEditingController comment;
+
+  void dispose() => comment.dispose();
 }

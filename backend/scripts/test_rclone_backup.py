@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -117,6 +118,32 @@ class BackupTest(unittest.TestCase):
             self.assertRaises(AppError),
         ):
             r.validate("gdrive:Backup")
+
+    def test_upload_progress_from_json_stats(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = Path(folder) / "rclone"
+            lines = [
+                {"stats": {"bytes": 0, "totalBytes": 0}},
+                {"stats": {"bytes": 250, "totalBytes": 1000}},
+                {"level": "info", "msg": "no stats here"},
+                {"stats": {"bytes": 1000, "totalBytes": 1000}},
+            ]
+            fake.write_text(
+                "#!/bin/sh\n"
+                + "".join(f"echo '{json.dumps(line)}' >&2\n" for line in lines)
+                + "echo 'not json' >&2\n"
+            )
+            fake.chmod(0o700)
+            seen = []
+            with patch.object(r.shutil, "which", return_value=str(fake)):
+                r.run_with_progress("copyto", "a", "b", on_progress=seen.append)
+            self.assertEqual(seen, [25.0, 100.0])
+            fake.write_text("#!/bin/sh\nexit 3\n")
+            with (
+                patch.object(r.shutil, "which", return_value=str(fake)),
+                self.assertRaises(AppError),
+            ):
+                r.run_with_progress("copyto", "a", "b", on_progress=seen.append)
 
 
 if __name__ == "__main__":

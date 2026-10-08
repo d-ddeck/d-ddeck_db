@@ -975,6 +975,7 @@ def setup_equipment(
         )
 
     store.gripper_type = payload.sets[0].gripper_type
+    store.system_type = payload.system_type
     store.updated_by_id = user.id
     audit.record(
         db,

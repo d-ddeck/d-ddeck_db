@@ -23,6 +23,7 @@ from urllib.parse import urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
+from sqlalchemy.engine import make_url
 
 from app.core.config import settings
 from app.core.errors import AppError
@@ -201,6 +202,8 @@ def status():
             "scheduler_enabled": settings.SCHEDULER_ENABLED,
             "next_run_at": s.get("next_run_at") if s.get("enabled") else None,
             "running": busy(s),
+            # {"stage": packing|uploading|verifying, "percent": 0~100 | None}
+            "progress": s.get("progress") if busy(s) else None,
             "requested": s.get("requested", False),
             "last_success_at": s.get("last_success_at"),
             "last_account": s.get("last_account"),
@@ -570,9 +573,11 @@ def request_backup():
     return status()
 
 
-def upload(s, archive):
+def upload(s, archive, on_progress=None):
     if s.get("rclone_target"):
-        return rclone_backup.upload(s["rclone_target"], archive)
+        return rclone_backup.upload(
+            s["rclone_target"], archive, on_progress=on_progress
+        )
     with httpx.Client(timeout=120) as client:
         if s.get("service_account"):
             client.headers["Authorization"] = "Bearer " + shared_drive.access_token(
@@ -663,6 +668,68 @@ def upload(s, archive):
         return result["id"]
 
 
+def _progress(job, stage, percent=None):
+    with state() as s:
+        if s.get("job") == job:
+            s["progress"] = {
+                "stage": stage,
+                "percent": None if percent is None else round(percent, 1),
+            }
+
+
+def _tree_size(folder: Path) -> int:
+    total = 0
+    for path in folder.rglob("*"):
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue  # Staging files come and go while the bundle is built.
+    return total
+
+
+def _pack(root: Path, job: str) -> str:
+    """백업 ZIP 을 만들며 진행률을 남긴다.
+
+    스테이징 복사와 ZIP 쓰기로 원본(DB+첨부)의 약 두 배를 쓰므로, 작업 폴더에
+    쓰인 양을 그 값과 비교한다. 압축률에 따라 오차가 있어 99% 에서 멈춘다.
+    """
+    database = make_url(settings.DATABASE_URL).database if settings.is_sqlite else None
+    db = Path(database) if database else None
+    source = _tree_size(settings.storage_path) + (
+        db.stat().st_size if db and db.is_file() else 0
+    )
+    expected = max(1, 2 * source)
+    uploads = root / "backups/.drive-private/uploads"
+    command = [
+        sys.executable,
+        str(root / "deploy/backup_bundle.py"),
+        "--root",
+        str(root),
+        "--local-only",
+        "--data-only",
+        "--temporary",
+    ]
+    deadline = time.monotonic() + 7200
+    proc = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    while True:
+        try:
+            stdout, _ = proc.communicate(timeout=2)
+            break
+        except subprocess.TimeoutExpired:
+            if time.monotonic() > deadline:
+                proc.kill()
+                proc.communicate()
+                raise
+            if uploads.exists():
+                _progress(job, "packing", min(99.0, _tree_size(uploads) * 100 / expected))
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, command)
+    return stdout
+
+
 def tick():
     now = datetime.now(TZ)
     _power_tick(now)
@@ -691,27 +758,16 @@ def tick():
     archive = None
     try:
         root = backup_root()
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(root / "deploy/backup_bundle.py"),
-                "--root",
-                str(root),
-                "--local-only",
-                "--data-only",
-                "--temporary",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=7200,
-        )
+        _progress(job, "packing", 0)
+        stdout = _pack(root, job)
         output = (root / "backups/.drive-private/uploads").resolve()
-        candidate = (output / result.stdout.strip().splitlines()[-1]).resolve()
+        candidate = (output / stdout.strip().splitlines()[-1]).resolve()
         if candidate.parent != output or not candidate.is_file():
             raise RuntimeError("Invalid backup archive")
         archive = candidate
-        file_id = upload(config, archive)
+        file_id = upload(
+            config, archive, lambda stage, percent: _progress(job, stage, percent)
+        )
         power_off = None
         with state() as s:
             if s.get("job") == job:
@@ -762,4 +818,5 @@ def tick():
             with state() as s:
                 if s.get("job") == job:
                     s["lease_until"] = 0
+                    s.pop("progress", None)
                     s["next_run_at"] = next_run(s) if s.get("enabled") else None

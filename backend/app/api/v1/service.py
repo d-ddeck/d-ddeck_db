@@ -54,6 +54,7 @@ from app.schemas.service import (
     CustomerOut,
     CustomerUpdate,
     RentalRow,
+    ResponderYears,
     ServiceDashboard,
     ServiceGrouped,
     ServiceLogIn,
@@ -1399,6 +1400,14 @@ _AXIS_LABEL = {
     "symptom": "세부분류",
     "maker": "제조사",
 }
+
+
+@router.get("/stats/responder-years", response_model=ResponderYears)
+def stats_responder_years(
+    db: DbSession, _: CurrentUser, filters: Filters
+) -> ResponderYears:
+    """연도별 대응인원 (통계 메인 차트)."""
+    return stats.responder_years(db, **filters)
 
 
 @router.get("/stats/store-years", response_model=StoreYears)

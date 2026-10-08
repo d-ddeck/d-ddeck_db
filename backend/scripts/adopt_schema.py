@@ -40,8 +40,12 @@ def metadata_at_baseline(revision="2cca8909675d"):
             table.to_metadata(metadata)
     # These fields were introduced after all supported legacy baselines.
     metadata.tables["boards"]._columns.remove(metadata.tables["boards"].c.icon)
-    for column in ("morning", "afternoon"):
+    for column in ("morning", "afternoon", "tasks"):
         metadata.tables["worklogs"]._columns.remove(metadata.tables["worklogs"].c[column])
+    metadata.tables["stores"]._columns.remove(metadata.tables["stores"].c.system_type)
+    metadata.tables["attachments"]._columns.remove(
+        metadata.tables["attachments"].c.comment
+    )
     if "quotation_revisions" in metadata.tables:
         table = metadata.tables["quotation_revisions"]
         table._columns.remove(table.c.deleted_at)

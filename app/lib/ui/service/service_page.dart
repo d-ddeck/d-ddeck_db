@@ -276,6 +276,10 @@ class _ServiceListTabState extends State<ServiceListTab> {
     if (key == 'month') return '$value월';
     if (key == 'q') return '검색: $value';
     if (key == 'only_open') return '미종결';
+    if (key == 'date_from') return '$value 이후 접수';
+    if (key == 'assignee_id') {
+      return value == context.read<AuthState>().user?.id ? '내 배정' : '담당자 지정';
+    }
     if (key == 'status') return ServiceStatus.parse(value.toString()).label;
     if (key == 'is_rental') return '렌탈만';
     if (key == 'rental_unreturned') return '렌탈 미회수';

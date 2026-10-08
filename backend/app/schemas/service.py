@@ -456,6 +456,19 @@ class StoreYears(BaseModel):
     unknown_open: list[str] = Field(description="개점 연도를 알 수 없는 매장")
 
 
+class ResponderYearRow(BaseModel):
+    name: str
+    counts: dict[str, int] = Field(description="연도 -> 대응 건수")
+    total: int
+
+
+class ResponderYears(BaseModel):
+    """연도별 대응인원. 한 건에 여러 명이 나가면 사람마다 한 건씩 센다."""
+
+    years: list[str]
+    rows: list[ResponderYearRow]
+
+
 # ---------------------------------------------------------------- dashboard (구 서버 첫 화면)
 class TicketBrief(BaseModel):
     id: uuid.UUID

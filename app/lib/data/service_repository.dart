@@ -311,6 +311,17 @@ class ServiceRepository {
         asMap(await _api.get('/service/dashboard', query: {'limit': limit})),
       );
 
+  Future<ResponderYears> responderYears({
+    Map<String, dynamic> filters = const {},
+  }) async => ResponderYears.fromJson(
+    asMap(
+      await _api.get(
+        '/service/stats/responder-years',
+        query: const ServiceFilter().toQuery(filters),
+      ),
+    ),
+  );
+
   Future<StoreYears> storeYears() async =>
       StoreYears.fromJson(asMap(await _api.get('/service/stats/store-years')));
 

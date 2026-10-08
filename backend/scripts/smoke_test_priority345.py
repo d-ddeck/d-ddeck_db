@@ -151,6 +151,33 @@ def main():
                 files={"file": ("note.txt", b"text", "text/plain")},
             )
             assert reply.status_code == 400
+            # 로봇 동작파일: 확장자 제한 없이 받되 실행 파일 · 스크립트는 막는다.
+            for name, expected in (("motion_v2.prg", 201), ("tool.exe", 400)):
+                reply = client.post(
+                    "/api/v1/files",
+                    headers=headers,
+                    data={
+                        "entity_type": "store",
+                        "entity_id": store["id"],
+                        "photo_category": "motion",
+                    },
+                    files={"file": (name, b"robot-motion", "application/octet-stream")},
+                )
+                assert reply.status_code == expected, (name, reply.text)
+            rows = call(
+                "GET", f"/files/by-entity/store/{store['id']}?photo_category=motion"
+            )
+            assert [r["original_name"] for r in rows] == ["motion_v2.prg"], rows
+            # 매장 장비 시스템 구성: ANDROID / WINDOWS / PLC (매장 단위).
+            setup = call(
+                "POST",
+                f"/stores/{store['id']}/equipment",
+                {"system_type": "PLC", "sets": [{"gripper_type": "전동", "slots": []}]},
+            )
+            assert call("GET", f"/stores/{store['id']}")["system_type"] == "PLC", setup
+            call("PATCH", f"/stores/{store['id']}", {"system_type": "LINUX"}, status=422)
+            call("PATCH", f"/stores/{store['id']}", {"system_type": "WINDOWS"})
+            assert call("GET", f"/stores/{store['id']}")["system_type"] == "WINDOWS"
             category = next(
                 i
                 for i in call("GET", "/admin/codes/SERVICE_CATEGORY")["items"]

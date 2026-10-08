@@ -100,7 +100,7 @@ with TestClient(app) as client:
         if req.method == 'POST':
             return httpx.Response(200, headers={'Location':'https://www.googleapis.com/upload-session'})
         return httpx.Response(200, json={'id':'file', 'size':str(archive.stat().st_size), 'md5Checksum':hashlib.md5(archive.read_bytes()).hexdigest()})
-    with patch.object(d.httpx, 'Client', side_effect=lambda **kw: RealClient(transport=httpx.MockTransport(drive), **kw)), patch.object(d.subprocess, 'run', return_value=type('Result', (), {'stdout':str(archive)})()):
+    with patch.object(d.httpx, 'Client', side_effect=lambda **kw: RealClient(transport=httpx.MockTransport(drive), **kw)), patch.object(d, '_pack', return_value=str(archive)):
         d.tick()
         first = len(calls)
         d.tick()
@@ -112,13 +112,13 @@ with TestClient(app) as client:
     assert not result['running'] and not result['requested']
     with patch.object(d.settings, 'SCHEDULER_ENABLED', True):
         d.request_backup()
-    with patch.object(d.subprocess, 'run', side_effect=OSError('SECRET MUST NOT LEAK')):
+    with patch.object(d, '_pack', side_effect=OSError('SECRET MUST NOT LEAK')):
         d.tick()
     assert d.status()['last_error'] and 'SECRET' not in d.status()['last_error']
     assert not d.status()['running']
     with patch.object(d.settings, 'SCHEDULER_ENABLED', True):
         d.request_backup()
-    with patch.object(d.subprocess, 'run', return_value=type('Result', (), {'stdout':str(archive)})()), patch.object(d, 'upload', side_effect=AppError('UPLOAD_FAILED','upload failed',502)):
+    with patch.object(d, '_pack', return_value=str(archive)), patch.object(d, 'upload', side_effect=AppError('UPLOAD_FAILED','upload failed',502)):
         d.tick()
     assert not archive.exists(), 'failed upload left a local backup'
     archive.write_bytes(b'zip-test')

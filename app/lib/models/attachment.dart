@@ -14,6 +14,7 @@ class Attachment {
     this.contentType,
     this.uploadedById,
     this.createdAt,
+    this.comment = '',
   });
 
   final String id;
@@ -24,6 +25,9 @@ class Attachment {
   final String? contentType;
   final String? uploadedById;
   final DateTime? createdAt;
+
+  /// 사진 설명 같은 짧은 코멘트. 없으면 빈 글자.
+  final String comment;
 
   /// 확장자만. 아이콘을 고르는 데 쓴다.
   String get extension {
@@ -58,6 +62,7 @@ class Attachment {
     sizeBytes: asInt(j['size_bytes']),
     contentType: j['content_type'] as String?,
     uploadedById: j['uploaded_by_id'] as String?,
+    comment: asString(j['comment']),
     createdAt: asDate(j['created_at']),
   );
 }

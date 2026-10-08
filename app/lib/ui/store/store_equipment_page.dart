@@ -62,6 +62,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
   List<CodeItem> _kinds = [], _models = [];
   final _drafts = <_EquipmentDraft>[];
   DateTime? _date;
+  String? _systemType;
   bool _loading = true, _saving = false;
   @override
   void initState() {
@@ -124,6 +125,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
         _models = (data[2] as CodeGroup).selectable;
         final store = data[0] as Store;
         _date = store.installDate;
+        _systemType = store.systemType;
         _sync(store, reset: true);
       });
     });
@@ -173,6 +175,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
         final result = await context.read<StoreRepository>().setupEquipment(
           widget.storeId,
           installDate: _date,
+          systemType: _systemType,
           sets: [
             for (final d in _drafts)
               {
@@ -201,6 +204,7 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
           setState(() {
             _sync(result.store, reset: true);
             _date = result.store.installDate;
+            _systemType = result.store.systemType;
           });
         }
       } on ApiException catch (error) {
@@ -316,6 +320,31 @@ class _StoreEquipmentPageState extends State<StoreEquipmentPage> {
                                 setState(() => _date = date);
                               }
                             },
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('시스템 구성'),
+                                const SizedBox(height: 6),
+                                // 하나만 고른다. 다시 누르면 미지정.
+                                SegmentedButton<String>(
+                                  emptySelectionAllowed: true,
+                                  segments: [
+                                    for (final e in systemTypes.entries)
+                                      ButtonSegment(
+                                        value: e.key,
+                                        label: Text(e.value),
+                                      ),
+                                  ],
+                                  selected: {?_systemType},
+                                  onSelectionChanged: (v) => setState(
+                                    () => _systemType = v.firstOrNull,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           CardStack(
                             children: [

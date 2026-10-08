@@ -46,6 +46,9 @@ class WorkLog(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
     work_start: Mapped[str] = mapped_column(String(5), nullable=False)  # HH:MM
     work_end: Mapped[str] = mapped_column(String(5), nullable=False)
 
+    # 업무 목록: [{period: AM|PM, kind: OFFICE|TRIP, location, title, detail}].
+    # 있으면 요약 · 상세 · 오전 · 오후는 서버가 이 목록으로 만든다(예전 앱 호환).
+    tasks: Mapped[Any] = mapped_column(JSONType, nullable=True)
     morning: Mapped[str | None] = mapped_column(Text)  # 오전 업무
     afternoon: Mapped[str | None] = mapped_column(Text)  # 오후 업무
     summary: Mapped[str] = mapped_column(

@@ -17,7 +17,7 @@ os.environ["DEBUG"] = "false"
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from publish_client_update import publish
+from publish_client_update import prune, publish
 
 from app.api.v1 import updates
 from app.core import client_updates
@@ -83,6 +83,18 @@ class UpdateTests(unittest.TestCase):
                 (bundle / "ddeck-setup-1.0.8.exe").write_bytes(b"corrupt")
                 with self.assertRaises(ValueError):
                     publish(bundle, destination)
+                # 새 버전을 게시하면 예전 버전 설치 파일 폴더는 지운다.
+                (destination / "1.0.7-7").mkdir()
+                (destination / "1.0.7-7" / "old.exe").write_bytes(b"old")
+                (destination / "notes").mkdir()
+                (bundle / "ddeck-setup-1.0.8.exe").write_bytes(
+                    b"fake windows installer"
+                )
+                publish(bundle, destination)
+                self.assertFalse((destination / "1.0.7-7").exists())
+                self.assertTrue((destination / "1.0.8-8").is_dir())
+                self.assertTrue((destination / "notes").is_dir())
+                self.assertEqual(prune(destination), [])
                 envelope["payload"] = base64.b64encode(b"{}").decode()
                 (destination / "latest.json").write_text(json.dumps(envelope))
                 self.assertEqual(client.get("/updates/latest").status_code, 503)

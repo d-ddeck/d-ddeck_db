@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/api_exception.dart';
 import '../../data/admin_repository.dart';
 import '../common/common.dart';
+import '../common/download.dart';
 
 class DriveRestorePage extends StatefulWidget {
   const DriveRestorePage({super.key});
@@ -80,6 +81,9 @@ class _DriveRestorePageState extends State<DriveRestorePage> {
         ),
       );
       if (yes != true || !mounted) return;
+    } else if (isDesktop) {
+      // PC 는 다운로드 폴더로 고정.
+      destination = (await downloadPath(name)).path;
     } else {
       destination = await FilePicker.platform.saveFile(
         dialogTitle: '백업 ZIP 저장',

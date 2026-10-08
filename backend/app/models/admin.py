@@ -145,6 +145,7 @@ class Attachment(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     entity_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
     entity_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     photo_category: Mapped[str | None] = mapped_column(String(32))
+    comment: Mapped[str | None] = mapped_column(String(500))  # 사진 설명 등
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_path: Mapped[str] = mapped_column(String(500), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(120))

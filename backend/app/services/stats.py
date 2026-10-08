@@ -50,6 +50,8 @@ from app.schemas.service import (
     BrandYearRow,
     Crosstab,
     CrosstabRow,
+    ResponderYearRow,
+    ResponderYears,
     ServiceGrouped,
     ServiceSummary,
     ServiceTrend,
@@ -1030,6 +1032,51 @@ def crosstab(
 
 
 # --------------------------------------------------------------- 연도별 운영 매장 (메인 탭)
+def responder_years(db: Session, **filters) -> ResponderYears:
+    """연도(접수일, 한국 시각) x 대응인원 건수. 같은 사람은 한 건에 한 번만 센다."""
+    stmt = apply_filters(
+        select(
+            ServiceTicket.id,
+            ServiceTicket.received_at,
+            ServiceTicketResponder.responder_id,
+        )
+        .select_from(ServiceTicket)
+        .join(
+            ServiceTicketResponder,
+            ServiceTicketResponder.ticket_id == ServiceTicket.id,
+        ),
+        **filters,
+    )
+    # 같은 사람이 이관 코드와 계정 코드로 나뉘어 있어도 한 줄로 센다: 이름이 같거나,
+    # '이재룡 주임'처럼 이름 뒤에 띄어 쓴 직함만 붙었고 '이재룡'도 있으면 같은 사람.
+    names = dict(db.execute(select(CodeItem.id, CodeItem.name)).all())
+    plain = set(names.values())
+    names = {
+        key: (
+            value.split(" ", 1)[0]
+            if " " in value and value.split(" ", 1)[0] in plain
+            else value
+        )
+        for key, value in names.items()
+    }
+    seen = set()
+    counts: dict = defaultdict(Counter)
+    for ticket_id, received, responder_id in db.execute(stmt).all():
+        year = local_year(received)
+        name = names.get(responder_id) or "미분류"
+        if year is None or (ticket_id, name) in seen:
+            continue
+        seen.add((ticket_id, name))
+        counts[name][year] += 1
+    rows = [
+        ResponderYearRow(name=name, counts=dict(per_year), total=sum(per_year.values()))
+        for name, per_year in counts.items()
+    ]
+    rows.sort(key=lambda r: (-r.total, r.name))
+    years = sorted({y for r in rows for y in r.counts})
+    return ResponderYears(years=years, rows=rows)
+
+
 def store_years(db: Session) -> StoreYears:
     """매장별 운영 기간을 추정해 연도별 운영 매장 수를 낸다 (구 서버 store_years).
 

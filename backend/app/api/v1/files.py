@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.config import settings as env
@@ -29,6 +30,30 @@ router = APIRouter(prefix="/files", tags=["files"])
 ALLOWED_ENTITIES = attachment_access.ENTITY_TYPES
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9가-힣._-]")
 CHUNK = 1024 * 1024
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic"}
+# 매장 첨부 분류. motion = 로봇 동작파일 백업(로봇·제어기 고유 형식이라 확장자를
+# 정하지 않는다). 나머지는 매장 사진 분류로 이미지만 받는다.
+MOTION_CATEGORY = "motion"
+STORE_CATEGORIES = {"shop", "robot", "ctrl", "panel", "serial", MOTION_CATEGORY}
+# 동작파일이라도 내려받아 바로 실행될 수 있는 형식은 받지 않는다.
+MOTION_BLOCKED = {
+    ".exe",
+    ".msi",
+    ".com",
+    ".scr",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".vbs",
+    ".js",
+    ".sh",
+    ".html",
+    ".htm",
+    ".svg",
+    ".php",
+    ".jar",
+    ".lnk",
+}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -39,29 +64,31 @@ async def upload(
     entity_type: str = Form(...),
     entity_id: uuid.UUID = Form(...),  # noqa: B008 - FastAPI parameter declaration
     photo_category: str | None = Form(None),
+    comment: str | None = Form(None, max_length=500),
     file: UploadFile = File(...),  # noqa: B008 - FastAPI parameter declaration
 ):
     # 대상이 실제로 있고, 이 사용자가 거기에 붙일 수 있어야 한다 (비공개 일지·비밀글·타인 계정).
     attachment_access.check(db, user, entity_type, entity_id, write=True)
 
     if photo_category and (
-        entity_type != "store"
-        or photo_category not in {"shop", "robot", "ctrl", "panel", "serial"}
+        entity_type != "store" or photo_category not in STORE_CATEGORIES
     ):
         raise AppError("INVALID_PHOTO_CATEGORY", "매장 사진 분류를 확인하세요.")
-    if photo_category and Path(file.filename or "").suffix.lower() not in {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".gif",
-        ".webp",
-        ".heic",
-    }:
+    motion = photo_category == MOTION_CATEGORY
+    if motion and Path(file.filename or "").suffix.lower() in MOTION_BLOCKED:
+        raise AppError(
+            "FILE_TYPE_NOT_ALLOWED", "실행 파일 · 스크립트는 올릴 수 없습니다."
+        )
+    if (
+        photo_category
+        and not motion
+        and Path(file.filename or "").suffix.lower() not in IMAGE_SUFFIXES
+    ):
         raise AppError(
             "PHOTO_REQUIRED", "매장 사진에는 이미지 파일만 올릴 수 있습니다."
         )
     safe = _SAFE_NAME.sub("_", Path(file.filename or "file").name)[:120]
-    if Path(safe).suffix.lower() not in {
+    if not motion and Path(safe).suffix.lower() not in {
         ".jpg",
         ".jpeg",
         ".png",
@@ -125,6 +152,7 @@ async def upload(
         entity_id=entity_id,
         original_name=safe,
         photo_category=photo_category,
+        comment=(comment or "").strip() or None,
         stored_path=str(target.relative_to(env.storage_path)).replace("\\", "/"),
         content_type=file.content_type,
         size_bytes=size,
@@ -149,6 +177,7 @@ async def upload(
         "original_name": attachment.original_name,
         "size_bytes": attachment.size_bytes,
         "content_type": attachment.content_type,
+        "comment": attachment.comment,
         "download_url": f"{env.API_V1_PREFIX}/files/{attachment.id}",
     }
 
@@ -183,6 +212,7 @@ def list_for_entity(
             "id": str(a.id),
             "original_name": a.original_name,
             "photo_category": a.photo_category,
+            "comment": a.comment,
             "size_bytes": a.size_bytes,
             "content_type": a.content_type,
             "uploaded_by_id": str(a.uploaded_by_id) if a.uploaded_by_id else None,
@@ -223,10 +253,22 @@ def download(attachment_id: uuid.UUID, db: DbSession, user: CurrentUser):
     )
 
 
-@router.delete("/{attachment_id}", response_model=Message)
-def delete(
-    attachment_id: uuid.UUID, db: DbSession, user: CurrentUser, client: Client
+class CommentIn(BaseModel):
+    comment: str | None = Field(None, max_length=500)
+
+
+@router.patch("/{attachment_id}", response_model=Message)
+def update_comment(
+    attachment_id: uuid.UUID, payload: CommentIn, db: DbSession, user: CurrentUser
 ) -> Message:
+    """사진 코멘트 고치기. 지울 수 있는 사람(올린 사람 · 팀장 이상)만."""
+    attachment = _editable(db, user, attachment_id, "수정")
+    attachment.comment = (payload.comment or "").strip() or None
+    db.commit()
+    return Message(message="코멘트를 저장했습니다.")
+
+
+def _editable(db, user, attachment_id: uuid.UUID, action: str) -> Attachment:
     attachment = db.scalar(
         select(Attachment).where(
             Attachment.id == attachment_id, Attachment.deleted_at.is_(None)
@@ -244,7 +286,17 @@ def delete(
         "ADMIN",
         "SUPERADMIN",
     }:
-        raise AppError("FORBIDDEN", "삭제 권한이 없습니다.", status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            "FORBIDDEN", f"{action} 권한이 없습니다.", status.HTTP_403_FORBIDDEN
+        )
+    return attachment
+
+
+@router.delete("/{attachment_id}", response_model=Message)
+def delete(
+    attachment_id: uuid.UUID, db: DbSession, user: CurrentUser, client: Client
+) -> Message:
+    attachment = _editable(db, user, attachment_id, "삭제")
 
     # Soft delete only: the row keeps the audit trail, and a later cleanup job
     # can remove the bytes once nothing references them.

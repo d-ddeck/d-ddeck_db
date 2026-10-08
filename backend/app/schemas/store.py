@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
 from app.schemas.common import CodeItemBrief, ORMModel, PatchModel
 
+# 매장 장비 시스템 구성.
+SystemType = Literal["ANDROID", "WINDOWS", "PLC"]
 
 class StoreSetOut(ORMModel):
     id: uuid.UUID
@@ -25,6 +27,7 @@ class StoreCreate(BaseModel):
     is_closed: bool = False
     closed_date: date | None = None
     gripper_type: str | None = Field(None, max_length=20)
+    system_type: SystemType | None = None
     contact_name: str | None = Field(None, max_length=150)
     contact_phone: str | None = Field(None, max_length=50)
     address: str | None = Field(None, max_length=300)
@@ -44,6 +47,7 @@ class StoreUpdate(PatchModel):
     is_closed: bool | None = None
     closed_date: date | None = None
     gripper_type: str | None = Field(None, max_length=20)
+    system_type: SystemType | None = None
     contact_name: str | None = Field(None, max_length=150)
     contact_phone: str | None = Field(None, max_length=50)
     address: str | None = Field(None, max_length=300)
@@ -61,6 +65,7 @@ class StoreOut(ORMModel):
     is_closed: bool
     closed_date: date | None = None
     gripper_type: str | None = None
+    system_type: str | None = None
     contact_name: str | None = Field(None, max_length=150)
     contact_phone: str | None = Field(None, max_length=50)
     address: str | None = Field(None, max_length=300)
@@ -208,6 +213,9 @@ class EquipmentSetupRequest(BaseModel):
     """
 
     install_date: date | None = None
+    system_type: SystemType | None = Field(
+        None, description="매장 장비 시스템 구성 (Android / Windows / PLC)"
+    )
     sets: list[EquipmentSetIn] = Field(min_length=1)
 
 

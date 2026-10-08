@@ -202,8 +202,9 @@ class Crosstab {
     colsAxis: asString(j['cols_axis']),
     cols: asList(j['cols'], AxisKey.fromJson),
     rows: asList(j['rows'], CrosstabRow.fromJson),
-    colTotals: asMap(j['col_totals'])
-        .map((key, value) => MapEntry(key, asInt(value))),
+    colTotals: asMap(
+      j['col_totals'],
+    ).map((key, value) => MapEntry(key, asInt(value))),
     totalCauses: asInt(j['total_causes']),
     totalTickets: asInt(j['total_tickets']),
     ticketsWithoutCause: asInt(j['tickets_without_cause']),
@@ -321,5 +322,34 @@ class ServiceDashboard {
     unreturnedRentals: asList(j['unreturned_rentals'], RentalRow.fromJson),
     recent: asList(j['recent'], ServiceTicket.fromJson),
     byYear: asList(j['by_year'], YearCount.fromJson),
+  );
+}
+
+/// 연도(접수일) x 대응인원 건수. 한 건에 여러 명이면 사람마다 한 건.
+class ResponderYearRow {
+  const ResponderYearRow({
+    required this.name,
+    required this.counts,
+    required this.total,
+  });
+  final String name;
+  final Map<String, int> counts;
+  final int total;
+
+  factory ResponderYearRow.fromJson(Map<String, dynamic> j) => ResponderYearRow(
+    name: asString(j['name']),
+    counts: {for (final e in asMap(j['counts']).entries) e.key: asInt(e.value)},
+    total: asInt(j['total']),
+  );
+}
+
+class ResponderYears {
+  const ResponderYears({required this.years, required this.rows});
+  final List<String> years;
+  final List<ResponderYearRow> rows;
+
+  factory ResponderYears.fromJson(Map<String, dynamic> j) => ResponderYears(
+    years: (j['years'] as List? ?? []).map((v) => asString(v)).toList(),
+    rows: asList(j['rows'], ResponderYearRow.fromJson),
   );
 }

@@ -24,6 +24,60 @@ String overtimeLabel(int minutes) {
   return [if (h > 0) '$h시간', if (m > 0 || h == 0) '$m분'].join(' ');
 }
 
+/// 업무 사진 하나: 이 일지에 올린 첨부와 코멘트.
+class WorkLogTaskImage {
+  const WorkLogTaskImage({required this.attachmentId, this.comment = ''});
+
+  WorkLogTaskImage.fromJson(Map<String, dynamic> j)
+    : attachmentId = asString(j['attachment_id']),
+      comment = asString(j['comment']);
+
+  final String attachmentId, comment;
+
+  Map<String, dynamic> toJson() => {
+    'attachment_id': attachmentId,
+    'comment': comment,
+  };
+}
+
+/// 업무 하나: 오전/오후 · 사무/출장 · 출장지 · 제목 · 상세 · 사진.
+class WorkLogTask {
+  const WorkLogTask({
+    this.period = 'AM',
+    this.kind = 'OFFICE',
+    this.location = '',
+    this.title = '',
+    this.detail = '',
+    this.images = const [],
+  });
+
+  WorkLogTask.fromJson(Map<String, dynamic> j)
+    : period = asString(j['period'], 'AM') == 'PM' ? 'PM' : 'AM',
+      kind = asString(j['kind'], 'OFFICE') == 'TRIP' ? 'TRIP' : 'OFFICE',
+      location = asString(j['location']),
+      title = asString(j['title']),
+      detail = asString(j['detail']),
+      images = (j['images'] as List? ?? [])
+          .map((e) => WorkLogTaskImage.fromJson(asMap(e)))
+          .toList();
+
+  final String period, kind, location, title, detail;
+  final List<WorkLogTaskImage> images;
+
+  bool get isTrip => kind == 'TRIP';
+  String get periodLabel => period == 'PM' ? '오후' : '오전';
+  String get kindLabel => isTrip ? '출장 · $location' : '사무';
+
+  Map<String, dynamic> toJson() => {
+    'period': period,
+    'kind': kind,
+    if (isTrip) 'location': location,
+    'title': title,
+    'detail': detail,
+    'images': [for (final i in images) i.toJson()],
+  };
+}
+
 class WorkLog {
   WorkLog.fromJson(Map<String, dynamic> j)
     : id = asString(j['id']),
@@ -33,6 +87,9 @@ class WorkLog {
       workDate = asString(j['work_date']),
       workStart = asString(j['work_start']),
       workEnd = asString(j['work_end']),
+      tasks = (j['tasks'] as List? ?? [])
+          .map((e) => WorkLogTask.fromJson(asMap(e)))
+          .toList(),
       morning = asString(j['morning']),
       afternoon = asString(j['afternoon']),
       summary = asString(j['summary']),
@@ -58,6 +115,7 @@ class WorkLog {
           : null;
 
   final String id, authorId, authorName, position, workDate, workStart, workEnd;
+  final List<WorkLogTask> tasks;
   final String morning, afternoon;
   final String summary, detail, overtimeNote, plan, needs, visibility;
   final bool overtime, canEdit;
@@ -70,8 +128,7 @@ class WorkLog {
     'work_start': workStart,
     'work_end': workEnd,
     'position': position,
-    'morning': morning,
-    'afternoon': afternoon,
+    'tasks': [for (final t in tasks) t.toJson()],
     'summary': summary,
     'detail': detail,
     'overtime': overtime,

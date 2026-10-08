@@ -606,6 +606,17 @@ with TestClient(app) as c:
     check("완료 건수", s["completed_count"] == 3, s["completed_count"])
     check("미완료 건수", s["open_count"] == 1, s["open_count"])
     check("완료율 산출", s["completion_rate"] == 0.75, s["completion_rate"])
+    r = c.get("/api/v1/service/stats/responder-years", headers=bearer(user_token))
+    kim = next((row for row in r.json()["rows"] if row["name"] == "김테스트"), None)
+    check(
+        "연도별 대응인원",
+        r.status_code == 200
+        and kim is not None
+        and kim["total"] == 3
+        and sum(kim["counts"].values()) == 3
+        and set(kim["counts"]) <= set(r.json()["years"]),
+        r.text,
+    )
     check(
         "평균 처리시간 산출",
         s["avg_resolution_minutes"] is not None,
@@ -870,6 +881,31 @@ with TestClient(app) as c:
         "작성자 정보 동봉",
         r.json()["author"]["full_name"] == "김테스트",
         r.json()["author"],
+    )
+    # 게시글 사진 + 코멘트: 올릴 때 함께, 나중에 고치기.
+    r = c.post(
+        "/api/v1/files",
+        headers=bearer(user_token),
+        data={"entity_type": "post", "entity_id": post_id, "comment": " 매장 입구 "},
+        files={"file": ("입구.jpg", b"fake-jpeg", "image/jpeg")},
+    )
+    check(
+        "게시글 사진 코멘트 업로드",
+        r.status_code == 201 and r.json()["comment"] == "매장 입구",
+        r.text,
+    )
+    post_photo = r.json()["id"]
+    r = c.patch(
+        f"/api/v1/files/{post_photo}",
+        headers=bearer(user_token),
+        json={"comment": "매장 입구 (수리 후)"},
+    )
+    check("사진 코멘트 수정", r.status_code == 200, r.text)
+    r = c.get(f"/api/v1/files/by-entity/post/{post_id}", headers=bearer(user_token))
+    check(
+        "첨부 목록에 코멘트",
+        [a["comment"] for a in r.json()] == ["매장 입구 (수리 후)"],
+        r.text,
     )
 
     r = c.post(
@@ -1471,6 +1507,97 @@ with TestClient(app) as c:
         r.status_code == 200 and "spreadsheetml" in r.headers["content-type"],
         r.headers,
     )
+    # 업무 목록: 오전/오후 · 사무/출장 · 출장지 · 제목 · 상세. 요약 · 상세 · 오전 · 오후는 서버가 만든다.
+    tasks = [
+        {"period": "PM", "kind": "OFFICE", "title": "견적서 작성", "detail": "본사 결재"},
+        {
+            "period": "AM",
+            "kind": "TRIP",
+            "location": "강남역점",
+            "title": "POS 점검",
+            "detail": "2대 점검",
+        },
+    ]
+    r = c.patch(
+        f"/api/v1/worklogs/{wl['id']}",
+        headers=bearer(user_token),
+        json={"tasks": [{**tasks[1], "location": " "}]},
+    )
+    check(
+        "출장 업무는 출장지 필수",
+        r.status_code == 400 and r.json()["error"]["code"] == "TASK_LOCATION_REQUIRED",
+        r.text,
+    )
+    r = c.patch(
+        f"/api/v1/worklogs/{wl['id']}", headers=bearer(user_token), json={"tasks": []}
+    )
+    check(
+        "업무 하나 이상 필수",
+        r.status_code == 400 and r.json()["error"]["code"] == "TASKS_REQUIRED",
+        r.text,
+    )
+    r = c.patch(
+        f"/api/v1/worklogs/{wl['id']}", headers=bearer(user_token), json={"tasks": tasks}
+    )
+    saved = r.json()
+    check(
+        "업무 목록 저장 + 요약 · 오전 · 오후 자동 작성 (오전 먼저)",
+        r.status_code == 200
+        and [t["title"] for t in saved["tasks"]] == ["POS 점검", "견적서 작성"]
+        and saved["summary"] == "1. POS 점검\n2. 견적서 작성"
+        and saved["morning"] == "[출장 · 강남역점] POS 점검"
+        and saved["afternoon"] == "[사무] 견적서 작성"
+        and "1. [오전 · 출장 · 강남역점] POS 점검\n2대 점검" in saved["detail"],
+        r.text,
+    )
+    r = c.get(f"/api/v1/worklogs/{wl['id']}/pdf", headers=bearer(user_token))
+    check("업무 목록 일지 PDF", r.content.startswith(b"%PDF"), r.status_code)
+    # 업무 사진: 이 일지에 올린 첨부만, 사진마다 코멘트.
+    from io import BytesIO
+
+    from PIL import Image as PillowImage
+
+    png = BytesIO()
+    PillowImage.new("RGB", (40, 30), (200, 60, 60)).save(png, "PNG")
+    r = c.post(
+        "/api/v1/files",
+        headers=bearer(user_token),
+        data={"entity_type": "worklog", "entity_id": wl["id"]},
+        files={"file": ("현장.png", png.getvalue(), "image/png")},
+    )
+    photo_id = r.json()["id"]
+    with_photo = [
+        {**tasks[1], "images": [{"attachment_id": photo_id, "comment": "교체 전"}]},
+        tasks[0],
+    ]
+    r = c.patch(
+        f"/api/v1/worklogs/{wl['id']}",
+        headers=bearer(user_token),
+        json={"tasks": with_photo},
+    )
+    check(
+        "업무 사진 + 코멘트 저장",
+        r.status_code == 200
+        and r.json()["tasks"][0]["images"]
+        == [{"attachment_id": photo_id, "comment": "교체 전"}],
+        r.text,
+    )
+    r = c.patch(
+        f"/api/v1/worklogs/{wl['id']}",
+        headers=bearer(user_token),
+        json={
+            "tasks": [
+                {**tasks[0], "images": [{"attachment_id": str(uuid.uuid4())}]}
+            ]
+        },
+    )
+    check(
+        "다른 일지 · 없는 사진 연결 차단",
+        r.status_code == 400 and r.json()["error"]["code"] == "TASK_IMAGE_INVALID",
+        r.text,
+    )
+    r = c.get(f"/api/v1/worklogs/{wl['id']}/pdf", headers=bearer(user_token))
+    check("업무 사진 PDF", r.content.startswith(b"%PDF"), r.status_code)
     r = c.delete(f"/api/v1/worklogs/{wl['id']}", headers=bearer(peer_token))
     check("남의 일지 삭제 차단", r.status_code == 403, r.status_code)
     r = c.delete(f"/api/v1/worklogs/{wl['id']}", headers=bearer(admin_token))

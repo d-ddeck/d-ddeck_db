@@ -27,7 +27,13 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
   void initState() {
     super.initState();
     _load();
-    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _load());
+    // 백업 중에는 2초마다, 평소에는 10초마다 상태를 다시 읽는다.
+    var ticks = 0;
+    _poll = Timer.periodic(const Duration(seconds: 2), (_) {
+      ticks++;
+      final active = _data?['running'] == true || _data?['requested'] == true;
+      if (active || ticks % 5 == 0) _load();
+    });
   }
 
   @override
@@ -405,6 +411,15 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                                     : '지금 백업',
                               ),
                             ),
+                            if (running || requested) ...[
+                              const SizedBox(height: 12),
+                              _BackupProgress(
+                                progress: running
+                                    ? asMap(data['progress'])
+                                    : const {},
+                                waiting: !running,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -441,6 +456,52 @@ class _DriveBackupPageState extends State<DriveBackupPage> {
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// 백업 단계와 진행률. 서버가 2초마다 남기는 값을 보여 준다.
+class _BackupProgress extends StatelessWidget {
+  const _BackupProgress({required this.progress, required this.waiting});
+  final Map<String, dynamic> progress;
+  final bool waiting;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (progress['percent'] as num?)?.toDouble();
+    final stage = switch (progress['stage']) {
+      'packing' => '1/3 백업 파일 만드는 중 (DB · 첨부)',
+      'uploading' => '2/3 Google 드라이브에 올리는 중',
+      'verifying' => '3/3 업로드 확인 · 오래된 백업 정리 중',
+      _ => waiting ? '백업 시작을 기다리는 중' : '백업 준비 중',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(stage)),
+            if (percent != null)
+              Text(
+                '${percent.toStringAsFixed(0)}%',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          value: percent == null ? null : percent / 100,
+          minHeight: 6,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '백업 중에도 앱은 계속 쓸 수 있습니다. 화면을 닫아도 백업은 이어집니다.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

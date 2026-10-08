@@ -134,6 +134,7 @@ class Store {
     this.openDate,
     this.closedDate,
     this.gripperType,
+    this.systemType,
     this.note,
     this.contactName,
     this.contactPhone,
@@ -162,6 +163,9 @@ class Store {
   final DateTime? openDate;
   final DateTime? closedDate;
   final String? gripperType;
+
+  /// 매장 장비 시스템 구성: ANDROID / WINDOWS / PLC (미지정이면 null).
+  final String? systemType;
   final String? note;
   final String? contactName;
   final String? contactPhone;
@@ -194,6 +198,7 @@ class Store {
     openDate: asDate(j['open_date']),
     closedDate: asDate(j['closed_date']),
     gripperType: j['gripper_type'] as String?,
+    systemType: j['system_type'] as String?,
     note: j['note'] as String?,
     contactName: j['contact_name'] as String?,
     contactPhone: j['contact_phone'] as String?,
@@ -322,3 +327,6 @@ class EquipmentSetupResult {
         store: Store.fromJson(asMap(j['store'])),
       );
 }
+
+/// 매장 장비 시스템 구성 (값 -> 화면 이름). 순서가 선택지 순서.
+const systemTypes = {'ANDROID': 'Android', 'WINDOWS': 'Windows', 'PLC': 'PLC'};

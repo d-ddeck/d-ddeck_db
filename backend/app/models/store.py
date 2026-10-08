@@ -67,6 +67,8 @@ class Store(UUIDMixin, TimestampMixin, SoftDeleteMixin, AuthorMixin, Base):
 
     # 전동 / 비전동 - decides which equipment slots a 납품 세트 has.
     gripper_type: Mapped[str | None] = mapped_column(String(20))
+    # 매장 장비가 쓰는 시스템 구성: ANDROID / WINDOWS / PLC (미지정 가능).
+    system_type: Mapped[str | None] = mapped_column(String(16))
 
     contact_name: Mapped[str | None] = mapped_column(String(150))
     contact_phone: Mapped[str | None] = mapped_column(String(50))

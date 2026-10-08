@@ -1,7 +1,4 @@
-import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -109,19 +106,8 @@ class _QuotationPageState extends State<QuotationPage> {
         await saveAndOpenDownload(bytes, name);
         return;
       }
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: '견적 PDF 저장',
-        fileName: name,
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        bytes: Uint8List.fromList(bytes),
-      );
-      if (path != null) {
-        if (!Platform.isAndroid && !Platform.isIOS) {
-          await File(path).writeAsBytes(bytes, flush: true);
-        }
-        if (mounted) AppSnack.show(context, 'PDF를 저장했습니다.');
-      }
+      final path = await savePdfAs(bytes, name, dialogTitle: '견적 PDF 저장');
+      if (path != null && mounted) AppSnack.show(context, savedMessage(path));
     });
     if (mounted) setState(() => _busy = false);
   }

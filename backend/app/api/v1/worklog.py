@@ -15,15 +15,16 @@ from __future__ import annotations
 import base64
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Annotated, Literal
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import Client, CurrentUser, DbSession, PageParams
 from app.core.errors import AppError
 from app.core.security import now_utc
@@ -487,6 +488,89 @@ def export_worklogs(
 
 
 # ------------------------------------------------------------------ 등록 · 보기 · 수정 · 삭제
+PERIOD = {"AM": "오전", "PM": "오후"}
+
+
+def task_label(task: dict) -> str:
+    """'사무' 또는 '출장 · 강남점'."""
+    if task["kind"] == "TRIP":
+        return f"출장 · {task['location']}"
+    return "사무"
+
+
+def _apply_tasks(data: dict, db: Session, log_id: uuid.UUID | None) -> None:
+    """업무 목록을 검사하고, 요약 · 상세 · 오전 · 오후 글을 만든다.
+
+    예전 앱과 엑셀은 요약 · 상세 · 오전 · 오후 칸을 그대로 읽으므로 같이 채워 둔다.
+    오전 업무가 먼저, 같은 시간대 안에서는 입력한 순서.
+    """
+    tasks = []
+    for raw in data["tasks"]:
+        task = {
+            "period": raw["period"],
+            "kind": raw["kind"],
+            "location": (raw.get("location") or "").strip() or None,
+            "title": raw["title"].strip(),
+            "detail": (raw.get("detail") or "").strip(),
+            "images": [
+                {
+                    "attachment_id": str(image["attachment_id"]),
+                    "comment": (image.get("comment") or "").strip(),
+                }
+                for image in raw.get("images") or []
+            ],
+        }
+        if not task["title"]:
+            raise AppError("TASK_TITLE_REQUIRED", "업무 제목을 입력하세요.")
+        if task["kind"] == "TRIP" and not task["location"]:
+            raise AppError("TASK_LOCATION_REQUIRED", "출장 업무는 출장지를 입력하세요.")
+        if task["kind"] == "OFFICE":
+            task["location"] = None
+        tasks.append(task)
+    if not tasks:
+        raise AppError("TASKS_REQUIRED", "금일 업무를 하나 이상 입력하세요.")
+    # 업무 사진은 이 일지에 이미 올린 첨부여야 한다(새 일지는 저장한 뒤 올려 연결한다).
+    wanted = {i["attachment_id"] for t in tasks for i in t["images"]}
+    if wanted:
+        owned = (
+            {
+                str(a)
+                for a in db.scalars(
+                    select(Attachment.id).where(
+                        Attachment.entity_type == "worklog",
+                        Attachment.entity_id == log_id,
+                        Attachment.deleted_at.is_(None),
+                        Attachment.id.in_([uuid.UUID(a) for a in wanted]),
+                    )
+                ).all()
+            }
+            if log_id
+            else set()
+        )
+        if wanted - owned:
+            raise AppError(
+                "TASK_IMAGE_INVALID",
+                "업무 사진은 이 근무일지에 올린 사진만 쓸 수 있습니다.",
+            )
+    tasks.sort(key=lambda t: t["period"] != "AM")
+    data["tasks"] = tasks
+    data["summary"] = "\n".join(t["title"] for t in tasks)
+    data["detail"] = "\n\n".join(
+        f"{i}. [{PERIOD[t['period']]} · {task_label(t)}] {t['title']}"
+        + (f"\n{t['detail']}" if t["detail"] else "")
+        for i, t in enumerate(tasks, 1)
+    )
+    for period, field in (("AM", "morning"), ("PM", "afternoon")):
+        data[field] = (
+            "\n".join(
+                f"[{task_label(t)}] {t['title']}"
+                for t in tasks
+                if t["period"] == period
+            )
+            or None
+        )
+
+
 def _validate(db: Session, user: User, data: dict, *, existing: WorkLog | None) -> None:
     times = {}
     for k in ("work_start", "work_end"):
@@ -494,6 +578,10 @@ def _validate(db: Session, user: User, data: dict, *, existing: WorkLog | None) 
         if not v or not _TIME.match(v):
             raise AppError("BAD_TIME", "근무시간(시작·종료)을 HH:MM 으로 입력하세요.")
         times[k] = v
+    if data.get("tasks") is not None:
+        _apply_tasks(data, db, existing.id if existing else None)
+    else:
+        data.pop("tasks", None)  # 업무 목록을 보내지 않은 예전 앱: 요약 · 상세를 그대로
     if "summary" in data:
         data["summary"] = numbered(data["summary"])
         if not data["summary"]:
@@ -594,25 +682,6 @@ def get_worklog(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> WorkLogD
     return _detail(db, log, user)
 
 
-def _document_no(db: Session, log: WorkLog) -> str:
-    """작성일(등록 시각, 한국 시간) 기준 WL-YYYYMMDD-순번.
-
-    순번은 그날 등록된 순서다. 지운 일지도 세어 번호가 바뀌지 않는다.
-    """
-    created = log.created_at.astimezone(KST)
-    start = datetime(created.year, created.month, created.day, tzinfo=KST)
-    order = db.scalar(
-        select(func.count(WorkLog.id)).where(
-            WorkLog.created_at >= start,
-            or_(
-                WorkLog.created_at < log.created_at,
-                and_(WorkLog.created_at == log.created_at, WorkLog.id <= log.id),
-            ),
-        )
-    )
-    return f"WL-{created:%Y%m%d}-{order or 1:03d}"
-
-
 def _company_logo(db: Session) -> bytes | None:
     """견적서에 등록한 회사 로고를 근무일지 PDF 에도 쓴다."""
     configured = settings_store.get(db, ModuleKey.SERVICE, "quotation_logo", {})
@@ -633,8 +702,8 @@ def worklog_pdf(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Response
             "근무일지는 작성자, 같은 부서 팀장, 관리자만 볼 수 있습니다.",
             status.HTTP_403_FORBIDDEN,
         )
-    names = db.scalars(
-        select(Attachment.original_name)
+    files = db.scalars(
+        select(Attachment)
         .where(
             Attachment.entity_type == "worklog",
             Attachment.entity_id == log.id,
@@ -642,6 +711,21 @@ def worklog_pdf(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Response
         )
         .order_by(Attachment.created_at)
     ).all()
+    in_tasks = {
+        image["attachment_id"]
+        for task in log.tasks or []
+        for image in task.get("images") or []
+    }
+    images = {}
+    root = settings.storage_path.resolve()
+    for a in files:
+        if str(a.id) not in in_tasks:
+            continue
+        path = (root / a.stored_path).resolve()
+        if path.is_relative_to(root) and path.is_file():
+            images[str(a.id)] = path.read_bytes()
+    # 업무 사진은 업무 아래에 나오므로 첨부 파일 목록에서는 뺀다.
+    names = [a.original_name for a in files if str(a.id) not in in_tasks]
     pdf = worklog_pdf_service.render(
         {
             "work_date": log.work_date.isoformat(),
@@ -651,7 +735,7 @@ def worklog_pdf(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Response
             "position": log.position,
             "overtime_minutes": overtime_minutes(log.work_start, log.work_end),
             "overtime_note": log.overtime_note,
-            "document_no": _document_no(db, log),
+            "tasks": log.tasks or [],
             "morning": log.morning,
             "afternoon": log.afternoon,
             "summary": log.summary,
@@ -659,9 +743,10 @@ def worklog_pdf(log_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Response
             "plan": log.plan,
             "needs": log.needs,
         },
-        list(names),
+        names,
         now_utc().astimezone(KST).strftime("%Y-%m-%d %H:%M"),
         logo=_company_logo(db),
+        images=images,
     )
     return _pdf_response(
         pdf,

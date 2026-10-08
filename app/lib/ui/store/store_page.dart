@@ -562,6 +562,14 @@ class _StoreList extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (store.systemType != null) ...[
+                  const SizedBox(width: 6),
+                  StatusChip(
+                    label: systemTypes[store.systemType] ?? store.systemType!,
+                    icon: Icons.memory_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                ],
                 if (store.isClosed) ...[
                   const SizedBox(width: 6),
                   StatusChip(label: '미운영', color: AppColors.muted(context)),

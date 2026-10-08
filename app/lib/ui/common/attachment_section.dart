@@ -20,12 +20,16 @@ class AttachmentSection extends StatelessWidget {
     required this.entityId,
     this.canEdit = true,
     this.photoCategory,
+    this.includeImages = true,
   });
 
   final String entityType;
   final String entityId;
   final bool canEdit;
   final String? photoCategory;
+
+  /// false 면 이미지는 목록에서 뺀다(이미지를 본문에서 따로 보여 주는 화면).
+  final bool includeImages;
 
   @override
   Widget build(BuildContext context) => _AttachmentSectionBody(
@@ -35,6 +39,7 @@ class AttachmentSection extends StatelessWidget {
     entityId: entityId,
     canEdit: canEdit,
     photoCategory: photoCategory,
+    includeImages: includeImages,
   );
 }
 
@@ -45,12 +50,14 @@ class _AttachmentSectionBody extends StatefulWidget {
     required this.entityId,
     this.canEdit = true,
     this.photoCategory,
+    this.includeImages = true,
   });
 
   final String entityType;
   final String entityId;
   final bool canEdit;
   final String? photoCategory;
+  final bool includeImages;
 
   @override
   State<_AttachmentSectionBody> createState() => _AttachmentSectionBodyState();
@@ -81,6 +88,7 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
             'ctrl': '제어박스 사진',
             'panel': '조작부 사진',
             'serial': '시리얼 사진',
+            'motion': '로봇 동작파일',
           }[widget.photoCategory] ??
           '첨부',
       actions: [
@@ -145,11 +153,14 @@ class _AttachmentSectionBodyState extends State<_AttachmentSectionBody> {
           ],
           AsyncView<List<Attachment>>(
             key: _viewKey,
-            load: () => repo.listFor(
-              widget.entityType,
-              widget.entityId,
-              photoCategory: widget.photoCategory,
-            ),
+            load: () async => [
+              for (final a in await repo.listFor(
+                widget.entityType,
+                widget.entityId,
+                photoCategory: widget.photoCategory,
+              ))
+                if (widget.includeImages || !a.isImage) a,
+            ],
             builder: (context, attachments, reload) {
               // 상세 화면의 스크롤 안에 있으므로 빈 목록도 높이가 정해진 ListView를 쓰지 않는다.
               if (attachments.isEmpty) {
@@ -371,7 +382,7 @@ class _AttachmentThumbnailState extends State<_AttachmentThumbnail> {
             tooltip: '썸네일 불러오기',
             icon: const Icon(Icons.image_outlined),
             onPressed: () => setState(
-              () => _file = context.read<FileRepository>().download(
+              () => _file = context.read<FileRepository>().preview(
                 widget.attachment,
               ),
             ),
@@ -384,7 +395,7 @@ class _AttachmentThumbnailState extends State<_AttachmentThumbnail> {
                   tooltip: '썸네일 다시 시도',
                   icon: const Icon(Icons.refresh),
                   onPressed: () => setState(
-                    () => _file = context.read<FileRepository>().download(
+                    () => _file = context.read<FileRepository>().preview(
                       widget.attachment,
                     ),
                   ),

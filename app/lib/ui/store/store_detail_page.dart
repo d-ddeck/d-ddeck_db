@@ -294,7 +294,7 @@ class _StoreBody extends StatelessWidget {
       children: children,
     );
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -327,6 +327,7 @@ class _StoreBody extends StatelessWidget {
               Tab(text: '장비'),
               Tab(text: '서비스·렌탈'),
               Tab(text: '사진·첨부'),
+              Tab(text: '로봇 동작파일'),
             ],
           ),
           Expanded(
@@ -334,6 +335,8 @@ class _StoreBody extends StatelessWidget {
               children: [
                 tab('info', [left.first]),
                 tab('assets', [
+                  _SystemTypeBanner(systemType: store.systemType),
+                  const SizedBox(height: AppSpace.md),
                   ...left.skip(1),
                   OutlinedButton.icon(
                     onPressed: () => Navigator.push(
@@ -369,6 +372,20 @@ class _StoreBody extends StatelessWidget {
                     entityType: FileRepository.store,
                     entityId: store.id,
                     photoCategory: 'general',
+                  ),
+                ]),
+                tab('motion', [
+                  Text(
+                    '로봇·제어기에서 내보낸 동작 파일을 매장별로 보관합니다. 파일 이름에 날짜나 버전을 넣어 두면 변경 이력을 찾기 쉽습니다. 실행 파일과 스크립트는 올릴 수 없습니다.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.sm),
+                  AttachmentSection(
+                    entityType: FileRepository.store,
+                    entityId: store.id,
+                    photoCategory: 'motion',
                   ),
                 ]),
               ],
@@ -544,6 +561,69 @@ class _AssetGroupCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 매장 장비 시스템 구성을 크게 보여 준다. 미지정이면 흐리게 안내만.
+class _SystemTypeBanner extends StatelessWidget {
+  const _SystemTypeBanner({required this.systemType});
+  final String? systemType;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final set = systemType != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: set ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: set ? scheme.primary : scheme.outlineVariant,
+          width: set ? 2 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.memory_outlined,
+            size: 36,
+            color: set ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '시스템 구성',
+                  style: text.titleSmall?.copyWith(
+                    color: set
+                        ? scheme.onPrimaryContainer
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  set ? systemTypes[systemType] ?? systemType! : '미지정',
+                  style: text.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: set ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                ),
+                if (!set)
+                  Text(
+                    '장비 설정에서 Android · Windows · PLC 중 하나를 고르세요',
+                    style: text.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

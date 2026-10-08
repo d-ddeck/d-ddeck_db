@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,14 +12,33 @@ from app.models.enums import WorkLogVisibility
 from app.schemas.common import ORMModel, PatchModel, UserBrief
 
 
+class WorkLogTaskImage(BaseModel):
+    attachment_id: uuid.UUID = Field(description="이 일지에 올린 첨부(사진)")
+    comment: str = Field("", max_length=500)
+
+
+class WorkLogTask(BaseModel):
+    period: Literal["AM", "PM"]
+    kind: Literal["OFFICE", "TRIP"]
+    location: str | None = Field(None, max_length=200, description="출장지 (출장일 때)")
+    title: str = Field(min_length=1, max_length=200)
+    detail: str = Field("", max_length=4000)
+    images: list[WorkLogTaskImage] = Field(default_factory=list, max_length=20)
+
+
 class WorkLogCreate(BaseModel):
     work_date: date
     work_start: str = Field(pattern=r"^\d{2}:\d{2}$", description="HH:MM")
     work_end: str = Field(pattern=r"^\d{2}:\d{2}$")
-    summary: str = Field(
-        min_length=1, description="한 줄에 하나씩. 서버가 1. 2. 번호를 다시 매긴다"
+    tasks: list[WorkLogTask] | None = Field(
+        None,
+        max_length=30,
+        description="업무 목록. 있으면 요약 · 상세 · 오전 · 오후를 서버가 만든다",
     )
-    detail: str = Field(min_length=1)
+    summary: str = Field(
+        "", description="한 줄에 하나씩. 서버가 1. 2. 번호를 다시 매긴다"
+    )
+    detail: str = ""
     morning: str | None = None
     afternoon: str | None = None
     overtime: bool = False
@@ -45,6 +64,7 @@ class WorkLogUpdate(PatchModel):
     work_date: date | None = None
     work_start: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
     work_end: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
+    tasks: list[WorkLogTask] | None = Field(None, max_length=30)
     summary: str | None = Field(None, min_length=1)
     detail: str | None = Field(None, min_length=1)
     morning: str | None = None
@@ -67,6 +87,7 @@ class WorkLogOut(ORMModel):
     work_end: str
     summary: str
     detail: str
+    tasks: list[dict[str, Any]] | None = None
     morning: str | None = None
     afternoon: str | None = None
     overtime: bool

@@ -10,6 +10,7 @@ class _StatsData {
     required this.brands,
     required this.tables,
     required this.crosses,
+    required this.responders,
     this.stores,
   });
 
@@ -19,6 +20,7 @@ class _StatsData {
   final List<CodeItem> categories, brands, workTypes;
   final List<(String, String, String)> tables;
   final List<Crosstab> crosses;
+  final ResponderYears responders;
   final StoreYears? stores;
 }
 
@@ -338,6 +340,139 @@ class _BucketRow extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// 연도별 대응인원: 연도 칩으로 고르고, 사람마다 가로 막대 하나.
+class _ResponderYearsCard extends StatefulWidget {
+  const _ResponderYearsCard({required this.data});
+  final ResponderYears data;
+
+  @override
+  State<_ResponderYearsCard> createState() => _ResponderYearsCardState();
+}
+
+class _ResponderYearsCardState extends State<_ResponderYearsCard> {
+  static const _shown = 15;
+  String? _year; // null = 전체 기간
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.data.years.lastOrNull;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResponderYearsCard old) {
+    super.didUpdateWidget(old);
+    if (_year != null && !widget.data.years.contains(_year)) {
+      _year = widget.data.years.lastOrNull;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final data = widget.data;
+    final rows = [
+      for (final r in data.rows)
+        (r, _year == null ? r.total : r.counts[_year] ?? 0),
+    ].where((e) => e.$2 > 0).toList()..sort((a, b) => b.$2.compareTo(a.$2));
+    final top = rows.take(_shown).toList();
+    final rest = rows.skip(_shown).toList();
+    final peak = top.isEmpty ? 1 : top.first.$2;
+    return _ChartCard(
+      title: '연도별 대응인원 · ${_year == null ? '전체 기간' : '$_year년'}',
+      child: data.years.isEmpty
+          ? const _NoData()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final y in data.years.reversed)
+                      ChoiceChip(
+                        label: Text('$y년'),
+                        selected: _year == y,
+                        onSelected: (_) => setState(() => _year = y),
+                      ),
+                    ChoiceChip(
+                      label: const Text('전체 기간'),
+                      selected: _year == null,
+                      onSelected: (_) => setState(() => _year = null),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.md),
+                if (top.isEmpty) const Text('이 연도에는 대응 기록이 없습니다.'),
+                for (final (row, count) in top)
+                  Tooltip(
+                    message: [
+                      for (final y in data.years)
+                        if ((row.counts[y] ?? 0) > 0)
+                          '$y년 ${Fmt.number(row.counts[y])}건',
+                    ].join('\n'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 96,
+                            child: Text(
+                              row.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: count / peak,
+                                child: Container(
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: scheme.primary,
+                                    borderRadius: const BorderRadius.horizontal(
+                                      right: Radius.circular(4),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 64,
+                            child: Text(
+                              '${Fmt.number(count)}건',
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (rest.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '외 ${rest.length}명 · ${Fmt.number(rest.fold<int>(0, (sum, e) => sum + e.$2))}건',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  '접수일 기준 · 한 건에 여러 명이 대응하면 사람마다 한 건으로 셉니다. 막대에 마우스를 올리면 연도별 건수가 보입니다.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

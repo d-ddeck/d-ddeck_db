@@ -116,6 +116,7 @@ class StoreRepository {
   Future<EquipmentSetupResult> setupEquipment(
     String id, {
     DateTime? installDate,
+    String? systemType,
     required List<Map<String, dynamic>> sets,
   }) async => EquipmentSetupResult.fromJson(
     asMap(
@@ -123,6 +124,7 @@ class StoreRepository {
         '/stores/$id/equipment',
         body: {
           'install_date': ServiceRepository.dateOnly(installDate),
+          'system_type': systemType,
           'sets': sets,
         },
       ),

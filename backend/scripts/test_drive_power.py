@@ -51,7 +51,7 @@ def run_backup(now, *, requested=False):
                  next_run_at=(now - timedelta(minutes=1)).isoformat() if not requested else (now + timedelta(hours=5)).isoformat())
     clock = type('Clock', (), {'now': staticmethod(lambda tz=None: now)})
     with patch.object(d, 'datetime', wraps=datetime) as fake, \
-            patch.object(d.subprocess, 'run', return_value=type('Result', (), {'stdout': str(archive)})()), \
+            patch.object(d, '_pack', return_value=str(archive)), \
             patch.object(d, 'upload', return_value='file'):
         fake.now = clock.now
         fake.fromisoformat = datetime.fromisoformat
@@ -132,7 +132,7 @@ with patch.object(d, 'POWER_PATH_UNIT', unit), patch.object(d, 'POWER_HELPER', h
     archive = Path(TEMP.name) / 'backups/.drive-private/uploads/test.zip'
     archive.write_bytes(b'zip')
     with patch.object(d, 'datetime', wraps=datetime) as fake, \
-            patch.object(d.subprocess, 'run', return_value=type('Result', (), {'stdout': str(archive)})()), \
+            patch.object(d, '_pack', return_value=str(archive)), \
             patch.object(d, 'upload', return_value='file'):
         fake.now = lambda tz=None: late
         fake.fromisoformat = datetime.fromisoformat
