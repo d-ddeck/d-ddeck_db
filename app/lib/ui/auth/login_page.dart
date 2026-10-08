@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../common/theme_mode_button.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -164,15 +166,7 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                               ),
                             const FormGap(),
-                            Center(
-                              child: Image.asset(
-                                'assets/icon/company_logo.png',
-                                width: 260,
-                                height: 260,
-                                fit: BoxFit.contain,
-                                semanticLabel: '디떽 회사 로고',
-                              ),
-                            ),
+                            const Center(child: _SpinInLogo()),
                             const FormGap(),
                             // VPN 이 꺼져 있으면 로그인 자체가 안 되므로 로그인 전에 연결한다.
                             if (VpnService.isSupported) ...[
@@ -431,3 +425,75 @@ class ErrorBanner extends StatelessWidget {
 
 /// Exported so other auth screens can reuse the placeholder styling.
 typedef AuthPlaceholder = StatePlaceholder;
+
+/// 앱을 처음 켰을 때 로고가 두 바퀴 돌며 커지면서 나타난다. 로그아웃 뒤 다시
+/// 로그인 화면이 열릴 때는 돌지 않고, OS 에서 애니메이션 줄이기를 켜 두면 생략한다.
+class _SpinInLogo extends StatefulWidget {
+  const _SpinInLogo();
+
+  @override
+  State<_SpinInLogo> createState() => _SpinInLogoState();
+}
+
+class _SpinInLogoState extends State<_SpinInLogo>
+    with SingleTickerProviderStateMixin {
+  // 이 앱 실행 중 한 번만.
+  static bool _played = false;
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+  late final Animation<double> _turns = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+  );
+  late final Animation<double> _grow = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, 0.6, curve: Curves.easeOutBack),
+  );
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, 0.35, curve: Curves.easeOut),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_played || MediaQuery.of(context).disableAnimations) {
+      _controller.value = 1;
+      return;
+    }
+    _played = true;
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    child: Image.asset(
+      'assets/icon/company_logo.png',
+      width: 260,
+      height: 260,
+      fit: BoxFit.contain,
+      semanticLabel: '디떽 회사 로고',
+    ),
+    builder: (context, logo) => Opacity(
+      opacity: _fade.value,
+      child: Transform.scale(
+        scale: 0.6 + 0.4 * _grow.value,
+        // 두 바퀴 돌고 정면에서 멈춘다.
+        child: Transform.rotate(
+          angle: (1 - _turns.value) * -4 * math.pi,
+          child: logo,
+        ),
+      ),
+    ),
+  );
+}
