@@ -22,6 +22,10 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  // 앱을 켠 뒤 처음 열린 로그인 화면에서만 로고 연출을 한다(로그아웃 뒤에는 생략).
+  static bool _introPlayed = false;
+  bool _intro = !_introPlayed;
+  final _logoKey = GlobalKey();
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -126,7 +130,9 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
+    if (_intro && MediaQuery.of(context).disableAnimations) _intro = false;
+    _introPlayed = true;
+    final page = Scaffold(
       appBar: AppBar(
         actions: [
           IconButton(
@@ -165,12 +171,15 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             const FormGap(),
                             Center(
-                              child: Image.asset(
-                                'assets/icon/company_logo.png',
-                                width: 260,
-                                height: 260,
-                                fit: BoxFit.contain,
-                                semanticLabel: '디떽 회사 로고',
+                              // 시작 연출 동안은 큰 로고가 이 자리로 날아와 앉는다.
+                              child: Opacity(
+                                opacity: _intro ? 0 : 1,
+                                child: SizedBox(
+                                  key: _logoKey,
+                                  width: 260,
+                                  height: 260,
+                                  child: _companyLogo,
+                                ),
                               ),
                             ),
                             const FormGap(),
@@ -334,6 +343,18 @@ class _LoginPageState extends State<LoginPage> {
         ),
       ),
     );
+    return Stack(
+      children: [
+        page,
+        if (_intro)
+          Positioned.fill(
+            child: _LogoIntro(
+              targetKey: _logoKey,
+              onDone: () => setState(() => _intro = false),
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -431,3 +452,105 @@ class ErrorBanner extends StatelessWidget {
 
 /// Exported so other auth screens can reuse the placeholder styling.
 typedef AuthPlaceholder = StatePlaceholder;
+
+const _companyLogo = Image(
+  image: AssetImage('assets/icon/company_logo.png'),
+  fit: BoxFit.contain,
+  semanticLabel: '디떽 회사 로고',
+);
+
+/// 시작 연출: 화면 가운데 큰 로고만 보이다가, 점점 작아지며 로그인 카드의 로고
+/// 자리로 들어간다. 그동안 배경이 걷히며 로그인 창이 드러난다. 누르면 건너뛴다.
+class _LogoIntro extends StatefulWidget {
+  const _LogoIntro({required this.targetKey, required this.onDone});
+  final GlobalKey targetKey;
+  final VoidCallback onDone;
+
+  @override
+  State<_LogoIntro> createState() => _LogoIntroState();
+}
+
+class _LogoIntroState extends State<_LogoIntro>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2400),
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) widget.onDone();
+      });
+  // 0~0.15 나타남 · ~0.4 머무름 · 0.4~0.85 작아지며 이동 · 0.45~0.9 배경 걷힘.
+  late final _appear = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, 0.15, curve: Curves.easeOut),
+  );
+  late final _move = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0.4, 0.85, curve: Curves.easeInOutCubic),
+  );
+  late final _reveal = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0.45, 0.9, curve: Curves.easeOut),
+  );
+  Rect? _target;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    _controller.forward();
+  }
+
+  /// 로그인 카드의 로고 자리를 이 화면 기준 좌표로 잰다.
+  void _measure() {
+    if (!mounted) return;
+    final target = widget.targetKey.currentContext?.findRenderObject();
+    final self = context.findRenderObject();
+    if (target is! RenderBox || self is! RenderBox || !target.hasSize) return;
+    final topLeft = target.localToGlobal(Offset.zero, ancestor: self);
+    setState(() => _target = topLeft & target.size);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final big = (box.biggest.shortestSide * 0.6).clamp(160.0, 420.0);
+      final start = Rect.fromCenter(
+        center: box.biggest.center(Offset.zero),
+        width: big,
+        height: big,
+      );
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _controller.value = 1,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final rect = Rect.lerp(start, _target ?? start, _move.value)!;
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: Theme.of(context).scaffoldBackgroundColor.withValues(
+                      alpha: 1 - _reveal.value,
+                    ),
+                  ),
+                ),
+                Positioned.fromRect(
+                  rect: rect,
+                  child: Opacity(opacity: _appear.value, child: _companyLogo),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    },
+  );
+}
