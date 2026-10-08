@@ -143,6 +143,20 @@ def start() -> BackgroundScheduler | None:
         max_instances=1,
         coalesce=True,
     )
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.client_update_sync import scheduled as client_update_sync
+
+    # 새 앱 릴리즈를 GitHub 에서 받아 게시한다. 켜진 직후 한 번, 그 뒤 30분마다.
+    _scheduler.add_job(
+        guarded(client_update_sync),
+        "interval",
+        minutes=30,
+        id="client_update_sync",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+    )
     _scheduler.start()
     log.info("scheduler started (every %ds)", settings.REMINDER_SCAN_SECONDS)
     return _scheduler

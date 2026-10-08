@@ -30,7 +30,11 @@ Future<void> checkClientUpdate(
     if (update == null) {
       if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('현재 받을 수 있는 새 업데이트가 없습니다.')),
+          SnackBar(
+            content: Text(
+              '현재 버전($appVersion)이 최신입니다. 새 버전은 서버가 GitHub에서 30분마다 받아 게시합니다.',
+            ),
+          ),
         );
       }
       return;

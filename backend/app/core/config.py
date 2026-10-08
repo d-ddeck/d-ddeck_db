@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 25
 
     BACKUP_ROOT: str = ""
+    # 직원 기기용 설치 파일을 받아 올 GitHub 공개 저장소. 비우면 자동 게시를 하지 않는다.
+    CLIENT_UPDATE_REPO: str = "d-ddeck/d-ddeck_db"
 
     # --- scheduler ---
     SCHEDULER_ENABLED: bool = True

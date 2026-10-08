@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.client_updates import verify_manifest
 from app.core.config import settings
+from app.core.deps import AdminUser
 
 router = APIRouter(prefix="/updates", tags=["client updates"])
 
@@ -61,3 +62,16 @@ def installer(release: str, filename: str):
         media_type="application/octet-stream",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
+
+
+@router.post("/sync")
+def sync_now(_: AdminUser):
+    """GitHub 최신 릴리즈를 지금 확인해 새 버전이면 게시한다(평소에는 30분마다 자동)."""
+    import httpx
+
+    from app.services.client_update_sync import sync
+
+    try:
+        return sync()
+    except (httpx.HTTPError, OSError, ValueError, KeyError) as exc:
+        raise HTTPException(502, f"업데이트 게시 실패: {type(exc).__name__}") from None

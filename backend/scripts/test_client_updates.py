@@ -99,6 +99,89 @@ class UpdateTests(unittest.TestCase):
                 (destination / "latest.json").write_text(json.dumps(envelope))
                 self.assertEqual(client.get("/updates/latest").status_code, 503)
 
+    def test_github_sync_publishes_verified_release_only(self):
+        import httpx
+
+        from app.services import client_update_sync as sync_module
+
+        key = Ed25519PrivateKey.generate()
+        public = base64.b64encode(key.public_key().public_bytes_raw()).decode()
+
+        def release(version, build, tamper=False):
+            files, artifacts = {}, {}
+            for platform, name in [
+                ("windows", f"ddeck-setup-{version}.exe"),
+                ("android", f"ddeck-{version}-arm64.apk"),
+            ]:
+                body = f"{platform} {version}".encode()
+                files[name] = body + (b"!" if tamper and platform == "android" else b"")
+                artifacts[platform] = {
+                    "filename": name,
+                    "size": len(body),
+                    "sha256": hashlib.sha256(body).hexdigest(),
+                }
+            payload = json.dumps(
+                {
+                    "schema": 1,
+                    "version": version,
+                    "build": build,
+                    "release": f"{version}-{build}",
+                    "artifacts": artifacts,
+                }
+            ).encode()
+            files["update-manifest.json"] = json.dumps(
+                {
+                    "payload": base64.b64encode(payload).decode(),
+                    "signature": base64.b64encode(key.sign(payload)).decode(),
+                }
+            ).encode()
+            return files
+
+        served = {}
+
+        def github(request):
+            if request.url.path.endswith("/releases/latest"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "assets": [
+                            {"name": n, "browser_download_url": f"https://dl/{n}"}
+                            for n in served
+                        ]
+                    },
+                )
+            return httpx.Response(200, content=served[request.url.path.lstrip("/")])
+
+        real_client = httpx.Client
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(client_updates, "PUBLIC_KEY", public),
+            patch.object(sync_module.settings, "STORAGE_DIR", tmp),
+            patch.object(
+                sync_module.httpx,
+                "Client",
+                side_effect=lambda **kw: real_client(
+                    transport=httpx.MockTransport(github), **kw
+                ),
+            ),
+        ):
+            published = Path(tmp) / "client-updates"
+            served.update(release("1.0.9", 9))
+            self.assertEqual(sync_module.sync()["status"], "published")
+            self.assertTrue((published / "1.0.9-9" / "ddeck-1.0.9-arm64.apk").is_file())
+            self.assertEqual(sync_module.sync()["status"], "up_to_date")
+            served.clear()
+            served.update(release("1.0.10", 10, tamper=True))
+            with self.assertRaises(ValueError):
+                sync_module.sync()
+            latest = json.loads((published / "latest.json").read_text())
+            self.assertEqual(
+                client_updates.verify_manifest(latest)["release"], "1.0.9-9"
+            )
+            self.assertEqual(
+                sorted(p.name for p in published.iterdir()), ["1.0.9-9", "latest.json"]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
